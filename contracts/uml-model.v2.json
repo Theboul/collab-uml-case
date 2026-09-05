@@ -1,0 +1,462 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diagramador-uml.org/contracts/uml-model.v2.json",
+  "title": "UmlClassDiagramContractV2",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "modelId",
+    "name",
+    "classes"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "2.0.0"
+    },
+    "modelId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "name": {
+      "type": "string",
+      "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+    },
+    "description": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "classes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ClassDefinition"
+      }
+    },
+    "associations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/AssociationDefinition"
+      },
+      "default": []
+    },
+    "generalizations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/GeneralizationDefinition"
+      },
+      "default": []
+    },
+    "realizations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/RealizationDefinition"
+      },
+      "default": []
+    },
+    "dependencies": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/DependencyDefinition"
+      },
+      "default": []
+    },
+    "visualLayout": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "$ref": "#/$defs/VisualLayoutDefinition",
+      "default": null
+    }
+  },
+  "$defs": {
+    "Visibility": {
+      "type": "string",
+      "enum": [
+        "+",
+        "-",
+        "#",
+        "~"
+      ]
+    },
+    "AggregationKind": {
+      "type": "string",
+      "enum": [
+        "none",
+        "shared",
+        "composite"
+      ]
+    },
+    "Multiplicity": {
+      "type": "object",
+      "required": [
+        "lowerBound"
+      ],
+      "properties": {
+        "lowerBound": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "upperBound": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        }
+      }
+    },
+    "ParameterDefinition": {
+      "type": "object",
+      "required": [
+        "name",
+        "type"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "direction": {
+          "type": "string",
+          "enum": [
+            "in",
+            "out",
+            "inout",
+            "return"
+          ],
+          "default": "in"
+        },
+        "defaultValue": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "OperationDefinition": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "returnType"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "name": {
+          "type": "string"
+        },
+        "visibility": {
+          "$ref": "#/$defs/Visibility",
+          "default": "+"
+        },
+        "returnType": {
+          "type": "string"
+        },
+        "isStatic": {
+          "type": "boolean",
+          "default": false
+        },
+        "isAbstract": {
+          "type": "boolean",
+          "default": false
+        },
+        "parameters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ParameterDefinition"
+          }
+        }
+      }
+    },
+    "AttributeDefinition": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "type"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "visibility": {
+          "$ref": "#/$defs/Visibility",
+          "default": "-"
+        },
+        "defaultValue": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "isStatic": {
+          "type": "boolean",
+          "default": false
+        },
+        "isReadOnly": {
+          "type": "boolean",
+          "default": false
+        },
+        "multiplicity": {
+          "$ref": "#/$defs/Multiplicity"
+        }
+      }
+    },
+    "ClassDefinition": {
+      "type": "object",
+      "required": [
+        "id",
+        "name"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "name": {
+          "type": "string"
+        },
+        "visibility": {
+          "$ref": "#/$defs/Visibility",
+          "default": "+"
+        },
+        "isAbstract": {
+          "type": "boolean",
+          "default": false
+        },
+        "isInterface": {
+          "type": "boolean",
+          "default": false
+        },
+        "stereotype": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "attributes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/AttributeDefinition"
+          }
+        },
+        "operations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/OperationDefinition"
+          }
+        }
+      }
+    },
+    "AssociationEnd": {
+      "type": "object",
+      "required": [
+        "classId",
+        "multiplicity"
+      ],
+      "properties": {
+        "classId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "roleName": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "isNavigable": {
+          "type": "boolean",
+          "default": true
+        },
+        "aggregationKind": {
+          "$ref": "#/$defs/AggregationKind",
+          "default": "none"
+        },
+        "multiplicity": {
+          "$ref": "#/$defs/Multiplicity"
+        }
+      }
+    },
+    "AssociationDefinition": {
+      "type": "object",
+      "required": [
+        "id",
+        "memberEnds"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "memberEnds": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "$ref": "#/$defs/AssociationEnd"
+          }
+        }
+      }
+    },
+    "GeneralizationDefinition": {
+      "type": "object",
+      "required": [
+        "id",
+        "specificClassId",
+        "generalClassId"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "specificClassId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "generalClassId": {
+          "type": "string",
+          "format": "uuid"
+        }
+      }
+    },
+    "RealizationDefinition": {
+      "type": "object",
+      "required": [
+        "id",
+        "clientClassId",
+        "supplierInterfaceId"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "clientClassId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "supplierInterfaceId": {
+          "type": "string",
+          "format": "uuid"
+        }
+      }
+    },
+    "DependencyDefinition": {
+      "type": "object",
+      "required": [
+        "id",
+        "clientClassId",
+        "supplierClassId"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "clientClassId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "supplierClassId": {
+          "type": "string",
+          "format": "uuid"
+        }
+      }
+    },
+    "VisualLayoutDefinition": {
+      "type": "object",
+      "properties": {
+        "viewport": {
+          "type": "object",
+          "properties": {
+            "zoom": {
+              "type": "number"
+            },
+            "panX": {
+              "type": "number"
+            },
+            "panY": {
+              "type": "number"
+            }
+          }
+        },
+        "nodes": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": [
+              "x",
+              "y",
+              "width",
+              "height"
+            ],
+            "properties": {
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              },
+              "width": {
+                "type": "number"
+              },
+              "height": {
+                "type": "number"
+              }
+            }
+          }
+        },
+        "links": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "vertices": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "x",
+                    "y"
+                  ],
+                  "properties": {
+                    "x": {
+                      "type": "number"
+                    },
+                    "y": {
+                      "type": "number"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,89 @@
+# ==========================================
+# DIAGRAMADOR UML - GITIGNORE
+# ==========================================
+
+# --- Python & Bytecode ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environments
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Testing & Linting Caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Databases & Runtime State
+*.db
+*.sqlite3
+*.sqlite
+legacy_*.db
+shared_case.db
+
+# Environment Variables & Secrets
+.env
+.env.*
+!.env.example
+
+# --- Frontend (Angular / Vite / Node) ---
+node_modules/
+front_generador_bd/node_modules/
+.angular/
+front_generador_bd/.angular/
+front_generador_bd/dist/
+out-tsc/
+bazel-out/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+
+# --- IDEs & OS Files ---
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# --- Legacy ---
+back_generador_bd/
+backend_old/
+legacy_backend/
+legacy/
+*.old
+*.bak
+*.tmp

@@ -1,0 +1,119 @@
+{
+  "schemaVersion": "2.0.0",
+  "modelId": "v2-fixture-uuid-01",
+  "name": "SistemaNotificacionesV2",
+  "description": "Fixture V2 nativo con Interfaces, Realizaciones y Dependencias",
+  "classes": [
+    {
+      "id": "cls-notificador-interface",
+      "name": "INotificador",
+      "visibility": "+",
+      "isAbstract": true,
+      "isInterface": true,
+      "stereotype": "<<interface>>",
+      "attributes": [],
+      "operations": [
+        {
+          "id": "op-enviar-notif",
+          "name": "enviar",
+          "visibility": "+",
+          "returnType": "void",
+          "isStatic": false,
+          "isAbstract": true,
+          "parameters": [
+            {
+              "name": "mensaje",
+              "type": "String",
+              "direction": "in",
+              "defaultValue": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cls-email-service",
+      "name": "EmailService",
+      "visibility": "+",
+      "isAbstract": false,
+      "isInterface": false,
+      "stereotype": null,
+      "attributes": [
+        {
+          "id": "attr-servidor-smtp",
+          "name": "servidorSmtp",
+          "type": "String",
+          "visibility": "-",
+          "defaultValue": null,
+          "isStatic": false,
+          "isReadOnly": false,
+          "multiplicity": { "lowerBound": 1, "upperBound": 1 }
+        }
+      ],
+      "operations": [
+        {
+          "id": "op-enviar-email",
+          "name": "enviar",
+          "visibility": "+",
+          "returnType": "void",
+          "isStatic": false,
+          "isAbstract": false,
+          "parameters": [
+            {
+              "name": "mensaje",
+              "type": "String",
+              "direction": "in",
+              "defaultValue": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cls-usuario-service",
+      "name": "UsuarioService",
+      "visibility": "+",
+      "isAbstract": false,
+      "isInterface": false,
+      "stereotype": null,
+      "attributes": [
+        {
+          "id": "attr-nombre-usuario",
+          "name": "nombre",
+          "type": "String",
+          "visibility": "-",
+          "defaultValue": null,
+          "isStatic": false,
+          "isReadOnly": false,
+          "multiplicity": { "lowerBound": 1, "upperBound": 1 }
+        }
+      ],
+      "operations": []
+    }
+  ],
+  "associations": [],
+  "generalizations": [],
+  "realizations": [
+    {
+      "id": "realiz-email-notif",
+      "clientClassId": "cls-email-service",
+      "supplierInterfaceId": "cls-notificador-interface"
+    }
+  ],
+  "dependencies": [
+    {
+      "id": "dep-usuario-notif",
+      "clientClassId": "cls-usuario-service",
+      "supplierClassId": "cls-notificador-interface"
+    }
+  ],
+  "visualLayout": {
+    "viewport": { "zoom": 1.0, "panX": 0, "panY": 0 },
+    "nodes": {
+      "cls-notificador-interface": { "x": 350, "y": 80, "width": 200, "height": 130 },
+      "cls-email-service": { "x": 150, "y": 280, "width": 220, "height": 140 },
+      "cls-usuario-service": { "x": 550, "y": 280, "width": 200, "height": 120 }
+    },
+    "links": {}
+  }
+}

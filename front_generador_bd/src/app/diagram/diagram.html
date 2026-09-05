@@ -1,0 +1,13 @@
+<div class="app-layout">
+  <app-side-panel #sidePanel></app-side-panel>
+  <div class="canvas-wrapper" cdkDropListGroup>
+    <div #paperContainer class="diagram-container" cdkDropList>
+      <!-- Aquí se renderizará el canvas de JointJS -->
+    </div>
+    <div class="flex space-x-2 p-2 bg-gray-100 border-b">
+      <button (click)="zoomIn()" class="px-2 py-1 bg-gray-200 rounded hover:bg-gray-300">➕</button>
+      <button (click)="zoomOut()" class="px-2 py-1 bg-gray-200 rounded hover:bg-gray-300">➖</button>
+      <button (click)="resetZoom()" class="px-2 py-1 bg-gray-200 rounded hover:bg-gray-300">🔄</button>
+    </div>
+  </div>
+</div>

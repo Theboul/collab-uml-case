@@ -1,0 +1,53 @@
+"""
+Módulo core de dominio UML 2.5 canónico.
+"""
+
+from .model import (
+    VisibilityKind,
+    AggregationKind,
+    ParameterDirectionKind,
+    MultiplicityRange,
+    UmlParameter,
+    UmlOperation,
+    UmlAttribute,
+    UmlClassifier,
+    UmlClass,
+    UmlInterface,
+    UmlEnumeration,
+    UmlDataType,
+    AssociationEnd,
+    UmlAssociation,
+    UmlGeneralization,
+    UmlRealization,
+    UmlDependency,
+    ElementLayout,
+    RelationshipLayout,
+    ViewportLayout,
+    UmlVisualLayout,
+    UmlDomainModel,
+)
+
+__all__ = [
+    "VisibilityKind",
+    "AggregationKind",
+    "ParameterDirectionKind",
+    "MultiplicityRange",
+    "UmlParameter",
+    "UmlOperation",
+    "UmlAttribute",
+    "UmlClassifier",
+    "UmlClass",
+    "UmlInterface",
+    "UmlEnumeration",
+    "UmlDataType",
+    "AssociationEnd",
+    "UmlAssociation",
+    "UmlGeneralization",
+    "UmlRealization",
+    "UmlDependency",
+    "ElementLayout",
+    "RelationshipLayout",
+    "ViewportLayout",
+    "UmlVisualLayout",
+    "UmlDomainModel",
+]

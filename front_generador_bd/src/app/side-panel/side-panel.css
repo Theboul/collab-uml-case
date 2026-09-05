@@ -1,0 +1,126 @@
+.side-panel {
+  width: 200px;
+  background: #f4f4f4;
+  border-right: 1px solid #ccc;
+  padding: 10px;
+}
+
+.palette-item {
+  margin: 10px 0;
+  padding: 8px;
+  background: white;
+  border: 1px solid #aaa;
+  cursor: grab;
+  text-align: center;
+  position: relative;
+  z-index: 10;
+}
+
+.item-content {
+  /* Aseguramos que el contenido original permanezca visible */
+  pointer-events: none;
+}
+
+.drag-preview {
+  background: white;
+  border: 2px solid #3f51b5;
+  padding: 10px;
+  border-radius: 4px;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+  z-index: 100;
+  pointer-events: none;
+  text-align: center;
+  width: 160px;
+}
+
+.class-preview {
+  background-color: #e3f2fd;
+  border-color: #2196f3;
+}
+
+.relation-preview {
+  background-color: #f3e5f5;
+  border-color: #9c27b0;
+}
+
+/* Estilo para mostrar que el elemento está siendo arrastrado */
+.cdk-drag-placeholder {
+  opacity: 0.3;
+}
+
+/* Arreglar el problema de visibilidad durante el arrastre */
+.cdk-drag-animating {
+  transition: transform 250ms ease;
+}
+
+.save-btn {
+  margin-top: 1rem;
+  padding: 0.5rem 1rem;
+  background: #2196f3;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.save-btn:hover {
+  background: #1976d2;
+}
+
+.chatbot-panel {
+  margin-top: 1rem;
+  padding: 0.5rem;
+  border-top: 1px solid #ccc;
+}
+
+.chatbot-panel textarea {
+  width: 100%;
+  resize: none;
+  padding: 0.5rem;
+  font-size: 14px;
+  margin-bottom: 0.5rem;
+}
+
+.generate-btn {
+  width: 100%;
+  padding: 0.5rem;
+  background: #4caf50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.generate-btn:hover {
+  background: #388e3c;
+}
+
+.validation-panel {
+  margin-top: 1rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.validation-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #f5f5f5;
+  padding: 0.5rem;
+  cursor: pointer;
+}
+
+.validation-header h4 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.validation-content {
+  padding: 0.5rem;
+  font-size: 13px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.validation-content h5 {
+  margin-top: 0.5rem;
+  margin-bottom: 0.25rem;
+}

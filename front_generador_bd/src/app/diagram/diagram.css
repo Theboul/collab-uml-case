@@ -1,0 +1,86 @@
+.app-layout {
+  display: flex;
+  height: 100vh;     /* ocupa toda la ventana */
+  width: 100vw;      /* asegura el ancho completo */
+}
+.app-layout > app-side-panel {
+  flex: 0 0 250px;   /* sidebar fijo de 250px */
+  border-right: 1px solid #ccc;
+  background: #fff;
+}
+
+.canvas-wrapper {
+  flex: 1;           /* ocupa todo el espacio sobrante */
+  display: flex;     
+  flex-direction: column;
+  height: 100%;      /* fuerza a tener altura */
+  overflow: auto;
+  background: #f8f9fa;
+}
+
+.diagram-container {
+  flex: 1;
+  border: 1px solid #ccc;
+  background: #fff;
+  position: relative;
+  z-index: 1;
+}
+
+/* Asegurar que los elementos arrastrados aparezcan por encima */
+.cdk-drag-preview {
+  z-index: 1000 !important;
+  pointer-events: none;
+}
+
+/* Aumentar el z-index de todos los elementos del papel/canvas de JointJS */
+.joint-paper {
+  flex: 1;           /* el SVG rellena el wrapper */
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Elementos JointJS */
+.joint-element {
+  z-index: 10 !important;
+}
+
+/* Establecer posición superior para elementos de diagrama */
+.joint-cell {
+  z-index: 20 !important;
+}
+
+/* Mantener visible el contenido del diagrama */
+svg.joint-paper svg {
+  overflow: visible !important;
+}
+
+/* Estilo para el elemento de fallback cuando JointJS falla */
+.fallback-entity {
+  width: 180px;
+  border: 2px solid #2196f3;
+  border-radius: 2px;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+  background-color: white;
+}
+
+.entity-header {
+  background-color: #e3f2fd;
+  padding: 5px;
+  font-weight: bold;
+  text-align: center;
+  border-bottom: 1px solid #2196f3;
+}
+
+.entity-attrs, .entity-methods {
+  padding: 5px;
+  border-bottom: 1px solid #2196f3;
+  font-family: monospace;
+  font-size: 12px;
+}
+
+/* Mejorar la apariencia de los elementos arrastrados */
+.joint-element.highlighted rect,
+.joint-element.highlighted path {
+  stroke: #ff5722 !important;
+  stroke-width: 3px !important;
+}
