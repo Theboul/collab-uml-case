@@ -7,9 +7,9 @@
 // del servicio (los nombres de método y lo que retornan) NO deberían cambiar,
 // para que el componente que ya lo consume no se vea afectado.
 
-import { Injectable } from '@angular/core';
-import { Observable, of } from 'rxjs';
-import { delay } from 'rxjs/operators';
+import { Injectable, inject } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { Observable, catchError, delay, map, of } from 'rxjs';
 
 // ─────────────────────────────────────────────────────────
 // Contratos (basados 1:1 en el diseño de datos real: tabla `projects`)
@@ -38,58 +38,34 @@ export interface DashboardMetrics {
 export type ProjectSortBy = 'updatedAt' | 'name' | 'tableCount';
 
 // ─────────────────────────────────────────────────────────
-// Datos MOCK — reemplazar por respuestas reales del backend
+// Datos Mock de respaldo (desarrollo local / offline)
 // ─────────────────────────────────────────────────────────
 
 const MOCK_PROJECTS: ProjectDto[] = [
   {
-    id: 'a1b2c3d4-0001',
-    name: 'E-commerce Multi-vendor',
-    description: 'Modelo de marketplace con vendedores y comisiones',
-    roomName: 'ecommerce-multivendor-8f3k',
+    id: '1a2b3c4d-0001-4000-8000-000000000001',
+    name: 'E-Commerce Core',
+    description: 'Diagrama principal de órdenes, pagos e inventario',
+    roomName: 'room-ecom01',
     engine: 'postgresql',
-    tableCount: 8,
-    relationCount: 6,
-    updatedAt: '2026-09-05T13:48:00Z',
-    lastOpenedAt: '2026-09-05T13:48:00Z',
+    tableCount: 12,
+    relationCount: 18,
+    updatedAt: new Date(Date.now() - 1000 * 60 * 25).toISOString(),
+    lastOpenedAt: new Date(Date.now() - 1000 * 60 * 25).toISOString(),
   },
   {
-    id: 'a1b2c3d4-0002',
-    name: 'SaaS Billing & Subscriptions',
-    description: 'Suscripciones, planes y facturación recurrente',
-    roomName: 'saas-billing-x92p',
-    engine: 'postgresql',
-    tableCount: 11,
-    relationCount: 9,
-    updatedAt: '2026-09-05T11:10:00Z',
-    lastOpenedAt: '2026-09-05T11:10:00Z',
-  },
-  {
-    id: 'a1b2c3d4-0003',
-    name: 'Analytics Warehouse',
-    description: 'Modelo estrella para métricas de producto',
-    roomName: 'analytics-warehouse-q71z',
-    engine: 'postgresql',
-    tableCount: 19,
-    relationCount: 14,
-    updatedAt: '2026-09-04T16:00:00Z',
-    lastOpenedAt: '2026-09-04T16:00:00Z',
-  },
-  {
-    id: 'a1b2c3d4-0004',
-    name: 'IAM & Auth Core',
-    description: 'Usuarios, roles y permisos',
-    roomName: 'iam-auth-core-r55t',
+    id: '1a2b3c4d-0002-4000-8000-000000000002',
+    name: 'Auth & Multi-tenancy',
+    description: 'Esquema de identidades, roles, permisos y sesiones',
+    roomName: 'room-auth02',
     engine: 'postgresql',
     tableCount: 6,
-    relationCount: 5,
-    updatedAt: '2026-09-03T09:20:00Z',
-    lastOpenedAt: '2026-09-03T09:20:00Z',
+    relationCount: 7,
+    updatedAt: new Date(Date.now() - 1000 * 60 * 60 * 3).toISOString(),
+    lastOpenedAt: new Date(Date.now() - 1000 * 60 * 60 * 3).toISOString(),
   },
 ];
 
-// Simula la validez referencial contando relaciones "sanas" vs. totales.
-// En el backend real esto lo calcularía uml_domain al validar model_json.
 function calculateMockMetrics(projects: ProjectDto[]): DashboardMetrics {
   const totalEntities = projects.reduce((sum, p) => sum + p.tableCount, 0);
   const activeProjects = projects.length;
@@ -104,73 +80,108 @@ function calculateMockMetrics(projects: ProjectDto[]): DashboardMetrics {
 
 @Injectable({ providedIn: 'root' })
 export class DashboardService {
+  private readonly http = inject(HttpClient);
 
   /** Proyectos recientes, ordenados por último acceso. Máx. 3 para la sección "Recientes". */
   getRecentProjects(limit = 3): Observable<ProjectDto[]> {
-    const sorted = [...MOCK_PROJECTS].sort(
-      (a, b) => new Date(b.lastOpenedAt).getTime() - new Date(a.lastOpenedAt).getTime()
+    return this.getAllProjects().pipe(
+      map((projs) => projs.slice(0, limit))
     );
-    return of(sorted.slice(0, limit)).pipe(delay(300));
-
-    // Backend real (referencia):
-    // return this.http.get<ProjectDto[]>(`/api/projects/recent?limit=${limit}`);
   }
 
-  /** Todos los proyectos del usuario, con orden y filtro opcional por nombre. */
+  /** Todos los proyectos del usuario desde /api/v2/canvases con fallback mock. */
   getAllProjects(sortBy: ProjectSortBy = 'updatedAt', search = ''): Observable<ProjectDto[]> {
-    let result = [...MOCK_PROJECTS];
-
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      result = result.filter(p => p.name.toLowerCase().includes(q));
-    }
-
-    result.sort((a, b) => {
-      if (sortBy === 'name') return a.name.localeCompare(b.name);
-      if (sortBy === 'tableCount') return b.tableCount - a.tableCount;
-      return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
-    });
-
-    return of(result).pipe(delay(300));
-
-    // Backend real (referencia):
-    // return this.http.get<ProjectDto[]>(`/api/projects?sortBy=${sortBy}&search=${search}`);
+    return this.http.get<any[]>('/api/v2/canvases').pipe(
+      map((canvases) => {
+        if (!Array.isArray(canvases) || canvases.length === 0) {
+          return MOCK_PROJECTS;
+        }
+        return canvases.map((c) => ({
+          id: c.id,
+          name: c.name,
+          description: c.description ?? null,
+          roomName: c.roomName || c.room_name || `room-${c.id.slice(0, 8)}`,
+          engine: 'postgresql' as DbEngine,
+          tableCount: c.tableCount ?? 0,
+          relationCount: c.relationCount ?? 0,
+          updatedAt: c.updated_at || new Date().toISOString(),
+          lastOpenedAt: c.updated_at || new Date().toISOString(),
+        }));
+      }),
+      map((projects) => {
+        let result = [...projects];
+        if (search.trim()) {
+          const q = search.toLowerCase();
+          result = result.filter((p) => p.name.toLowerCase().includes(q));
+        }
+        result.sort((a, b) => {
+          if (sortBy === 'name') return a.name.localeCompare(b.name);
+          if (sortBy === 'tableCount') return b.tableCount - a.tableCount;
+          return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+        });
+        return result;
+      }),
+      catchError(() => of(MOCK_PROJECTS))
+    );
   }
 
   /** Métricas agregadas para el banner de bienvenida. */
   getMetrics(): Observable<DashboardMetrics> {
-    return of(calculateMockMetrics(MOCK_PROJECTS)).pipe(delay(300));
-
-    // Backend real (referencia):
-    // return this.http.get<DashboardMetrics>('/api/dashboard/metrics');
+    return this.getAllProjects().pipe(
+      map((projs) => calculateMockMetrics(projs))
+    );
   }
 
   /** Crea un proyecto nuevo vacío y devuelve su id para navegar al editor. */
   createProject(name: string, engine: DbEngine): Observable<ProjectDto> {
-    const newProject: ProjectDto = {
-      id: crypto.randomUUID(),
-      name,
-      description: null,
-      roomName: `${name.toLowerCase().replace(/\s+/g, '-')}-${Math.random().toString(36).slice(2, 6)}`,
-      engine,
-      tableCount: 0,
-      relationCount: 0,
-      updatedAt: new Date().toISOString(),
-      lastOpenedAt: new Date().toISOString(),
-    };
-    return of(newProject).pipe(delay(300));
-
-    // Backend real (referencia):
-    // return this.http.post<ProjectDto>('/api/projects', { name, engine });
+    return this.http.post<any>('/api/v2/canvases', { name }).pipe(
+      map((res) => ({
+        id: res.id,
+        name: res.name,
+        description: res.description,
+        roomName: res.roomName || res.room_name || `room-${res.id.slice(0, 8)}`,
+        engine,
+        tableCount: res.model?.classes?.length ?? 0,
+        relationCount: res.model?.associations?.length ?? 0,
+        updatedAt: res.updated_at || new Date().toISOString(),
+        lastOpenedAt: new Date().toISOString(),
+      })),
+      catchError(() => {
+        const fallbackRoom = `room-${crypto.randomUUID().slice(0, 8)}`;
+        return of({
+          id: crypto.randomUUID(),
+          name,
+          description: null,
+          roomName: fallbackRoom,
+          engine,
+          tableCount: 0,
+          relationCount: 0,
+          updatedAt: new Date().toISOString(),
+          lastOpenedAt: new Date().toISOString(),
+        });
+      })
+    );
   }
 
   /** Unirse a un proyecto compartido mediante su room_name (UUID/código de sala). */
   joinProjectByRoomCode(roomCode: string): Observable<ProjectDto | null> {
-    const found = MOCK_PROJECTS.find(p => p.roomName === roomCode) ?? null;
-    return of(found).pipe(delay(300));
-
-    // Backend real (referencia):
-    // return this.http.get<ProjectDto>(`/api/projects/by-room/${roomCode}`);
+    return this.http.get<any>(`/api/v2/canvases/by-room/${roomCode}`).pipe(
+      map((res) => ({
+        id: res.id,
+        name: res.name,
+        description: res.description ?? null,
+        roomName: res.roomName || res.room_name || roomCode,
+        engine: 'postgresql' as DbEngine,
+        tableCount: res.model?.classes?.length ?? 0,
+        relationCount: res.model?.associations?.length ?? 0,
+        updatedAt: res.updated_at || new Date().toISOString(),
+        lastOpenedAt: new Date().toISOString(),
+      })),
+      catchError(() => {
+        const found = MOCK_PROJECTS.find((p) => p.roomName === roomCode) ?? null;
+        return of(found);
+      })
+    );
   }
 
   deleteProject(projectId: string): Observable<void> {

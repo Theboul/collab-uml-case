@@ -1,0 +1,24 @@
+:host {
+  display: block;
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+.uml-canvas-viewport {
+  outline: none;
+}
+
+:host ::ng-deep .x6-graph-scroller {
+  background-color: #f8fafc !important;
+}
+
+:host ::ng-deep .x6-node [magnet='true'] {
+  transition: transform 0.1s ease, fill 0.1s ease;
+}
+
+:host ::ng-deep .x6-node [magnet='true']:hover {
+  transform: scale(1.4);
+  fill: #6366f1 !important;
+  stroke: #ffffff !important;
+}

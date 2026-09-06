@@ -1,0 +1,93 @@
+@if (facade.isShareModalOpen()) {
+  <div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-900/40 backdrop-blur-xs animate-in fade-in duration-150">
+    <div
+      class="bg-white rounded-xl shadow-2xl border border-neutral-200 w-full max-w-md p-6 select-none animate-in zoom-in-95 duration-150"
+      (click)="$event.stopPropagation()"
+    >
+      <!-- Cabecera -->
+      <div class="flex items-center justify-between pb-3 border-b border-neutral-100">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded-lg bg-primary-50 text-primary flex items-center justify-center">
+            <sc-icon name="share" [size]="20" />
+          </div>
+          <h2 class="text-base font-bold text-neutral-800">Compartir Lienzo</h2>
+        </div>
+        <sc-button
+          variant="ghost"
+          size="xs"
+          (onClick)="facade.closeShareModal()"
+          ariaLabel="Cerrar modal"
+        >
+          <sc-icon name="close" [size]="18" />
+        </sc-button>
+      </div>
+
+      <!-- Contenido -->
+      <div class="py-4 space-y-4 text-xs text-neutral-600">
+        <p>
+          Cualquier usuario con este enlace o código podrá colaborar y visualizar tu diagrama UML en tiempo real.
+        </p>
+
+        <!-- Código de Sala -->
+        <div>
+          <label class="block text-[11px] font-semibold text-neutral-500 uppercase tracking-wider mb-1">
+            Código de Sala
+          </label>
+          <div class="flex items-center gap-2">
+            <input
+              type="text"
+              readonly
+              [value]="facade.roomName() || 'N/A'"
+              class="flex-1 bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2 font-mono text-xs text-neutral-800 select-all focus:outline-primary"
+            />
+            <sc-button
+              variant="secondary"
+              size="sm"
+              (onClick)="copyText(facade.roomName() || '')"
+              customClass="!text-neutral-700 font-medium"
+            >
+              <sc-icon [name]="copied() ? 'check' : 'content_copy'" [size]="14" />
+              <span>{{ copied() ? '¡Copiado!' : 'Copiar' }}</span>
+            </sc-button>
+          </div>
+        </div>
+
+        <!-- Enlace Directo -->
+        <div>
+          <label class="block text-[11px] font-semibold text-neutral-500 uppercase tracking-wider mb-1">
+            Enlace Directo
+          </label>
+          <div class="flex items-center gap-2">
+            <input
+              type="text"
+              readonly
+              [value]="shareUrl()"
+              class="flex-1 bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2 font-mono text-xs text-neutral-800 select-all truncate focus:outline-primary"
+            />
+            <sc-button
+              variant="primary"
+              size="sm"
+              (onClick)="copyText(shareUrl())"
+              customClass="gap-1.5 font-medium shadow-xs"
+            >
+              <sc-icon [name]="copied() ? 'check' : 'link'" [size]="14" />
+              <span>{{ copied() ? '¡Copiado!' : 'Copiar Enlace' }}</span>
+            </sc-button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Pie -->
+      <div class="pt-3 border-t border-neutral-100 flex justify-end">
+        <sc-button
+          variant="secondary"
+          size="sm"
+          (onClick)="facade.closeShareModal()"
+          customClass="!text-neutral-700"
+        >
+          <span>Cerrar</span>
+        </sc-button>
+      </div>
+    </div>
+  </div>
+}

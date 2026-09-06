@@ -2,11 +2,16 @@
 Infraestructura de base de datos compartida para FastAPI (PostgreSQL / SQLite async).
 """
 
+import logging
 import os
 from collections.abc import AsyncGenerator
 
+from sqlalchemy import text
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import declarative_base
+
+logger = logging.getLogger(__name__)
 
 Base = declarative_base()
 
@@ -40,6 +45,13 @@ async def init_db() -> None:
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Migración segura para columnas nuevas en desarrollo con SQLite
+        if "sqlite" in str(engine.url):
+            for col, col_type in [("owner_id", "VARCHAR(36)"), ("room_name", "VARCHAR(100)")]:
+                try:
+                    await conn.execute(text(f"ALTER TABLE canvases ADD COLUMN {col} {col_type}"))
+                except OperationalError as err:
+                    logger.debug("Columna %s ya existe en canvases: %s", col, err)
 
 
 async def get_db_session() -> AsyncGenerator[AsyncSession, None]:

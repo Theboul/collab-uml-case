@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import ClassVar
 
-from sqlalchemy import JSON, Column, DateTime, Integer, String, Text
+from sqlalchemy import JSON, Column, DateTime, ForeignKey, Integer, String, Text
 
 from backend_case.app.shared.db.base import Base
 
@@ -24,6 +24,8 @@ class CanvasORM(Base):
     name = Column(String(255), nullable=False, default="Diagrama Sin Título")
     description = Column(Text, nullable=True)
     version = Column(Integer, nullable=False, default=1)
+    owner_id = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    room_name = Column(String(100), unique=True, nullable=True, index=True)
     semantic_model = Column(JSON, nullable=False)
     visual_layout = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)

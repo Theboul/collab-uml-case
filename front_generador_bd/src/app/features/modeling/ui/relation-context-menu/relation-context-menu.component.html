@@ -1,0 +1,87 @@
+@if (facade.contextMenu(); as menu) {
+  <div
+    class="fixed z-50 bg-white border border-neutral-200 rounded-lg shadow-xl py-1 w-56 text-xs text-neutral-700 select-none animate-in fade-in zoom-in-95 duration-100"
+    [style.left.px]="menu.x"
+    [style.top.px]="menu.y"
+    (click)="$event.stopPropagation()"
+  >
+    <div class="px-3 py-1.5 text-[10px] font-bold tracking-wider uppercase text-neutral-400 border-b border-neutral-100 flex items-center justify-between">
+      <span>Relación UML</span>
+      <button
+        type="button"
+        (click)="facade.closeContextMenu()"
+        class="text-neutral-400 hover:text-neutral-600 text-xs leading-none cursor-pointer"
+      >
+        <sc-icon name="close" [size]="14" />
+      </button>
+    </div>
+
+    <!-- Submenú: Tipo de Relación -->
+    <div class="px-3 py-1.5 font-semibold text-neutral-500">Tipo de Relación:</div>
+    <div class="grid grid-cols-1 gap-0.5 px-1">
+      @for (item of relationTypes; track item.type) {
+        <button
+          type="button"
+          (click)="changeType(menu.edgeId, item.type)"
+          [class.bg-primary-50]="currentRelation()?.type === item.type"
+          [class.text-primary]="currentRelation()?.type === item.type"
+          class="w-full text-left px-2.5 py-1.5 rounded hover:bg-neutral-100 flex items-center justify-between transition-colors cursor-pointer"
+        >
+          <span class="font-medium">{{ item.label }}</span>
+          <span class="font-mono text-[10px] text-neutral-400">{{ item.symbol }}</span>
+        </button>
+      }
+    </div>
+
+    <div class="h-px bg-neutral-100 my-1"></div>
+
+    <!-- Submenú: Multiplicidad Origen -->
+    <div class="px-3 py-1 text-[11px] font-semibold text-neutral-500">Multiplicidad Origen:</div>
+    <div class="flex flex-wrap gap-1 px-3 py-1">
+      @for (m of multiplicities; track m) {
+        <button
+          type="button"
+          (click)="changeSourceMultiplicity(menu.edgeId, m)"
+          [class.bg-primary]="currentRelation()?.sourceMultiplicity === m"
+          [class.text-white]="currentRelation()?.sourceMultiplicity === m"
+          [class.bg-neutral-100]="currentRelation()?.sourceMultiplicity !== m"
+          class="px-2 py-0.5 rounded font-mono text-[10px] hover:bg-primary-100 transition-colors cursor-pointer"
+        >
+          {{ m }}
+        </button>
+      }
+    </div>
+
+    <!-- Submenú: Multiplicidad Destino -->
+    <div class="px-3 py-1 text-[11px] font-semibold text-neutral-500 mt-1">Multiplicidad Destino:</div>
+    <div class="flex flex-wrap gap-1 px-3 py-1">
+      @for (m of multiplicities; track m) {
+        <button
+          type="button"
+          (click)="changeTargetMultiplicity(menu.edgeId, m)"
+          [class.bg-primary]="currentRelation()?.targetMultiplicity === m"
+          [class.text-white]="currentRelation()?.targetMultiplicity === m"
+          [class.bg-neutral-100]="currentRelation()?.targetMultiplicity !== m"
+          class="px-2 py-0.5 rounded font-mono text-[10px] hover:bg-primary-100 transition-colors cursor-pointer"
+        >
+          {{ m }}
+        </button>
+      }
+    </div>
+
+    <div class="h-px bg-neutral-100 my-1"></div>
+
+    <!-- Eliminar Relación -->
+    <div class="px-1">
+      <sc-button
+        variant="ghost"
+        size="xs"
+        (onClick)="deleteRelation(menu.edgeId)"
+        customClass="w-full !justify-start text-danger hover:bg-danger-50 font-medium"
+      >
+        <sc-icon name="delete" [size]="14" />
+        <span>Eliminar Relación</span>
+      </sc-button>
+    </div>
+  </div>
+}

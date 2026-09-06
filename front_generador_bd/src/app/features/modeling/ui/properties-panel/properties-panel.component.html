@@ -1,0 +1,173 @@
+@if (facade.selectedClass(); as cls) {
+  <aside class="w-80 border-l border-neutral-200 bg-white h-full flex flex-col select-none shadow-xs text-xs animate-in slide-in-from-right-4 duration-150">
+    <!-- Encabezado -->
+    <div class="p-3 border-b border-neutral-100 flex items-center justify-between bg-neutral-50">
+      <div class="flex items-center gap-2">
+        <div class="w-6 h-6 rounded bg-primary text-white flex items-center justify-center font-bold text-[11px] shadow-2xs">
+          C
+        </div>
+        <span class="font-bold text-neutral-800">Propiedades de Clase</span>
+      </div>
+      <sc-button
+        variant="ghost"
+        size="xs"
+        ariaLabel="Cerrar panel"
+        (onClick)="closePanel()"
+      >
+        <sc-icon name="close" [size]="16" />
+      </sc-button>
+    </div>
+
+    <div class="p-4 flex-1 overflow-y-auto space-y-5">
+      <!-- Nombre de la Clase -->
+      <div>
+        <label class="block text-[11px] font-semibold text-neutral-600 mb-1" for="classNameInput">
+          Nombre de la Clase
+        </label>
+        <input
+          id="classNameInput"
+          type="text"
+          [ngModel]="cls.name"
+          (ngModelChange)="onNameChange(cls.id, $event)"
+          class="w-full px-3 py-1.5 border border-neutral-300 rounded-md text-neutral-800 font-semibold focus:outline-primary bg-white transition-colors"
+        />
+      </div>
+
+      <!-- Modificador Abstracto -->
+      <div class="flex items-center gap-2">
+        <input
+          type="checkbox"
+          id="isAbstractCb"
+          [checked]="cls.isAbstract"
+          (change)="onAbstractToggle(cls.id, $event)"
+          class="rounded border-neutral-300 text-primary focus:ring-primary"
+        />
+        <label for="isAbstractCb" class="text-xs text-neutral-700 font-medium cursor-pointer">
+          Clase Abstracta (&#123;abstract&#125;)
+        </label>
+      </div>
+
+      <div class="h-px bg-neutral-100"></div>
+
+      <!-- Atributos -->
+      <div>
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-[11px] font-bold uppercase tracking-wider text-neutral-500">Atributos</span>
+          <sc-button
+            variant="ghost"
+            size="xs"
+            (onClick)="addAttribute(cls)"
+            customClass="text-primary hover:text-primary-hover font-semibold"
+          >
+            <sc-icon name="add" [size]="14" />
+            <span>Agregar</span>
+          </sc-button>
+        </div>
+
+        <div class="space-y-1.5">
+          @for (attr of cls.attributes; track attr.id) {
+            <div class="flex items-center gap-1.5 bg-neutral-50 p-1.5 rounded border border-neutral-200">
+              <select
+                [ngModel]="attr.visibility"
+                (ngModelChange)="updateAttr(cls, attr.id, { visibility: $event })"
+                class="bg-white border border-neutral-200 rounded px-1 py-0.5 font-mono text-[11px] focus:outline-primary"
+              >
+                <option value="+">+</option>
+                <option value="-">-</option>
+                <option value="#">#</option>
+                <option value="~">~</option>
+              </select>
+              <input
+                type="text"
+                [ngModel]="attr.name"
+                (ngModelChange)="updateAttr(cls, attr.id, { name: $event })"
+                placeholder="nombre"
+                class="flex-1 px-1.5 py-0.5 border border-neutral-200 rounded font-mono text-[11px] bg-white focus:outline-primary"
+              />
+              <span class="text-neutral-400 font-mono">:</span>
+              <input
+                type="text"
+                [ngModel]="attr.type"
+                (ngModelChange)="updateAttr(cls, attr.id, { type: $event })"
+                placeholder="tipo"
+                class="w-20 px-1.5 py-0.5 border border-neutral-200 rounded font-mono text-[11px] bg-white focus:outline-primary"
+              />
+              <sc-button
+                variant="ghost"
+                size="xs"
+                (onClick)="removeAttribute(cls, attr.id)"
+                ariaLabel="Eliminar atributo"
+                customClass="text-danger hover:text-danger-600 p-0.5"
+              >
+                <sc-icon name="delete" [size]="14" />
+              </sc-button>
+            </div>
+          } @empty {
+            <p class="text-neutral-400 text-[11px] italic py-1">Sin atributos definidos.</p>
+          }
+        </div>
+      </div>
+
+      <div class="h-px bg-neutral-100"></div>
+
+      <!-- Operaciones / Métodos -->
+      <div>
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-[11px] font-bold uppercase tracking-wider text-neutral-500">Operaciones</span>
+          <sc-button
+            variant="ghost"
+            size="xs"
+            (onClick)="addOperation(cls)"
+            customClass="text-primary hover:text-primary-hover font-semibold"
+          >
+            <sc-icon name="add" [size]="14" />
+            <span>Agregar</span>
+          </sc-button>
+        </div>
+
+        <div class="space-y-1.5">
+          @for (op of cls.operations; track op.id) {
+            <div class="flex items-center gap-1.5 bg-neutral-50 p-1.5 rounded border border-neutral-200">
+              <select
+                [ngModel]="op.visibility"
+                (ngModelChange)="updateOp(cls, op.id, { visibility: $event })"
+                class="bg-white border border-neutral-200 rounded px-1 py-0.5 font-mono text-[11px] focus:outline-primary"
+              >
+                <option value="+">+</option>
+                <option value="-">-</option>
+                <option value="#">#</option>
+                <option value="~">~</option>
+              </select>
+              <input
+                type="text"
+                [ngModel]="op.name"
+                (ngModelChange)="updateOp(cls, op.id, { name: $event })"
+                placeholder="metodo"
+                class="flex-1 px-1.5 py-0.5 border border-neutral-200 rounded font-mono text-[11px] bg-white focus:outline-primary"
+              />
+              <span class="text-neutral-400 font-mono">:</span>
+              <input
+                type="text"
+                [ngModel]="op.returnType"
+                (ngModelChange)="updateOp(cls, op.id, { returnType: $event })"
+                placeholder="void"
+                class="w-20 px-1.5 py-0.5 border border-neutral-200 rounded font-mono text-[11px] bg-white focus:outline-primary"
+              />
+              <sc-button
+                variant="ghost"
+                size="xs"
+                (onClick)="removeOperation(cls, op.id)"
+                ariaLabel="Eliminar operación"
+                customClass="text-danger hover:text-danger-600 p-0.5"
+              >
+                <sc-icon name="delete" [size]="14" />
+              </sc-button>
+            </div>
+          } @empty {
+            <p class="text-neutral-400 text-[11px] italic py-1">Sin operaciones definidas.</p>
+          }
+        </div>
+      </div>
+    </div>
+  </aside>
+}

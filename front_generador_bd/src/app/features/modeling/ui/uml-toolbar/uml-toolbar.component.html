@@ -1,0 +1,168 @@
+<header class="h-14 border-b border-neutral-200 bg-white px-4 flex items-center justify-between shadow-xs select-none">
+  <!-- Izquierda: Título del Diagrama, Código de Sala, Versión y Botón Compartir -->
+  <div class="flex items-center gap-3">
+    <div class="flex items-center gap-2">
+      <div class="w-7 h-7 rounded-md bg-primary flex items-center justify-center text-white font-bold text-xs shadow-xs">
+        UML
+      </div>
+      <h1 class="text-sm font-semibold text-neutral-800 tracking-tight max-w-[200px] truncate" [title]="facade.canvasName()">
+        {{ facade.canvasName() }}
+      </h1>
+    </div>
+
+    @if (facade.roomName(); as room) {
+      <div class="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-neutral-100 text-xs text-neutral-600 font-mono border border-neutral-200">
+        <span class="w-1.5 h-1.5 rounded-full bg-tertiary"></span>
+        <span>{{ room }}</span>
+        <button
+          type="button"
+          (click)="copyRoomCode(room)"
+          class="text-neutral-400 hover:text-neutral-600 transition-colors ml-1 cursor-pointer"
+          title="Copiar código de sala"
+        >
+          <sc-icon name="content_copy" [size]="14" />
+        </button>
+      </div>
+    }
+
+    <span class="text-[11px] font-mono font-medium px-2 py-0.5 rounded bg-neutral-100 text-neutral-500 border border-neutral-200">
+      v{{ facade.version() }}
+    </span>
+
+    <!-- Botón Compartir Lienzo usando sc-button y sc-icon -->
+    <sc-button
+      variant="outline"
+      size="sm"
+      (onClick)="facade.openShareModal()"
+      customClass="!text-primary hover:!bg-primary-50 !border-primary-300 gap-1.5 font-semibold"
+      ariaLabel="Compartir lienzo colaborativo"
+    >
+      <sc-icon name="share" [size]="16" />
+      <span>Compartir</span>
+    </sc-button>
+  </div>
+
+  <!-- Centro: Modos de Trabajo (SELECT, CLASE, RELACIÓN) -->
+  <div class="flex items-center gap-1 bg-neutral-100 p-1 rounded-lg border border-neutral-200">
+    <sc-button
+      [variant]="facade.mode() === 'SELECT' ? 'primary' : 'ghost'"
+      size="sm"
+      (onClick)="facade.setMode('SELECT')"
+      customClass="gap-1.5 text-xs font-medium"
+      ariaLabel="Modo Selección y Mover (Esc)"
+    >
+      <sc-icon name="near_me" [size]="16" />
+      <span>Seleccionar</span>
+    </sc-button>
+
+    <sc-button
+      [variant]="facade.mode() === 'CREATE_CLASS' ? 'primary' : 'ghost'"
+      size="sm"
+      (onClick)="facade.setMode('CREATE_CLASS')"
+      customClass="gap-1.5 text-xs font-medium"
+      ariaLabel="Crear clase al hacer clic en el lienzo"
+    >
+      <sc-icon name="add_box" [size]="16" />
+      <span>+ Clase</span>
+    </sc-button>
+
+    <div class="h-4 w-px bg-neutral-200 mx-1"></div>
+
+    <!-- Selector de Tipo de Relación -->
+    <div class="flex items-center gap-1.5">
+      <label for="relTypeSelect" class="text-[11px] text-neutral-500 font-medium">Conector:</label>
+      <select
+        id="relTypeSelect"
+        [value]="facade.defaultRelationType()"
+        (change)="onRelationTypeChange($event)"
+        class="text-xs bg-white border border-neutral-200 rounded px-2 py-1 text-neutral-700 font-medium focus:outline-primary transition-colors"
+      >
+        <option value="ASSOCIATION">Asociación (1 — 1)</option>
+        <option value="AGGREGATION">Agregación (◇)</option>
+        <option value="COMPOSITION">Composición (◆)</option>
+        <option value="GENERALIZATION">Herencia (△)</option>
+        <option value="DEPENDENCY">Dependencia (- - ▷)</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Derecha: Historial, Zoom, Eliminar y Estado de Guardado -->
+  <div class="flex items-center gap-2">
+    <!-- Undo / Redo -->
+    <div class="flex items-center gap-0.5 bg-neutral-50 border border-neutral-200 rounded-md p-0.5">
+      <sc-button
+        variant="ghost"
+        size="xs"
+        [disabled]="!facade.canUndo()"
+        (onClick)="facade.undo()"
+        ariaLabel="Deshacer (Ctrl+Z)"
+      >
+        <sc-icon name="undo" [size]="16" />
+      </sc-button>
+      <sc-button
+        variant="ghost"
+        size="xs"
+        [disabled]="!facade.canRedo()"
+        (onClick)="facade.redo()"
+        ariaLabel="Rehacer (Ctrl+Shift+Z)"
+      >
+        <sc-icon name="redo" [size]="16" />
+      </sc-button>
+    </div>
+
+    <div class="h-4 w-px bg-neutral-200"></div>
+
+    <!-- Zoom Controls -->
+    <div class="flex items-center gap-0.5 bg-neutral-50 border border-neutral-200 rounded-md p-0.5">
+      <sc-button
+        variant="ghost"
+        size="xs"
+        (onClick)="facade.zoomOut()"
+        ariaLabel="Alejar Zoom (-)"
+      >
+        <sc-icon name="remove" [size]="16" />
+      </sc-button>
+      <sc-button
+        variant="ghost"
+        size="xs"
+        (onClick)="facade.zoomToFit()"
+        customClass="text-xs font-medium px-2"
+        ariaLabel="Ajustar a la vista"
+      >
+        <span>Fit</span>
+      </sc-button>
+      <sc-button
+        variant="ghost"
+        size="xs"
+        (onClick)="facade.zoomIn()"
+        ariaLabel="Acercar Zoom (+)"
+      >
+        <sc-icon name="add" [size]="16" />
+      </sc-button>
+    </div>
+
+    <!-- Delete Selected -->
+    <sc-button
+      variant="danger"
+      size="xs"
+      [disabled]="facade.selectedNodes().length === 0 && facade.selectedEdges().length === 0"
+      (onClick)="facade.deleteSelected()"
+      ariaLabel="Eliminar selección (Delete)"
+    >
+      <sc-icon name="delete" [size]="16" />
+    </sc-button>
+
+    <div class="h-4 w-px bg-neutral-200"></div>
+
+    <!-- Estado de Guardado -->
+    <div class="flex items-center gap-1.5 text-[11px] text-neutral-500 min-w-[80px]">
+      @if (facade.isSaving()) {
+        <span class="w-2 h-2 rounded-full bg-warning animate-pulse"></span>
+        <span>Guardando...</span>
+      } @else {
+        <span class="w-2 h-2 rounded-full bg-tertiary"></span>
+        <span class="text-neutral-500">Guardado</span>
+      }
+    </div>
+  </div>
+</header>

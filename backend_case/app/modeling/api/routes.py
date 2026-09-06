@@ -1,6 +1,7 @@
 """
 Rutas API v2 para el módulo de modelado UML (CU1 - CU4).
 """
+import uuid
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, status
@@ -10,11 +11,14 @@ from backend_case.app.application.mappers import DomainToPydanticMapper
 from backend_case.app.modeling.application.canvas_service import CanvasService
 from backend_case.app.schemas.uml import UmlModelSchema
 from backend_case.app.shared.deps import get_canvas_service
+from backend_case.app.shared.security.dependencies import get_current_user_optional
+from backend_case.app.shared.security.models import UserORM
 from core.uml_domain.model import Lienzo
 
 router = APIRouter(prefix="/canvases", tags=["modeling"])
 
 CanvasServiceDep = Annotated[CanvasService, Depends(get_canvas_service)]
+CurrentUserOptionalDep = Annotated[UserORM | None, Depends(get_current_user_optional)]
 
 
 # ---------------------------------------------------------------------------
@@ -47,11 +51,26 @@ class AddAssociationRequest(BaseModel):
     targetAggregation: str = Field(default="none")
 
 
+class EditorCommandRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    operationId: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    expectedVersion: int
+    type: str
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+
 class CanvasSummarySchema(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     id: str
     name: str
     description: str | None = None
     version: int
+    ownerId: str | None = None
+    roomName: str | None = None
+    owner_id: str | None = None
+    room_name: str | None = None
     created_at: str | None = None
     updated_at: str | None = None
 
@@ -63,17 +82,39 @@ class CanvasDetailSchema(BaseModel):
     name: str
     description: str | None = None
     version: int
+    ownerId: str | None = None
+    roomName: str | None = None
+    owner_id: str | None = None
+    room_name: str | None = None
     visualLayout: dict[str, Any] = Field(default_factory=dict)
     model: UmlModelSchema
 
 
-def _to_detail_schema(lienzo: Lienzo, version: int) -> CanvasDetailSchema:
+class CommandResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    accepted: bool = True
+    version: int
+    operationId: str | None = None
+    canvas: CanvasDetailSchema | None = None
+
+
+def _to_detail_schema(
+    lienzo: Lienzo,
+    version: int,
+    owner_id: str | None = None,
+    room_name: str | None = None,
+) -> CanvasDetailSchema:
     model_schema = DomainToPydanticMapper.to_pydantic_schema(lienzo.modelo)
     return CanvasDetailSchema(
         id=lienzo.id,
         name=lienzo.modelo.name,
         description=lienzo.modelo.description,
         version=version,
+        ownerId=owner_id,
+        roomName=room_name,
+        owner_id=owner_id,
+        room_name=room_name,
         visualLayout=lienzo.visual_layout,
         model=model_schema,
     )
@@ -97,15 +138,30 @@ async def list_canvases(
 async def create_canvas(
     payload: CreateCanvasRequest,
     service: CanvasServiceDep,
+    current_user: CurrentUserOptionalDep = None,
 ):
     """
-    CU1: Crear un nuevo lienzo UML persistido.
+    CU1: Crear un nuevo lienzo UML persistido con usuario anfitrión y sala única.
     """
-    lienzo, version, _ = await service.crear_lienzo(
+    owner_id = current_user.id if current_user else None
+    res = await service.crear_lienzo(
         nombre=payload.name,
         descripcion=payload.description,
+        owner_id=owner_id,
     )
-    return _to_detail_schema(lienzo, version)
+    return _to_detail_schema(res.lienzo, res.version, res.owner_id, res.room_name)
+
+
+@router.get("/by-room/{room_name}", response_model=CanvasDetailSchema)
+async def get_canvas_by_room(
+    room_name: str,
+    service: CanvasServiceDep,
+):
+    """
+    Recupera un lienzo por su mecanismo de acceso (room_name).
+    """
+    res = await service.obtener_por_room_name(room_name)
+    return _to_detail_schema(res.lienzo, res.version, res.owner_id, res.room_name)
 
 
 @router.get("/{canvas_id}", response_model=CanvasDetailSchema)
@@ -116,8 +172,32 @@ async def get_canvas(
     """
     CU2 / CU3: Obtener un lienzo y su modelo UML persistido.
     """
-    lienzo, version = await service.obtener_lienzo(canvas_id)
-    return _to_detail_schema(lienzo, version)
+    res = await service.obtener_lienzo(canvas_id)
+    return _to_detail_schema(res.lienzo, res.version, res.owner_id, res.room_name)
+
+
+@router.post("/{canvas_id}/commands", response_model=CommandResponse)
+async def execute_editor_command(
+    canvas_id: str,
+    command: EditorCommandRequest,
+    service: CanvasServiceDep,
+):
+    """
+    Ejecuta un comando del editor sobre el lienzo con control de versión optimista.
+    """
+    res = await service.ejecutar_comando(
+        canvas_id=canvas_id,
+        operation_id=command.operationId,
+        expected_version=command.expectedVersion,
+        cmd_type=command.type,
+        payload=command.payload,
+    )
+    return CommandResponse(
+        accepted=True,
+        version=res.version,
+        operationId=command.operationId,
+        canvas=_to_detail_schema(res.lienzo, res.version, res.owner_id, res.room_name),
+    )
 
 
 @router.post("/{canvas_id}/classes", response_model=CanvasDetailSchema, status_code=status.HTTP_201_CREATED)
@@ -159,3 +239,4 @@ async def add_association(
         agregacion_destino=payload.targetAggregation,
     )
     return _to_detail_schema(lienzo, version)
+

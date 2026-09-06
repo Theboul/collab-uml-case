@@ -1,0 +1,7 @@
+<div
+  #canvasContainer
+  class="uml-canvas-viewport relative w-full h-full overflow-hidden select-none bg-neutral-50 cursor-default"
+  [class.cursor-crosshair]="facade.mode() === 'CREATE_CLASS'"
+  [class.cursor-grab]="isSpacePressed && !isPanningActive"
+  [class.cursor-grabbing]="isSpacePressed && isPanningActive"
+></div>
