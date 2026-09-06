@@ -1,0 +1,20 @@
+<div class="inline-flex items-center -space-x-2 select-none overflow-hidden" [ngClass]="customClass">
+  <ng-container *ngFor="let avatar of visibleAvatars; let i = index">
+    <div
+      class="inline-flex items-center justify-center font-bold font-sans rounded-full border-2 border-surface-container bg-surface-container-high text-primary-300 shadow-sm text-center uppercase transition-transform duration-150 hover:scale-110 hover:z-10"
+      [ngClass]="sizeClasses"
+      [title]="avatar"
+    >
+      {{ getInitials(avatar) }}
+    </div>
+  </ng-container>
+
+  <div
+    *ngIf="remainingCount > 0"
+    class="inline-flex items-center justify-center font-semibold font-mono rounded-full border-2 border-surface-container bg-surface-container-highest text-neutral-400 text-center shadow-sm"
+    [ngClass]="sizeClasses"
+    [title]="'+' + remainingCount + ' colaboradores'"
+  >
+    +{{ remainingCount }}
+  </div>
+</div>

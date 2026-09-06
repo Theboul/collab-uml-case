@@ -78,7 +78,7 @@ describe('ScLoginComponent', () => {
       jasmine.clock().tick(700);
 
       expect(component.loading).toBeFalse();
-      expect(routerSpy.navigate).toHaveBeenCalledWith(jasmine.arrayContaining(['/diagram']));
+      expect(routerSpy.navigate).toHaveBeenCalledWith(['/dashboard']);
     });
 
     it('should navigate to diagram upon Google login', () => {
@@ -88,7 +88,7 @@ describe('ScLoginComponent', () => {
       jasmine.clock().tick(600);
 
       expect(component.loading).toBeFalse();
-      expect(routerSpy.navigate).toHaveBeenCalledWith(jasmine.arrayContaining(['/diagram']));
+      expect(routerSpy.navigate).toHaveBeenCalledWith(['/dashboard']);
     });
   });
 });

@@ -3,3 +3,7 @@ export * from './button/button.component';
 export * from './badge/badge.component';
 export * from './data-type-tag/data-type-tag.component';
 export * from './input/input.component';
+export * from './avatar-stack/avatar-stack.component';
+export * from './search-input/search-input.component';
+export * from './empty-state/empty-state.component';
+export * from './table-card/table-card.component';

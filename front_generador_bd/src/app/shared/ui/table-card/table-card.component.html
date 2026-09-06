@@ -1,0 +1,43 @@
+<div
+  class="rounded-lg border border-neutral-700/70 bg-surface-container/90 shadow-md overflow-hidden select-none transition-all duration-150 group"
+  [ngClass]="[isCompact ? 'p-1.5 text-[10px] w-full max-w-[130px]' : 'p-3 text-xs min-w-[200px]', customClass]"
+>
+  <!-- Table Header -->
+  <div class="flex items-center justify-between pb-1.5 border-b border-neutral-800">
+    <div class="flex items-center gap-1.5 truncate">
+      <sc-icon name="table_chart" [size]="isCompact ? 12 : 15" customClass="text-primary-400 shrink-0"></sc-icon>
+      <span class="font-code font-bold text-neutral-100 truncate tracking-tight">
+        {{ tableName }}
+      </span>
+    </div>
+    <span *ngIf="!isCompact" class="text-[10px] font-mono text-neutral-500">
+      {{ columns.length }} col
+    </span>
+  </div>
+
+  <!-- Columns List -->
+  <div class="pt-1.5 flex flex-col gap-1">
+    <div
+      *ngFor="let col of visibleColumns"
+      class="flex items-center justify-between gap-1.5 text-neutral-300 font-mono"
+    >
+      <div class="flex items-center gap-1 truncate">
+        <sc-badge *ngIf="col.isPk" type="PK" [size]="'xs'"></sc-badge>
+        <sc-badge *ngIf="col.isFk && !col.isPk" type="FK" [size]="'xs'"></sc-badge>
+        <span class="truncate" [ngClass]="{ 'font-semibold text-white': col.isPk }">
+          {{ col.name }}
+        </span>
+      </div>
+
+      <sc-data-type-tag
+        *ngIf="!isCompact"
+        [type]="col.type"
+      ></sc-data-type-tag>
+    </div>
+
+    <!-- Truncated columns indicator for compact mode -->
+    <div *ngIf="isCompact && remainingColumnsCount > 0" class="text-[8px] text-neutral-500 text-center font-mono pt-0.5">
+      +{{ remainingColumnsCount }} más
+    </div>
+  </div>
+</div>

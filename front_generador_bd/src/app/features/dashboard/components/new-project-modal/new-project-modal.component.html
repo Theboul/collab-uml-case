@@ -1,0 +1,118 @@
+<div
+  *ngIf="isOpen"
+  class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fadeIn"
+>
+  <!-- Modal Card -->
+  <div
+    class="w-full max-w-lg bg-surface-container rounded-2xl border border-neutral-700 shadow-2xl overflow-hidden animate-scaleUp"
+    (click)="$event.stopPropagation()"
+  >
+    <!-- Modal Header -->
+    <div class="p-6 pb-4 border-b border-neutral-800 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="h-10 w-10 rounded-xl bg-primary-500/15 text-primary-400 flex items-center justify-center border border-primary-500/20">
+          <sc-icon name="create_new_folder" [size]="20"></sc-icon>
+        </div>
+        <div>
+          <h3 class="text-base font-semibold text-white tracking-tight">Nuevo Proyecto de Base de Datos</h3>
+          <p class="text-xs text-neutral-400">Configura los parámetros iniciales del esquema</p>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        (click)="close()"
+        class="text-neutral-400 hover:text-white p-1 rounded-lg hover:bg-surface-container-high transition-colors cursor-pointer"
+        title="Cerrar modal"
+      >
+        <sc-icon name="close" [size]="18"></sc-icon>
+      </button>
+    </div>
+
+    <!-- Modal Form Body -->
+    <form (ngSubmit)="submit()" class="p-6 space-y-5">
+      <!-- Project Name -->
+      <sc-input
+        inputId="new-project-name"
+        label="Nombre del Proyecto"
+        icon="title"
+        placeholder="ej. Sistema Contable Core"
+        [(ngModel)]="name"
+        name="name"
+        [required]="true"
+        [error]="nameError"
+      ></sc-input>
+
+      <!-- Database Engine Selection -->
+      <div class="space-y-2">
+        <label class="text-xs font-medium text-neutral-300 select-none">
+          Motor de Base de Datos <span class="text-danger-400">*</span>
+        </label>
+        <div class="grid grid-cols-3 gap-3">
+          <!-- PostgreSQL -->
+          <div
+            (click)="engine = 'postgresql'"
+            class="p-3 rounded-xl border transition-all cursor-pointer flex flex-col items-center gap-1.5 text-center select-none"
+            [ngClass]="{
+              'border-primary-500 bg-primary-500/10 text-white shadow-sm ring-1 ring-primary-500/30': engine === 'postgresql',
+              'border-neutral-700/80 bg-surface-container-low hover:border-neutral-600 text-neutral-300': engine !== 'postgresql'
+            }"
+          >
+            <sc-icon name="database" [size]="20" [customClass]="engine === 'postgresql' ? 'text-primary-400' : 'text-neutral-400'"></sc-icon>
+            <span class="text-xs font-semibold">PostgreSQL</span>
+            <span class="text-[9px] font-mono text-neutral-400">Recomendado</span>
+          </div>
+
+          <!-- MySQL -->
+          <div
+            (click)="engine = 'mysql'"
+            class="p-3 rounded-xl border transition-all cursor-pointer flex flex-col items-center gap-1.5 text-center select-none"
+            [ngClass]="{
+              'border-primary-500 bg-primary-500/10 text-white shadow-sm ring-1 ring-primary-500/30': engine === 'mysql',
+              'border-neutral-700/80 bg-surface-container-low hover:border-neutral-600 text-neutral-300': engine !== 'mysql'
+            }"
+          >
+            <sc-icon name="dns" [size]="20" [customClass]="engine === 'mysql' ? 'text-primary-400' : 'text-neutral-400'"></sc-icon>
+            <span class="text-xs font-semibold">MySQL 8.4</span>
+            <span class="text-[9px] font-mono text-neutral-400">Estándar</span>
+          </div>
+
+          <!-- SQLite -->
+          <div
+            (click)="engine = 'sqlite'"
+            class="p-3 rounded-xl border transition-all cursor-pointer flex flex-col items-center gap-1.5 text-center select-none"
+            [ngClass]="{
+              'border-primary-500 bg-primary-500/10 text-white shadow-sm ring-1 ring-primary-500/30': engine === 'sqlite',
+              'border-neutral-700/80 bg-surface-container-low hover:border-neutral-600 text-neutral-300': engine !== 'sqlite'
+            }"
+          >
+            <sc-icon name="storage" [size]="20" [customClass]="engine === 'sqlite' ? 'text-primary-400' : 'text-neutral-400'"></sc-icon>
+            <span class="text-xs font-semibold">SQLite 3</span>
+            <span class="text-[9px] font-mono text-neutral-400">Embebido</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="pt-3 flex items-center justify-end gap-2.5 border-t border-neutral-800">
+        <sc-button
+          type="button"
+          variant="ghost"
+          size="md"
+          (onClick)="close()"
+        >
+          Cancelar
+        </sc-button>
+
+        <sc-button
+          type="submit"
+          variant="primary"
+          size="md"
+          icon="add"
+          [loading]="loading"
+        >
+          Crear y abrir esquema
+        </sc-button>
+      </div>
+    </form>
+  </div>
+</div>

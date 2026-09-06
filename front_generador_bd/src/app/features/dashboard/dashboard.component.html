@@ -1,0 +1,235 @@
+<sc-app-shell
+  (onImportSql)="importSql()"
+  (onGlobalSearch)="onGlobalSearch($event)"
+  (onNavigateRecent)="scrollToSection('recent-section')"
+  (onNavigateAll)="scrollToSection('all-projects-section')"
+>
+  <div class="max-w-7xl mx-auto space-y-8 animate-fadeIn pb-12">
+
+    <!-- Active Session / Welcome Banner -->
+    <div class="relative overflow-hidden rounded-3xl border border-neutral-800/80 bg-surface-container-low/70 p-6 sm:p-8 backdrop-blur shadow-2xl">
+      <!-- Ambient light effect -->
+      <div class="absolute -right-16 -top-16 w-80 h-80 bg-primary-600/10 rounded-full blur-3xl pointer-events-none"></div>
+
+      <div class="relative z-10 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+        <!-- Left: Greetings -->
+        <div class="space-y-2 max-w-xl">
+          <div class="inline-flex items-center gap-2 text-[11px] font-mono uppercase tracking-wider text-primary-400 font-bold">
+            <span class="h-2 w-2 rounded-full bg-tertiary-400 animate-pulse"></span>
+            Sesión Activa · Cloud Sync
+          </div>
+
+          <h2 class="text-2xl sm:text-3xl font-bold tracking-tight text-white">
+            ¡Hola, {{ userName }}! 👋 Continúa donde lo dejaste
+          </h2>
+
+          <p class="text-xs sm:text-sm text-neutral-400 leading-relaxed font-sans">
+            Tus modelos relacionales están sincronizados. Tienes esquemas validados y listos para generación de DDL y despliegue de arquitectura sin conflictos.
+          </p>
+        </div>
+
+        <!-- Right: 3 Metric Cards in a Row -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 shrink-0">
+          <!-- Metric 1: Entities -->
+          <div class="p-4 rounded-2xl bg-surface-container/80 border border-neutral-800 shadow-sm flex flex-col justify-between min-w-[140px]">
+            <div class="flex items-center justify-between text-neutral-400 mb-2">
+              <span class="text-[11px] font-medium">Entidades</span>
+              <sc-icon name="table_chart" [size]="16" customClass="text-primary-400"></sc-icon>
+            </div>
+            <div class="flex items-baseline gap-1.5">
+              <span class="text-2xl font-bold text-white font-mono">{{ metrics.totalEntities }}</span>
+              <span class="text-[10px] font-mono text-tertiary-400 font-semibold">+2 hoy</span>
+            </div>
+            <div class="text-[10px] text-neutral-500 mt-1">Tablas acumuladas</div>
+          </div>
+
+          <!-- Metric 2: Active Projects -->
+          <div class="p-4 rounded-2xl bg-surface-container/80 border border-neutral-800 shadow-sm flex flex-col justify-between min-w-[140px]">
+            <div class="flex items-center justify-between text-neutral-400 mb-2">
+              <span class="text-[11px] font-medium">Proyectos</span>
+              <sc-icon name="layers" [size]="16" customClass="text-secondary-400"></sc-icon>
+            </div>
+            <div class="flex items-baseline gap-1.5">
+              <span class="text-2xl font-bold text-white font-mono">{{ metrics.activeProjects }}</span>
+              <span class="text-[10px] font-mono text-neutral-400">En curso</span>
+            </div>
+            <div class="text-[10px] text-neutral-500 mt-1">Esquemas activos</div>
+          </div>
+
+          <!-- Metric 3: Integrity -->
+          <div class="p-4 rounded-2xl bg-surface-container/80 border border-neutral-800 shadow-sm flex flex-col justify-between min-w-[140px]">
+            <div class="flex items-center justify-between text-neutral-400 mb-2">
+              <span class="text-[11px] font-medium">Calidad BD</span>
+              <sc-icon name="verified_user" [size]="16" customClass="text-tertiary-400"></sc-icon>
+            </div>
+            <div class="flex items-baseline gap-1.5">
+              <span class="text-2xl font-bold text-tertiary-400 font-mono">{{ metrics.referentialIntegrity }}%</span>
+              <span class="text-[10px] font-mono text-tertiary-300">FKs OK</span>
+            </div>
+            <div class="text-[10px] text-neutral-500 mt-1">Integridad referencial</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Section 1: Recent Projects -->
+    <section id="recent-section" class="space-y-4">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <sc-icon name="folder_special" [size]="20" customClass="text-primary-400"></sc-icon>
+          <h3 class="text-base font-bold text-white tracking-tight">Proyectos recientes</h3>
+        </div>
+        <span class="text-xs text-neutral-400 hidden sm:inline-block">Acceso directo a esquemas activos</span>
+      </div>
+
+      <!-- Recent Projects Horizontal Cards Grid (Up to 3) -->
+      <div *ngIf="recentProjects.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        <sc-project-card
+          *ngFor="let p of recentProjects"
+          [project]="p"
+          variant="recent"
+          (onOpen)="openProject($event)"
+          (onAction)="onProjectAction($event)"
+        ></sc-project-card>
+      </div>
+    </section>
+
+    <!-- Section 2: All User Projects -->
+    <section id="all-projects-section" class="space-y-5">
+      <!-- Section Header with Primary Actions -->
+      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div class="flex items-center gap-2">
+          <sc-icon name="folder_open" [size]="20" customClass="text-neutral-400"></sc-icon>
+          <h3 class="text-base font-bold text-white tracking-tight">
+            Mis proyectos
+            <span class="text-xs text-neutral-400 font-normal font-mono">({{ allProjects.length }} en total)</span>
+          </h3>
+        </div>
+
+        <!-- Create & Join Action Buttons -->
+        <div class="flex items-center gap-3">
+          <sc-button
+            variant="secondary"
+            size="md"
+            icon="group_add"
+            (onClick)="openJoinModal()"
+          >
+            Unirse a un proyecto compartido
+          </sc-button>
+
+          <sc-button
+            variant="primary"
+            size="md"
+            icon="add"
+            (onClick)="openNewProjectModal()"
+          >
+            Nuevo proyecto
+          </sc-button>
+        </div>
+      </div>
+
+      <!-- Filters & Search Toolbar -->
+      <div class="p-3 rounded-2xl bg-surface-container-low border border-neutral-800 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+        <!-- Search bar -->
+        <div class="w-full md:w-80">
+          <sc-search-input
+            placeholder="Filtrar por nombre..."
+            [value]="searchQuery"
+            (searchChange)="onSearchChange($event)"
+          ></sc-search-input>
+        </div>
+
+        <!-- Filters and Sorters -->
+        <div class="flex items-center gap-2 flex-wrap text-xs">
+          <!-- Engine Filter Buttons -->
+          <div class="flex items-center bg-surface-container rounded-lg p-0.5 border border-neutral-700/60">
+            <button
+              type="button"
+              (click)="setEngineFilter('all')"
+              class="px-2.5 py-1 rounded text-xs transition-colors cursor-pointer"
+              [ngClass]="selectedEngine === 'all' ? 'bg-primary text-white font-medium' : 'text-neutral-400 hover:text-neutral-200'"
+            >
+              Todos
+            </button>
+            <button
+              type="button"
+              (click)="setEngineFilter('postgresql')"
+              class="px-2.5 py-1 rounded text-xs transition-colors cursor-pointer"
+              [ngClass]="selectedEngine === 'postgresql' ? 'bg-primary text-white font-medium' : 'text-neutral-400 hover:text-neutral-200'"
+            >
+              PostgreSQL
+            </button>
+            <button
+              type="button"
+              (click)="setEngineFilter('mysql')"
+              class="px-2.5 py-1 rounded text-xs transition-colors cursor-pointer"
+              [ngClass]="selectedEngine === 'mysql' ? 'bg-primary text-white font-medium' : 'text-neutral-400 hover:text-neutral-200'"
+            >
+              MySQL
+            </button>
+            <button
+              type="button"
+              (click)="setEngineFilter('sqlite')"
+              class="px-2.5 py-1 rounded text-xs transition-colors cursor-pointer"
+              [ngClass]="selectedEngine === 'sqlite' ? 'bg-primary text-white font-medium' : 'text-neutral-400 hover:text-neutral-200'"
+            >
+              SQLite
+            </button>
+          </div>
+
+          <!-- Sort Select -->
+          <div class="flex items-center gap-1.5 text-neutral-400 pl-2">
+            <sc-icon name="sort" [size]="16"></sc-icon>
+            <select
+              [value]="currentSort"
+              (change)="onSortChange($event)"
+              class="bg-surface-container text-xs text-neutral-200 rounded-lg px-2.5 py-1.5 border border-neutral-700/60 focus:outline-none focus:border-primary-500 cursor-pointer"
+            >
+              <option value="updatedAt">Última modificación</option>
+              <option value="name">Nombre A-Z</option>
+              <option value="tableCount">Cantidad de tablas</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Projects Grid -->
+      <div *ngIf="filteredProjects.length > 0; else emptyState" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <sc-project-card
+          *ngFor="let p of filteredProjects"
+          [project]="p"
+          variant="grid"
+          (onOpen)="openProject($event)"
+          (onAction)="onProjectAction($event)"
+        ></sc-project-card>
+      </div>
+
+      <!-- Empty State Template -->
+      <ng-template #emptyState>
+        <sc-empty-state
+          [icon]="searchQuery || selectedEngine !== 'all' ? 'search_off' : 'folder_open'"
+          [title]="searchQuery || selectedEngine !== 'all' ? 'No se encontraron proyectos' : 'No tienes proyectos todavía'"
+          [description]="searchQuery || selectedEngine !== 'all' ? 'Intenta ajustando los filtros de búsqueda o motor.' : 'Crea tu primer esquema de base de datos para comenzar a modelar.'"
+          [actionLabel]="searchQuery || selectedEngine !== 'all' ? 'Limpiar filtros' : 'Crear tu primer proyecto'"
+          (onAction)="handleEmptyStateAction()"
+        ></sc-empty-state>
+      </ng-template>
+    </section>
+
+  </div>
+
+  <!-- Modals -->
+  <sc-join-project-modal
+    [isOpen]="isJoinModalOpen"
+    [loading]="isJoining"
+    (onClose)="isJoinModalOpen = false"
+    (onJoin)="joinProject($event)"
+  ></sc-join-project-modal>
+
+  <sc-new-project-modal
+    [isOpen]="isNewModalOpen"
+    [loading]="isCreating"
+    (onClose)="isNewModalOpen = false"
+    (onCreate)="createNewProject($event)"
+  ></sc-new-project-modal>
+</sc-app-shell>

@@ -1,0 +1,179 @@
+<!-- Recent Horizontal Preview Card -->
+<div
+  *ngIf="variant === 'recent'"
+  class="flex flex-col rounded-2xl border border-neutral-800 bg-surface-container-low/90 hover:border-primary-500/50 hover:shadow-xl hover:shadow-primary-500/10 transition-all duration-200 overflow-hidden group cursor-pointer"
+  (click)="onOpen.emit(project)"
+>
+  <!-- Schematic Canvas Mini-Preview Container -->
+  <div class="relative h-36 w-full bg-[#0b101c] p-3 border-b border-neutral-800/80 overflow-hidden flex items-center justify-center">
+    <!-- Grid dotted background pattern -->
+    <div class="absolute inset-0 bg-[radial-gradient(#334155_1px,transparent_1px)] [background-size:12px_12px] opacity-40 pointer-events-none"></div>
+
+    <!-- Table count top badge -->
+    <div class="absolute top-2 right-2 z-10">
+      <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-surface-lowest/80 text-neutral-300 border border-neutral-700/60 backdrop-blur">
+        {{ project.tableCount }} Tablas
+      </span>
+    </div>
+
+    <!-- Mini-Preview Schematic Entities (Using sc-table-card) -->
+    <div class="flex items-center gap-4 z-10 scale-90 sm:scale-95">
+      <sc-table-card
+        [tableName]="previewTableA.name"
+        [columns]="previewTableA.cols"
+        [isCompact]="true"
+        customClass="shadow-lg border-primary-500/30"
+      ></sc-table-card>
+
+      <!-- Connecting SVG Relationship Line -->
+      <div class="flex items-center justify-center text-primary-400">
+        <svg class="w-8 h-4" viewBox="0 0 32 16" fill="none">
+          <path d="M0 8H32" stroke="currentColor" stroke-dasharray="2 2" stroke-width="1.5" />
+          <circle cx="4" cy="8" r="2.5" fill="currentColor" />
+          <path d="M28 5L31 8L28 11" stroke="currentColor" stroke-width="1.5" />
+        </svg>
+      </div>
+
+      <sc-table-card
+        [tableName]="previewTableB.name"
+        [columns]="previewTableB.cols"
+        [isCompact]="true"
+        customClass="shadow-lg border-neutral-700"
+      ></sc-table-card>
+    </div>
+  </div>
+
+  <!-- Card Meta Details -->
+  <div class="p-4 flex flex-col justify-between flex-1 gap-3">
+    <div class="flex items-start justify-between gap-2">
+      <div class="truncate">
+        <h4 class="text-sm font-semibold text-white tracking-tight group-hover:text-primary-300 transition-colors truncate">
+          {{ project.name }}
+        </h4>
+        <div class="flex items-center gap-2 mt-1 text-xs text-neutral-400">
+          <span class="font-mono text-neutral-300 capitalize">{{ project.engine }}</span>
+          <span>·</span>
+          <span>Editada hace {{ relativeTime }}</span>
+        </div>
+      </div>
+
+      <!-- Actions Menu Button -->
+      <div class="relative" (click)="$event.stopPropagation()">
+        <button
+          type="button"
+          (click)="toggleMenu()"
+          class="p-1 rounded-lg text-neutral-400 hover:text-white hover:bg-surface-container transition-colors cursor-pointer"
+          title="Acciones de proyecto"
+        >
+          <sc-icon name="more_vert" [size]="18"></sc-icon>
+        </button>
+
+        <!-- Dropdown Popup -->
+        <div
+          *ngIf="menuOpen"
+          class="absolute right-0 top-7 w-40 rounded-xl bg-surface-container border border-neutral-700 shadow-2xl p-1 z-30 flex flex-col text-xs font-sans text-neutral-200"
+        >
+          <button (click)="handleAction('rename')" class="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-surface-container-high transition-colors text-left cursor-pointer">
+            <sc-icon name="edit" [size]="14"></sc-icon>
+            <span>Renombrar</span>
+          </button>
+          <button (click)="handleAction('duplicate')" class="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-surface-container-high transition-colors text-left cursor-pointer">
+            <sc-icon name="content_copy" [size]="14"></sc-icon>
+            <span>Duplicar</span>
+          </button>
+          <button (click)="handleAction('export-sql')" class="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-surface-container-high transition-colors text-left cursor-pointer">
+            <sc-icon name="download" [size]="14"></sc-icon>
+            <span>Exportar SQL</span>
+          </button>
+          <div class="h-px bg-neutral-700/60 my-1"></div>
+          <button (click)="handleAction('delete')" class="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-danger-500/10 text-danger-400 transition-colors text-left cursor-pointer">
+            <sc-icon name="delete" [size]="14"></sc-icon>
+            <span>Eliminar</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom Badges & Collab Avatars -->
+    <div class="flex items-center justify-between pt-2 border-t border-neutral-800/80 text-xs">
+      <div class="flex items-center gap-1.5 text-[11px] text-tertiary-400 font-medium">
+        <sc-icon name="check_circle" [size]="14"></sc-icon>
+        <span>Esquema Válido</span>
+      </div>
+
+      <sc-avatar-stack
+        [avatars]="['Alex Rivera', 'Dev Collab']"
+        [max]="2"
+        size="xs"
+      ></sc-avatar-stack>
+    </div>
+  </div>
+</div>
+
+<!-- Grid Card -->
+<div
+  *ngIf="variant === 'grid'"
+  class="flex flex-col justify-between p-4 rounded-2xl border border-neutral-800 bg-surface-container-low hover:border-primary-500/50 hover:bg-surface-container/60 hover:shadow-xl hover:shadow-primary-500/5 transition-all duration-200 cursor-pointer group relative"
+  (click)="onOpen.emit(project)"
+>
+  <div>
+    <div class="flex items-start justify-between gap-2 mb-2">
+      <div class="flex items-center gap-2.5">
+        <div class="h-9 w-9 rounded-xl bg-surface-container flex items-center justify-center text-primary-400 border border-neutral-700/60 group-hover:scale-105 transition-transform">
+          <sc-icon name="schema" [size]="18"></sc-icon>
+        </div>
+        <div class="truncate">
+          <h4 class="text-sm font-semibold text-white tracking-tight group-hover:text-primary-300 transition-colors truncate">
+            {{ project.name }}
+          </h4>
+          <div class="text-[11px] text-neutral-400 font-mono">
+            {{ project.tableCount }} tablas · {{ project.relationCount }} relaciones
+          </div>
+        </div>
+      </div>
+
+      <!-- Action Menu -->
+      <div class="relative" (click)="$event.stopPropagation()">
+        <button
+          type="button"
+          (click)="toggleMenu()"
+          class="p-1 rounded-lg text-neutral-400 hover:text-white hover:bg-surface-container transition-colors cursor-pointer"
+        >
+          <sc-icon name="more_vert" [size]="18"></sc-icon>
+        </button>
+
+        <div
+          *ngIf="menuOpen"
+          class="absolute right-0 top-7 w-36 rounded-xl bg-surface-container border border-neutral-700 shadow-2xl p-1 z-30 flex flex-col text-xs text-neutral-200"
+        >
+          <button (click)="handleAction('rename')" class="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-surface-container-high transition-colors text-left cursor-pointer">
+            <sc-icon name="edit" [size]="14"></sc-icon>
+            <span>Renombrar</span>
+          </button>
+          <button (click)="handleAction('duplicate')" class="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-surface-container-high transition-colors text-left cursor-pointer">
+            <sc-icon name="content_copy" [size]="14"></sc-icon>
+            <span>Duplicar</span>
+          </button>
+          <button (click)="handleAction('export-sql')" class="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-surface-container-high transition-colors text-left cursor-pointer">
+            <sc-icon name="download" [size]="14"></sc-icon>
+            <span>Exportar SQL</span>
+          </button>
+          <div class="h-px bg-neutral-700/60 my-1"></div>
+          <button (click)="handleAction('delete')" class="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-danger-500/10 text-danger-400 transition-colors text-left cursor-pointer">
+            <sc-icon name="delete" [size]="14"></sc-icon>
+            <span>Eliminar</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <p *ngIf="project.description" class="text-xs text-neutral-400 line-clamp-2 mt-1 font-sans">
+      {{ project.description }}
+    </p>
+  </div>
+
+  <div class="flex items-center justify-between pt-3 mt-3 border-t border-neutral-800/80 text-[11px] text-neutral-400">
+    <span class="font-mono font-medium capitalize text-neutral-300">{{ project.engine }}</span>
+    <span>Editado {{ relativeTime }}</span>
+  </div>
+</div>

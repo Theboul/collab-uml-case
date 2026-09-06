@@ -89,9 +89,8 @@ export class ScLoginComponent {
         })
       );
 
-      // Redirigir al lienzo o dashboard
-      const defaultRoomId = uuid();
-      this.router.navigate(['/diagram', defaultRoomId]);
+      // Redirigir al dashboard
+      this.router.navigate(['/dashboard']);
     }, 600);
   }
 
@@ -108,8 +107,7 @@ export class ScLoginComponent {
           fullName: 'Google User',
         })
       );
-      const defaultRoomId = uuid();
-      this.router.navigate(['/diagram', defaultRoomId]);
+      this.router.navigate(['/dashboard']);
     }, 500);
   }
 

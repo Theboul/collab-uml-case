@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
-export type IconSize = 14 | 16 | 18 | 20 | 24 | 32;
+export type IconSize = 12 | 14 | 15 | 16 | 18 | 20 | 24 | 28 | 32 | 40 | 48;
 
 @Component({
   selector: 'sc-icon',
