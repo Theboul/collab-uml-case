@@ -2,7 +2,24 @@
 Punto de entrada principal de la aplicación FastAPI backend_case.
 """
 
+import sys
+from pathlib import Path
+
+# Garantizar que la raíz del workspace y backend_case estén en sys.path
+_current_file = Path(__file__).resolve()
+_backend_case_dir = _current_file.parent.parent  # backend_case/
+_project_root = _backend_case_dir.parent        # software-exam1/
+
+for _p in [str(_project_root), str(_backend_case_dir)]:
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
 from contextlib import asynccontextmanager
+
+from dotenv import load_dotenv
+
+load_dotenv(_backend_case_dir / ".env")
+load_dotenv(_project_root / ".env")
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,6 +32,7 @@ from .legacy.ws_router import legacy_ws_router
 from .modeling.api import router as modeling_router
 from .shared.db.base import init_db
 from .shared.errors import register_exception_handlers
+from .shared.security import auth_router
 
 
 @asynccontextmanager
@@ -40,10 +58,14 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Configuración de CORS paritaria con Django (CORS_ALLOW_ALL_ORIGINS = True)
+# Configuración de CORS con soporte para cookies y credenciales
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:4200",
+        "http://127.0.0.1:4200",
+    ],
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:[0-9]+)?$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -55,6 +77,7 @@ register_exception_handlers(app)
 # Registrar rutas experimentales V2
 app.include_router(api_router)
 app.include_router(modeling_router, prefix="/api/v2")
+app.include_router(auth_router, prefix="/api/v2")
 
 # Registrar rutas de compatibilidad legacy (Django REST + WebSockets)
 app.include_router(legacy_api_router)

@@ -352,7 +352,7 @@ Ubicación: `docs/architecture/adr/`. Formato: Context / Decision / Alternatives
 | 0002 | `core/uml_domain` como librería aislada | Por transcribir |
 | 0003 | Estrategia de colaboración concurrente (CU5) | **Pendiente — bloquea implementación de CU5** |
 | 0004 | Estrategia de sync offline (CU13) | **Pendiente — CU13 congelado hasta resolverlo** |
-| 0005 | Autenticación/autorización (Anfitrión vs. Colaborador) | **Pendiente — atraviesa CU2 y CU5** |
+| 0005 | Autenticación/autorización (Anfitrión vs. Colaborador) | **Aprobado** (ver `ADR-0005-autenticacion-identidad-sesiones.md`) |
 | 0006 | Formato de contratos versionados (JSON Schema) | Por transcribir |
 
 ---

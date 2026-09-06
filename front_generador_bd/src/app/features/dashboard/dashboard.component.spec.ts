@@ -1,9 +1,10 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { provideZonelessChangeDetection } from '@angular/core';
+import { provideZonelessChangeDetection, signal } from '@angular/core';
 import { provideRouter, Router } from '@angular/router';
 import { of } from 'rxjs';
 import { DashboardComponent } from './dashboard.component';
 import { DashboardService, ProjectDto } from './dashboard.service';
+import { AuthService } from '../../core/auth';
 
 describe('DashboardComponent', () => {
   let component: DashboardComponent;
@@ -55,12 +56,21 @@ describe('DashboardComponent', () => {
     dashboardServiceSpy.getRecentProjects.and.returnValue(of([mockProjects[0]]));
     dashboardServiceSpy.getAllProjects.and.returnValue(of(mockProjects));
 
+    const authServiceSpy = jasmine.createSpyObj('AuthService', ['logout'], {
+      currentUser: signal<any>({
+        id: 'usr-1',
+        email: 'alex@schemacraft.dev',
+        fullName: 'Alex Rivera',
+      }),
+    });
+
     await TestBed.configureTestingModule({
       imports: [DashboardComponent],
       providers: [
         provideZonelessChangeDetection(),
         provideRouter([]),
         { provide: DashboardService, useValue: dashboardServiceSpy },
+        { provide: AuthService, useValue: authServiceSpy },
       ],
     }).compileComponents();
 

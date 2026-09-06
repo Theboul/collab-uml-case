@@ -74,8 +74,10 @@ def test_parity_ws_05_uml_validation():
         "errores": []
     }
 
-    with patch("backend_case.app.legacy.ws_router.call_gemini_analysis", return_value=f"```json\n{json.dumps(mock_analysis)}\n```"):
-        with client.websocket_connect("/ws/uml/") as ws:
+    with (
+        patch("backend_case.app.legacy.ws_router.call_gemini_analysis", return_value=f"```json\n{json.dumps(mock_analysis)}\n```"),
+        client.websocket_connect("/ws/uml/") as ws,
+    ):
             sample_uml = {
                 "classes": [
                     {"id": "1", "name": "Cliente"},

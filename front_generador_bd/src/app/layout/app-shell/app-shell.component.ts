@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, EventEmitter, OnInit, Output } from
 import { CommonModule } from '@angular/common';
 import { Router, RouterModule } from '@angular/router';
 import { ScIconComponent, ScButtonComponent, ScSearchInputComponent } from '../../shared/ui';
+import { AuthService } from '../../core/auth';
 
 @Component({
   selector: 'sc-app-shell',
@@ -20,20 +21,16 @@ export class ScAppShellComponent implements OnInit {
   @Output() onNavigateRecent = new EventEmitter<void>();
   @Output() onNavigateAll = new EventEmitter<void>();
 
-  constructor(private router: Router) {}
+  constructor(
+    private router: Router,
+    private authService: AuthService
+  ) {}
 
   ngOnInit(): void {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      try {
-        const stored = localStorage.getItem('sc_user');
-        if (stored) {
-          const u = JSON.parse(stored);
-          this.userName = u.fullName || u.email || 'Alex Rivera';
-          this.userEmail = u.email || 'alex.rivera@ejemplo.com';
-        }
-      } catch {
-        // Fallback a valores por defecto
-      }
+    const user = this.authService.currentUser();
+    if (user) {
+      this.userName = user.fullName || user.email;
+      this.userEmail = user.email;
     }
   }
 
@@ -46,10 +43,8 @@ export class ScAppShellComponent implements OnInit {
   }
 
   logout(): void {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      localStorage.removeItem('sc_auth_token');
-      localStorage.removeItem('sc_user');
-    }
-    this.router.navigate(['/login']);
+    this.authService.logout().subscribe(() => {
+      this.router.navigate(['/login']);
+    });
   }
 }

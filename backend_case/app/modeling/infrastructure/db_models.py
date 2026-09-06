@@ -4,6 +4,7 @@ Modelos ORM de SQLAlchemy para el módulo modeling (tabla canvases).
 
 import uuid
 from datetime import datetime, timezone
+from typing import ClassVar
 
 from sqlalchemy import JSON, Column, DateTime, Integer, String, Text
 
@@ -17,6 +18,7 @@ class CanvasORM(Base):
     """
 
     __tablename__ = "canvases"
+    __table_args__: ClassVar[dict[str, bool]] = {"extend_existing": True}
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     name = Column(String(255), nullable=False, default="Diagrama Sin Título")

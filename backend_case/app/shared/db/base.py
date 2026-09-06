@@ -34,6 +34,10 @@ async def init_db() -> None:
     """
     Inicializa las tablas de los modelos SQLAlchemy registrados en Base.
     """
+    # Asegurar registro de modelos en Base.metadata
+    import backend_case.app.modeling.infrastructure.db_models
+    import backend_case.app.shared.security.models  # noqa: F401
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 

@@ -3,7 +3,7 @@ Manejadores globales de excepciones para traducir errores del dominio UML
 al formato canónico de error de la API (definido en AGENTS.md sección 7).
 """
 
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 
 from core.uml_domain.exceptions import (
@@ -17,6 +17,25 @@ from core.uml_domain.exceptions import (
 
 
 def register_exception_handlers(app: FastAPI) -> None:
+    @app.exception_handler(HTTPException)
+    async def http_exception_handler(request: Request, exc: HTTPException):
+        if isinstance(exc.detail, dict) and "code" in exc.detail:
+            content = {
+                "code": exc.detail.get("code", f"HTTP_{exc.status_code}"),
+                "message": exc.detail.get("message", "Error en la solicitud."),
+                "details": exc.detail.get("details", []),
+            }
+            return JSONResponse(status_code=exc.status_code, content=content, headers=exc.headers)
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={
+                "code": f"HTTP_{exc.status_code}",
+                "message": str(exc.detail),
+                "details": [],
+            },
+            headers=exc.headers,
+        )
+
     @app.exception_handler(CanvasNoEncontrado)
     async def canvas_not_found_handler(request: Request, exc: CanvasNoEncontrado):
         return JSONResponse(

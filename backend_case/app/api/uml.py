@@ -2,6 +2,8 @@
 Endpoints de validación y compatibilidad de diagramas de clases UML v2.
 """
 
+from typing import Annotated
+
 from fastapi import APIRouter, Depends
 
 from ..application.services import UmlApplicationService
@@ -14,10 +16,13 @@ def get_uml_service() -> UmlApplicationService:
     return UmlApplicationService()
 
 
+UmlServiceDep = Annotated[UmlApplicationService, Depends(get_uml_service)]
+
+
 @router.post("/validate", response_model=ValidationResponseSchema, summary="Valida semánticamente un modelo UML 2.5")
 def validate_uml(
     model: UmlModelSchema,
-    service: UmlApplicationService = Depends(get_uml_service),
+    service: UmlServiceDep,
 ) -> ValidationResponseSchema:
     return service.validate_uml_model(model)
 
@@ -25,7 +30,7 @@ def validate_uml(
 @router.post("/compatibility/spring", response_model=ValidationResponseSchema, summary="Evalúa compatibilidad con Spring Boot v1")
 def check_spring_compatibility(
     model: UmlModelSchema,
-    service: UmlApplicationService = Depends(get_uml_service),
+    service: UmlServiceDep,
 ) -> ValidationResponseSchema:
     return service.check_spring_compatibility(model)
 
@@ -33,6 +38,6 @@ def check_spring_compatibility(
 @router.post("/compatibility/flutter", response_model=ValidationResponseSchema, summary="Evalúa compatibilidad con Flutter CRUD v1")
 def check_flutter_compatibility(
     model: UmlModelSchema,
-    service: UmlApplicationService = Depends(get_uml_service),
+    service: UmlServiceDep,
 ) -> ValidationResponseSchema:
     return service.check_flutter_compatibility(model)

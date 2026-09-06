@@ -10,5 +10,5 @@ export const environment = {
     WebSocket_python: `django-sw1.fournext.me`,
     //endpoint_java: `http://127.0.0.1:${portJava}/`
     //endpoint_java: `http://ec2-34-228-19-253.compute-1.amazonaws.com:${portJava}/`
-    endpoint_java: `https://spring-sw1.fournext.me/`
+    endpoint_java: `https://spring-sw1.fournext.me/`,
 };

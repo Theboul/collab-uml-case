@@ -22,6 +22,8 @@ import {
 import { ScJoinProjectModalComponent } from './components/join-project-modal/join-project-modal.component';
 import { ScNewProjectModalComponent } from './components/new-project-modal/new-project-modal.component';
 
+import { AuthService } from '../../core/auth';
+
 @Component({
   selector: 'sc-dashboard',
   standalone: true,
@@ -41,7 +43,7 @@ import { ScNewProjectModalComponent } from './components/new-project-modal/new-p
   styleUrl: './dashboard.component.css',
 })
 export class DashboardComponent implements OnInit {
-  userName: string = 'Alex';
+  userName: string = 'Desarrollador';
 
   metrics: DashboardMetrics = {
     totalEntities: 0,
@@ -65,6 +67,7 @@ export class DashboardComponent implements OnInit {
 
   constructor(
     private dashboardService: DashboardService,
+    private authService: AuthService,
     private router: Router
   ) {}
 
@@ -76,16 +79,23 @@ export class DashboardComponent implements OnInit {
   }
 
   loadUserData(): void {
+    const user = this.authService.currentUser();
+    if (user) {
+      const full = user.fullName || user.email || 'Desarrollador';
+      this.userName = full.split(' ')[0] || 'Desarrollador';
+      return;
+    }
+
     if (typeof window !== 'undefined' && window.localStorage) {
       try {
-        const stored = localStorage.getItem('sc_user');
+        const stored = localStorage.getItem('sc_user_profile') || localStorage.getItem('sc_user');
         if (stored) {
           const u = JSON.parse(stored);
-          const full = u.fullName || u.email || 'Alex';
-          this.userName = full.split(' ')[0] || 'Alex';
+          const full = u.fullName || u.email || 'Desarrollador';
+          this.userName = full.split(' ')[0] || 'Desarrollador';
         }
       } catch {
-        this.userName = 'Alex';
+        this.userName = 'Desarrollador';
       }
     }
   }
