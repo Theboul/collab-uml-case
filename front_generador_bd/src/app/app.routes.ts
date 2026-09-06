@@ -18,10 +18,19 @@ export const routes: Routes = [
     canActivate: [authGuard],
   },
   {
+    path: 'join/:accessCode',
+    loadComponent: () =>
+      import('./features/modeling/ui/join-workspace/join-workspace.component').then(
+        (m) => m.JoinWorkspaceComponent
+      ),
+    canActivate: [authGuard],
+  },
+  {
     path: 'canvas/:roomId',
     redirectTo: 'diagram/:roomId',
     pathMatch: 'full',
   },
+
   {
     path: 'legacy-diagram/:roomId',
     component: Diagram,

@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { CommandResponseDto, LienzoDetailDto } from '../domain/models/uml-editor.models';
+import { CommandResponseDto, JoinCanvasResponse, LienzoDetailDto } from '../domain/models/uml-editor.models';
 import { EditorCommand } from '../domain/commands/editor-commands';
 
 @Injectable({
@@ -19,6 +19,10 @@ export class UmlApiService {
     return this.http.get<LienzoDetailDto>(`${this.baseUrl}/by-room/${roomName}`);
   }
 
+  joinCanvas(accessCode: string): Observable<JoinCanvasResponse> {
+    return this.http.post<JoinCanvasResponse>(`${this.baseUrl}/join`, { accessCode });
+  }
+
   createCanvas(name: string, description?: string): Observable<LienzoDetailDto> {
     return this.http.post<LienzoDetailDto>(this.baseUrl, { name, description });
   }
@@ -31,3 +35,4 @@ export class UmlApiService {
     return this.http.get<any[]>(this.baseUrl);
   }
 }
+

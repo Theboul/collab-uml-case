@@ -60,6 +60,22 @@ class EditorCommandRequest(BaseModel):
     payload: dict[str, Any] = Field(default_factory=dict)
 
 
+class JoinCanvasRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    accessCode: str = Field(..., min_length=1, description="Código de sala o enlace de invitación")
+
+
+class JoinCanvasResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    workspaceId: str
+    canvasId: str
+    roomName: str
+    role: str
+    joined: bool
+
+
 class CanvasSummarySchema(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -86,6 +102,7 @@ class CanvasDetailSchema(BaseModel):
     roomName: str | None = None
     owner_id: str | None = None
     room_name: str | None = None
+    role: str = "ANFITRION"
     visualLayout: dict[str, Any] = Field(default_factory=dict)
     model: UmlModelSchema
 
@@ -104,6 +121,7 @@ def _to_detail_schema(
     version: int,
     owner_id: str | None = None,
     room_name: str | None = None,
+    role: str = "ANFITRION",
 ) -> CanvasDetailSchema:
     model_schema = DomainToPydanticMapper.to_pydantic_schema(lienzo.modelo)
     return CanvasDetailSchema(
@@ -115,9 +133,11 @@ def _to_detail_schema(
         roomName=room_name,
         owner_id=owner_id,
         room_name=room_name,
+        role=role,
         visualLayout=lienzo.visual_layout,
         model=model_schema,
     )
+
 
 
 # ---------------------------------------------------------------------------
@@ -152,28 +172,52 @@ async def create_canvas(
     return _to_detail_schema(res.lienzo, res.version, res.owner_id, res.room_name)
 
 
+@router.post("/join", response_model=JoinCanvasResponse)
+async def join_canvas(
+    payload: JoinCanvasRequest,
+    service: CanvasServiceDep,
+    current_user: CurrentUserOptionalDep = None,
+):
+    """
+    CU2: Unirse a un lienzo UML existente mediante código o enlace de invitación.
+    """
+    user_id = current_user.id if current_user else "anonymous-user"
+    res = await service.unirse_a_lienzo(access_code=payload.accessCode, user_id=user_id)
+    return JoinCanvasResponse(
+        workspaceId=res["workspaceId"],
+        canvasId=res["canvasId"],
+        roomName=res["roomName"],
+        role=res["role"],
+        joined=res["joined"],
+    )
+
+
 @router.get("/by-room/{room_name}", response_model=CanvasDetailSchema)
 async def get_canvas_by_room(
     room_name: str,
     service: CanvasServiceDep,
+    current_user: CurrentUserOptionalDep = None,
 ):
     """
-    Recupera un lienzo por su mecanismo de acceso (room_name).
+    Recupera un lienzo por su mecanismo de acceso (room_name) y resuelve el rol del participante.
     """
-    res = await service.obtener_por_room_name(room_name)
-    return _to_detail_schema(res.lienzo, res.version, res.owner_id, res.room_name)
+    user_id = current_user.id if current_user else None
+    res = await service.obtener_por_room_name(room_name, user_id=user_id)
+    return _to_detail_schema(res.lienzo, res.version, res.owner_id, res.room_name, res.role)
 
 
 @router.get("/{canvas_id}", response_model=CanvasDetailSchema)
 async def get_canvas(
     canvas_id: str,
     service: CanvasServiceDep,
+    current_user: CurrentUserOptionalDep = None,
 ):
     """
-    CU2 / CU3: Obtener un lienzo y su modelo UML persistido.
+    CU2 / CU3: Obtener un lienzo y su modelo UML persistido resolviendo el rol del participante.
     """
-    res = await service.obtener_lienzo(canvas_id)
-    return _to_detail_schema(res.lienzo, res.version, res.owner_id, res.room_name)
+    user_id = current_user.id if current_user else None
+    res = await service.obtener_lienzo(canvas_id, user_id=user_id)
+    return _to_detail_schema(res.lienzo, res.version, res.owner_id, res.room_name, res.role)
 
 
 @router.post("/{canvas_id}/commands", response_model=CommandResponse)

@@ -51,17 +51,79 @@ class CanvasService:
             room_name=room_name,
         )
 
-    async def obtener_lienzo(self, canvas_id: str) -> CanvasResult:
+    async def obtener_lienzo(self, canvas_id: str, user_id: str | None = None) -> CanvasResult:
         """
-        CU2 / CU3: Recuperar el lienzo persistido por su ID.
+        CU2 / CU3: Recuperar el lienzo persistido por su ID y resolver el rol del usuario.
         """
-        return await self.repository.obtener(canvas_id)
+        res = await self.repository.obtener(canvas_id)
+        role = await self.repository.resolver_rol(canvas_id, res.owner_id, user_id)
+        return CanvasResult(
+            lienzo=res.lienzo,
+            version=res.version,
+            owner_id=res.owner_id,
+            room_name=res.room_name,
+            role=role,
+        )
 
-    async def obtener_por_room_name(self, room_name: str) -> CanvasResult:
+    async def obtener_por_room_name(self, room_name: str, user_id: str | None = None) -> CanvasResult:
         """
-        Recuperar el lienzo a través del código o mecanismo de acceso de sala.
+        Recuperar el lienzo a través del código o mecanismo de acceso de sala y resolver rol.
         """
-        return await self.repository.obtener_por_room_name(room_name)
+        res = await self.repository.obtener_por_room_name(room_name)
+        role = await self.repository.resolver_rol(res.lienzo.id, res.owner_id, user_id)
+        return CanvasResult(
+            lienzo=res.lienzo,
+            version=res.version,
+            owner_id=res.owner_id,
+            room_name=res.room_name,
+            role=role,
+        )
+
+    async def unirse_a_lienzo(self, access_code: str, user_id: str) -> dict[str, Any]:
+        """
+        CU2: Unirse a un lienzo UML existente mediante código o enlace.
+        - Valida el código de acceso normalizándolo.
+        - Preserva el rol ANFITRION si es el owner del lienzo.
+        - Registra la participación de forma idempotente como COLABORADOR.
+        """
+        canvas = await self.repository.buscar_por_codigo_acceso(access_code)
+        if canvas is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={
+                    "code": "ACCESS_CODE_INVALID",
+                    "message": f"El código de acceso '{access_code}' no corresponde a ningún lienzo activo.",
+                },
+            )
+
+        if canvas.owner_id and canvas.owner_id == user_id:
+            return {
+                "workspaceId": canvas.id,
+                "canvasId": canvas.id,
+                "roomName": canvas.room_name,
+                "role": "ANFITRION",
+                "joined": False,
+            }
+
+        ya_colaborador = await self.repository.es_colaborador(canvas.id, user_id)
+        if ya_colaborador:
+            return {
+                "workspaceId": canvas.id,
+                "canvasId": canvas.id,
+                "roomName": canvas.room_name,
+                "role": "COLABORADOR",
+                "joined": False,
+            }
+
+        await self.repository.agregar_colaborador(canvas.id, user_id)
+        return {
+            "workspaceId": canvas.id,
+            "canvasId": canvas.id,
+            "roomName": canvas.room_name,
+            "role": "COLABORADOR",
+            "joined": True,
+        }
+
 
     async def agregar_clase(
         self, canvas_id: str, nombre: str, is_abstract: bool = False

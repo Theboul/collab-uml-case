@@ -89,12 +89,12 @@ export class DashboardService {
     );
   }
 
-  /** Todos los proyectos del usuario desde /api/v2/canvases con fallback mock. */
+  /** Todos los proyectos del usuario desde /api/v2/canvases. */
   getAllProjects(sortBy: ProjectSortBy = 'updatedAt', search = ''): Observable<ProjectDto[]> {
     return this.http.get<any[]>('/api/v2/canvases').pipe(
       map((canvases) => {
         if (!Array.isArray(canvases) || canvases.length === 0) {
-          return MOCK_PROJECTS;
+          return [];
         }
         return canvases.map((c) => ({
           id: c.id,
@@ -121,9 +121,10 @@ export class DashboardService {
         });
         return result;
       }),
-      catchError(() => of(MOCK_PROJECTS))
+      catchError(() => of([]))
     );
   }
+
 
   /** Métricas agregadas para el banner de bienvenida. */
   getMetrics(): Observable<DashboardMetrics> {
@@ -163,26 +164,16 @@ export class DashboardService {
     );
   }
 
-  /** Unirse a un proyecto compartido mediante su room_name (UUID/código de sala). */
-  joinProjectByRoomCode(roomCode: string): Observable<ProjectDto | null> {
-    return this.http.get<any>(`/api/v2/canvases/by-room/${roomCode}`).pipe(
+  /** Unirse a un proyecto compartido mediante su room_name o access_code (CU2). */
+  joinProjectByRoomCode(roomCode: string): Observable<{ roomName: string; canvasId: string } | null> {
+    return this.http.post<any>('/api/v2/canvases/join', { accessCode: roomCode }).pipe(
       map((res) => ({
-        id: res.id,
-        name: res.name,
-        description: res.description ?? null,
-        roomName: res.roomName || res.room_name || roomCode,
-        engine: 'postgresql' as DbEngine,
-        tableCount: res.model?.classes?.length ?? 0,
-        relationCount: res.model?.associations?.length ?? 0,
-        updatedAt: res.updated_at || new Date().toISOString(),
-        lastOpenedAt: new Date().toISOString(),
-      })),
-      catchError(() => {
-        const found = MOCK_PROJECTS.find((p) => p.roomName === roomCode) ?? null;
-        return of(found);
-      })
+        roomName: res.roomName,
+        canvasId: res.canvasId,
+      }))
     );
   }
+
 
   deleteProject(projectId: string): Observable<void> {
     return of(undefined).pipe(delay(300));

@@ -83,8 +83,17 @@ export interface LienzoDetailDto {
   version: number;
   ownerId?: string | null;
   roomName?: string | null;
+  role?: 'ANFITRION' | 'COLABORADOR' | 'INVITADO';
   visualLayout: DiagramLayout;
   model: ModeloUML;
+}
+
+export interface JoinCanvasResponse {
+  workspaceId: string;
+  canvasId: string;
+  roomName: string;
+  role: 'ANFITRION' | 'COLABORADOR' | 'INVITADO';
+  joined: boolean;
 }
 
 export interface CommandResponseDto {
@@ -93,3 +102,4 @@ export interface CommandResponseDto {
   operationId?: string;
   canvas?: LienzoDetailDto;
 }
+

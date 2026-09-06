@@ -8,7 +8,10 @@ from typing import ClassVar
 
 from sqlalchemy import JSON, Column, DateTime, ForeignKey, Integer, String, Text
 
+from sqlalchemy.orm import relationship
+
 from backend_case.app.shared.db.base import Base
+from backend_case.app.shared.security.models import UserORM  # noqa: F401
 
 
 class CanvasORM(Base):
@@ -36,5 +39,44 @@ class CanvasORM(Base):
         nullable=False,
     )
 
+    collaborators = relationship(
+        lambda: CanvasCollaboratorORM,
+        back_populates="canvas",
+        cascade="all, delete-orphan",
+    )
+
     def __repr__(self) -> str:
         return f"<CanvasORM(id='{self.id}', name='{self.name}', version={self.version})>"
+
+
+class CanvasCollaboratorORM(Base):
+    """
+    Asociación M:N de Colaboradores incorporados a un lienzo UML mediante código o enlace (CU2).
+    """
+
+    __tablename__ = "canvas_collaborators"
+    __table_args__: ClassVar[dict[str, bool]] = {"extend_existing": True}
+
+    canvas_id = Column(
+        String(36),
+        ForeignKey("canvases.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    user_id = Column(
+        String(36),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+        index=True,
+    )
+    joined_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    canvas = relationship(lambda: CanvasORM, back_populates="collaborators")
+    user = relationship(lambda: UserORM)
+
+    def __repr__(self) -> str:
+        return f"<CanvasCollaboratorORM(canvas_id='{self.canvas_id}', user_id='{self.user_id}')>"
+

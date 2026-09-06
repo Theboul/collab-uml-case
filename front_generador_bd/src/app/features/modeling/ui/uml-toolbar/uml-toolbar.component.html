@@ -29,7 +29,13 @@
       v{{ facade.version() }}
     </span>
 
+    <sc-badge
+      [type]="facade.role() === 'ANFITRION' ? 'PK' : 'NN'"
+      [label]="facade.role() === 'ANFITRION' ? 'Anfitrión' : 'Colaborador'"
+    ></sc-badge>
+
     <!-- Botón Compartir Lienzo usando sc-button y sc-icon -->
+
     <sc-button
       variant="outline"
       size="sm"

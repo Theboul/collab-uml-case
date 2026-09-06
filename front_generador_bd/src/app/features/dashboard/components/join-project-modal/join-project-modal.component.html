@@ -40,8 +40,9 @@
         name="roomCode"
         [required]="true"
         [hint]="'Introduce el código facilitado por el anfitrión'"
-        [error]="errorMessage"
+        [error]="errorMessage || error"
       ></sc-input>
+
 
       <div class="pt-2 flex items-center justify-end gap-2.5 border-t border-neutral-800">
         <sc-button

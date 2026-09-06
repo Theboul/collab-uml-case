@@ -222,9 +222,11 @@
   <sc-join-project-modal
     [isOpen]="isJoinModalOpen"
     [loading]="isJoining"
+    [error]="joinError"
     (onClose)="isJoinModalOpen = false"
     (onJoin)="joinProject($event)"
   ></sc-join-project-modal>
+
 
   <sc-new-project-modal
     [isOpen]="isNewModalOpen"

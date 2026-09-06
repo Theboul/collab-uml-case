@@ -4,14 +4,16 @@ import { UmlEditorFacade } from '../../application/uml-editor.facade';
 import { UmlRelationType } from '../../domain/models/uml-editor.models';
 import { ScButtonComponent } from '../../../../shared/ui/button/button.component';
 import { ScIconComponent } from '../../../../shared/ui/icon/icon.component';
+import { ScBadgeComponent } from '../../../../shared/ui/badge/badge.component';
 
 @Component({
   selector: 'app-uml-toolbar',
   standalone: true,
-  imports: [CommonModule, ScButtonComponent, ScIconComponent],
+  imports: [CommonModule, ScButtonComponent, ScIconComponent, ScBadgeComponent],
   templateUrl: './uml-toolbar.component.html',
   styleUrl: './uml-toolbar.component.css',
 })
+
 export class UmlToolbarComponent {
   readonly facade = inject(UmlEditorFacade);
 

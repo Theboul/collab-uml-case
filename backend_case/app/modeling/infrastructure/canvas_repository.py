@@ -13,7 +13,7 @@ from backend_case.app.schemas.uml import UmlModelSchema
 from core.uml_domain.exceptions import CanvasNoEncontrado
 from core.uml_domain.model import Lienzo
 
-from .db_models import CanvasORM
+from .db_models import CanvasCollaboratorORM, CanvasORM
 
 
 class CanvasResult(NamedTuple):
@@ -21,6 +21,8 @@ class CanvasResult(NamedTuple):
     version: int
     owner_id: str | None = None
     room_name: str | None = None
+    role: str = "ANFITRION"
+
 
 
 class CanvasRepository:
@@ -157,3 +159,60 @@ class CanvasRepository:
             }
             for c in canvases
         ]
+
+    async def es_colaborador(self, canvas_id: str, user_id: str) -> bool:
+        """
+        Verifica si un usuario está registrado como colaborador del lienzo.
+        """
+        stmt = select(CanvasCollaboratorORM).where(
+            CanvasCollaboratorORM.canvas_id == canvas_id,
+            CanvasCollaboratorORM.user_id == user_id,
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none() is not None
+
+    async def agregar_colaborador(self, canvas_id: str, user_id: str) -> None:
+        """
+        Registra la participación de un colaborador en el lienzo si aún no existe.
+        La PK compuesta (canvas_id, user_id) asegura la unicidad transaccional.
+        """
+        if not await self.es_colaborador(canvas_id, user_id):
+            collab = CanvasCollaboratorORM(
+                canvas_id=canvas_id,
+                user_id=user_id,
+                joined_at=datetime.now(timezone.utc),
+            )
+            self.session.add(collab)
+            await self.session.flush()
+
+    async def resolver_rol(self, canvas_id: str, owner_id: str | None, user_id: str | None) -> str:
+        """
+        Resuelve dinámicamente el rol del usuario para el lienzo (ANFITRION, COLABORADOR o INVITADO).
+        """
+        if not user_id:
+            return "INVITADO"
+        if owner_id and owner_id == user_id:
+            return "ANFITRION"
+        if await self.es_colaborador(canvas_id, user_id):
+            return "COLABORADOR"
+        return "INVITADO"
+
+    async def buscar_por_codigo_acceso(self, access_code: str) -> CanvasORM | None:
+        """
+        Busca un lienzo normalizando el código de acceso (espacios, mayúsculas y prefijo room-).
+        """
+        code = access_code.strip()
+        variations = [code, code.lower()]
+        if not code.lower().startswith("room-"):
+            variations.extend([f"room-{code}", f"room-{code.lower()}"])
+        else:
+            variations.append(code[5:])
+
+        for var in variations:
+            stmt = select(CanvasORM).where(CanvasORM.room_name == var)
+            res = await self.session.execute(stmt)
+            canvas = res.scalar_one_or_none()
+            if canvas is not None:
+                return canvas
+        return None
+

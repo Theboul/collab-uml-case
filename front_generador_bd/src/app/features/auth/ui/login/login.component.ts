@@ -1,7 +1,7 @@
 import { AfterViewInit, ChangeDetectionStrategy, Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { v4 as uuid } from 'uuid';
 import {
   ScButtonComponent,
@@ -49,8 +49,14 @@ export class ScLoginComponent implements AfterViewInit {
 
   constructor(
     private router: Router,
+    private route: ActivatedRoute,
     private authService: AuthService
   ) {}
+
+  private navigateAfterAuth(): void {
+    const returnUrl = this.route.snapshot.queryParams['returnUrl'] || '/dashboard';
+    this.router.navigateByUrl(returnUrl);
+  }
 
   ngAfterViewInit(): void {
     if (typeof window !== 'undefined') {
@@ -111,7 +117,7 @@ export class ScLoginComponent implements AfterViewInit {
       this.authService.loginWithGoogle(res.credential).subscribe({
         next: () => {
           this.loading = false;
-          this.router.navigate(['/dashboard']);
+          this.navigateAfterAuth();
         },
         error: (err) => {
           this.loading = false;
@@ -166,7 +172,7 @@ export class ScLoginComponent implements AfterViewInit {
         .subscribe({
           next: () => {
             this.loading = false;
-            this.router.navigate(['/dashboard']);
+            this.navigateAfterAuth();
           },
           error: (err) => {
             this.loading = false;
@@ -188,7 +194,7 @@ export class ScLoginComponent implements AfterViewInit {
         .subscribe({
           next: () => {
             this.loading = false;
-            this.router.navigate(['/dashboard']);
+            this.navigateAfterAuth();
           },
           error: (err) => {
             this.loading = false;

@@ -35,13 +35,16 @@ export class UmlEditorFacade {
   private readonly graphService = inject(UmlGraphService);
   private readonly collabGateway = inject(COLLABORATION_GATEWAY);
 
-  // Estados Reactivos con Signals
   readonly canvasId = signal<string | null>(null);
   readonly canvasName = signal<string>('Diagrama Sin Título');
   readonly roomName = signal<string | null>(null);
+  readonly role = signal<'ANFITRION' | 'COLABORADOR' | 'INVITADO'>('COLABORADOR');
   readonly version = signal<number>(1);
   readonly mode = signal<EditorMode>('SELECT');
   readonly defaultRelationType = signal<UmlRelationType>('ASSOCIATION');
+
+  readonly isLoading = signal<boolean>(true);
+  readonly loadError = signal<string | null>(null);
 
   readonly model = signal<ModeloUML>({ classes: [], relations: [] });
   readonly layout = signal<DiagramLayout>({
@@ -49,6 +52,7 @@ export class UmlEditorFacade {
     nodes: {},
     links: {},
   });
+
 
   readonly selectedNodes = signal<string[]>([]);
   readonly selectedEdges = signal<string[]>([]);
@@ -160,41 +164,54 @@ export class UmlEditorFacade {
    * Carga el lienzo inicial desde la API (por room_name o id).
    */
   loadCanvas(roomIdOrId: string): Observable<LienzoDetailDto> {
+    this.isLoading.set(true);
+    this.loadError.set(null);
+
     const req$ = roomIdOrId.startsWith('room-')
       ? this.api.getCanvasByRoom(roomIdOrId)
       : this.api.getCanvas(roomIdOrId);
 
     return req$.pipe(
-      tap((dto) => {
-        this.canvasId.set(dto.id);
-        this.canvasName.set(dto.name);
-        this.roomName.set(dto.roomName ?? null);
-        this.version.set(dto.version);
+      tap({
+        next: (dto) => {
+          this.canvasId.set(dto.id);
+          this.canvasName.set(dto.name);
+          this.roomName.set(dto.roomName ?? null);
+          this.role.set(dto.role || 'COLABORADOR');
+          this.version.set(dto.version);
 
-        const loadedModel: ModeloUML = {
-          classes: dto.model?.classes || [],
-          relations: dto.model?.relations || [],
-        };
-        const loadedLayout: DiagramLayout = dto.visualLayout || {
-          viewport: { zoom: 1, panX: 0, panY: 0 },
-          nodes: {},
-          links: {},
-        };
+          const loadedModel: ModeloUML = {
+            classes: dto.model?.classes || [],
+            relations: dto.model?.relations || [],
+          };
+          const loadedLayout: DiagramLayout = dto.visualLayout || {
+            viewport: { zoom: 1, panX: 0, panY: 0 },
+            nodes: {},
+            links: {},
+          };
 
-        this.model.set(loadedModel);
-        this.layout.set(loadedLayout);
+          this.model.set(loadedModel);
+          this.layout.set(loadedLayout);
 
-        if (dto.roomName) {
-          this.collabGateway.connect(dto.roomName);
-        }
+          if (dto.roomName) {
+            this.collabGateway.connect(dto.roomName);
+          }
 
-        if (this.graphService.isInitialized) {
-          const cells = this.adapter.modelToCells(loadedModel, loadedLayout);
-          this.graphService.renderCells(cells.nodes, cells.edges);
-        }
+          if (this.graphService.isInitialized) {
+            const cells = this.adapter.modelToCells(loadedModel, loadedLayout);
+            this.graphService.renderCells(cells.nodes, cells.edges);
+          }
+          this.isLoading.set(false);
+        },
+        error: (err) => {
+          this.isLoading.set(false);
+          const msg = err?.error?.message || 'Error al recuperar el snapshot del lienzo.';
+          this.loadError.set(msg);
+        },
       })
     );
   }
+
 
   renderLoadedModel(): void {
     if (this.graphService.isInitialized) {

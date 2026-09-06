@@ -14,12 +14,14 @@ import { ScIconComponent, ScButtonComponent, ScInputComponent } from '../../../.
 export class ScJoinProjectModalComponent {
   @Input() isOpen: boolean = false;
   @Input() loading: boolean = false;
+  @Input() error: string | null = null;
 
   @Output() onClose = new EventEmitter<void>();
   @Output() onJoin = new EventEmitter<string>();
 
   roomCode: string = '';
   errorMessage: string | null = null;
+
 
   close(): void {
     this.roomCode = '';

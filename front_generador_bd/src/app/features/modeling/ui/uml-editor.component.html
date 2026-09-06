@@ -1,4 +1,4 @@
-<div class="flex flex-col h-screen w-screen overflow-hidden bg-neutral-100 font-sans select-none">
+<div class="flex flex-col h-screen w-screen overflow-hidden bg-neutral-100 font-sans select-none relative">
   <!-- Toolbar Superior -->
   <app-uml-toolbar></app-uml-toolbar>
 
@@ -21,4 +21,32 @@
 
   <!-- Modal de Compartir Lienzo -->
   <app-uml-share-modal></app-uml-share-modal>
+
+  <!-- Overlay de Carga de Snapshot (Protección de estado CU2) -->
+  <div *ngIf="facade.isLoading() && !facade.loadError()" class="fixed inset-0 z-40 flex items-center justify-center bg-white/75 backdrop-blur-xs">
+    <div class="flex flex-col items-center gap-3 bg-white px-6 py-5 rounded-xl shadow-lg border border-neutral-200">
+      <div class="w-8 h-8 border-3 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
+      <span class="text-xs font-semibold text-neutral-700">Recuperando snapshot del lienzo y sincronizando...</span>
+    </div>
+  </div>
+
+  <!-- Pantalla de Error de Recuperación de Snapshot (Evita modelo vacío o sobreescrituras) -->
+  <div *ngIf="facade.loadError()" class="fixed inset-0 z-50 flex items-center justify-center bg-neutral-900/80 backdrop-blur-sm p-4">
+    <div class="bg-white rounded-xl p-8 max-w-md w-full shadow-2xl text-center flex flex-col items-center gap-4 border border-neutral-200">
+      <div class="text-red-500">
+        <sc-icon name="error" [size]="48"></sc-icon>
+      </div>
+      <h2 class="text-lg font-bold text-neutral-900">No se pudo recuperar el lienzo</h2>
+      <p class="text-sm text-neutral-600 leading-relaxed">{{ facade.loadError() }}</p>
+      <div class="flex gap-3 w-full mt-2">
+        <sc-button variant="outline" customClass="flex-1" icon="arrow_back" (onClick)="goToDashboard()">
+          Dashboard
+        </sc-button>
+        <sc-button variant="primary" customClass="flex-1" icon="refresh" (onClick)="retryLoad()">
+          Reintentar
+        </sc-button>
+      </div>
+    </div>
+  </div>
 </div>
+

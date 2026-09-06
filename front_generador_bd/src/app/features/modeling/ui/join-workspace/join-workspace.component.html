@@ -1,0 +1,69 @@
+<div class="join-container">
+  <div class="join-card">
+    <!-- Brand / Header -->
+    <div class="join-header">
+      <div class="logo-badge">
+        <sc-icon name="schema" [size]="28"></sc-icon>
+      </div>
+      <h1 class="join-title">SchemaCraft UML</h1>
+      <p class="join-subtitle">Incorporación a Lienzo Colaborativo</p>
+    </div>
+
+    <!-- STATE: VALIDATING -->
+    <div *ngIf="state() === 'VALIDATING'" class="state-panel">
+      <div class="spinner-wrapper">
+        <div class="spinner"></div>
+      </div>
+      <p class="state-primary-text">Validando código de acceso...</p>
+      <p class="state-secondary-text">Conectando con el lienzo y preparando tu sesión de trabajo</p>
+    </div>
+
+    <!-- STATE: SUCCESS -->
+    <div *ngIf="state() === 'SUCCESS'" class="state-panel success-panel">
+      <div class="success-icon-wrapper">
+        <sc-icon name="check_circle" [size]="48"></sc-icon>
+      </div>
+      <p class="state-primary-text">¡Acceso concedido!</p>
+      <p class="state-secondary-text">Cargando el modelo UML y diagram layout persistido...</p>
+    </div>
+
+    <!-- STATE: ERROR -->
+    <div *ngIf="state() === 'ERROR'" class="state-panel error-panel">
+      <div class="error-icon-wrapper">
+        <sc-icon name="error" [size]="48"></sc-icon>
+      </div>
+      <h2 class="error-title">No se pudo acceder al lienzo</h2>
+
+      <p class="error-detail">{{ errorMessage() }}</p>
+
+      <div class="retry-form">
+        <sc-input
+          inputId="manualAccessCode"
+          label="Código o ID de sala"
+          [(ngModel)]="manualCode"
+          placeholder="Ej: room-82a373da o 82a373da"
+          icon="key"
+          (keyup.enter)="retry()"
+        ></sc-input>
+
+        <div class="actions-group">
+          <sc-button
+            variant="outline"
+            icon="arrow_back"
+            (onClick)="goToDashboard()"
+          >
+            Volver al Dashboard
+          </sc-button>
+
+          <sc-button
+            variant="primary"
+            icon="login"
+            (onClick)="retry()"
+          >
+            Reintentar acceso
+          </sc-button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

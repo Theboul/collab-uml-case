@@ -61,8 +61,10 @@ export class DashboardComponent implements OnInit {
 
   isJoinModalOpen: boolean = false;
   isJoining: boolean = false;
+  joinError: string | null = null;
 
   isNewModalOpen: boolean = false;
+
   isCreating: boolean = false;
 
   constructor(
@@ -165,26 +167,25 @@ export class DashboardComponent implements OnInit {
   }
 
   openJoinModal(): void {
+    this.joinError = null;
     this.isJoinModalOpen = true;
   }
 
   joinProject(roomCode: string): void {
     this.isJoining = true;
+    this.joinError = null;
     this.dashboardService.joinProjectByRoomCode(roomCode).subscribe({
-      next: (project) => {
+      next: (res) => {
         this.isJoining = false;
         this.isJoinModalOpen = false;
-        if (project) {
-          this.router.navigate(['/diagram', project.roomName]);
-        } else {
-          // Si es un código libre o UUID válido, navega directo a la sala
-          this.router.navigate(['/diagram', roomCode]);
+        if (res?.roomName) {
+          this.router.navigate(['/diagram', res.roomName]);
         }
       },
-      error: () => {
+      error: (err) => {
         this.isJoining = false;
-        this.router.navigate(['/diagram', roomCode]);
-      }
+        this.joinError = err?.error?.message || 'Código de acceso inválido o el lienzo no existe.';
+      },
     });
   }
 

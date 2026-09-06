@@ -4,7 +4,7 @@ import { CanActivateFn, Router } from '@angular/router';
 import { catchError, map, of } from 'rxjs';
 import { AuthService } from './auth.service';
 
-export const authGuard: CanActivateFn = () => {
+export const authGuard: CanActivateFn = (_route, state) => {
   const platformId = inject(PLATFORM_ID);
   if (!isPlatformBrowser(platformId)) {
     return true;
@@ -21,7 +21,9 @@ export const authGuard: CanActivateFn = () => {
   return authService.refreshSession().pipe(
     map(() => true),
     catchError(() => {
-      router.navigate(['/login']);
+      router.navigate(['/login'], {
+        queryParams: state.url && state.url !== '/' ? { returnUrl: state.url } : {},
+      });
       return of(false);
     })
   );
