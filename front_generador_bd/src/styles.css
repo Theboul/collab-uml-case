@@ -1,1 +1,105 @@
 @import "tailwindcss";
+
+@theme {
+  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', Menlo, Monaco, Consolas, monospace;
+
+  /* Primary Brand Accent (Electric Indigo / Violet) */
+  --color-primary-50: #eef2ff;
+  --color-primary-100: #e0e7ff;
+  --color-primary-200: #c7d2fe;
+  --color-primary-300: #a5b4fc;
+  --color-primary-400: #818cf8;
+  --color-primary-500: #6366f1;
+  --color-primary-600: #4f46e5;
+  --color-primary-700: #4338ca;
+  --color-primary-800: #3730a3;
+  --color-primary-900: #312e81;
+  --color-primary: #6366f1;
+  --color-primary-hover: #4f46e5;
+
+  /* Secondary Accent (Cyan / Sky for Types & Queries) */
+  --color-secondary-400: #38bdf8;
+  --color-secondary-500: #0ea5e9;
+  --color-secondary-600: #0284c7;
+  --color-secondary: #0ea5e9;
+
+  /* Tertiary / Success Accent (Emerald for Sync / Validations) */
+  --color-tertiary-400: #34d399;
+  --color-tertiary-500: #10b981;
+  --color-tertiary-600: #059669;
+  --color-tertiary: #10b981;
+
+  /* Danger / Destructive (Rose) */
+  --color-danger-400: #fb7185;
+  --color-danger-500: #f43f5e;
+  --color-danger-600: #e11d48;
+  --color-danger: #f43f5e;
+
+  /* Warning Accent (Amber for Checks/Alerts) */
+  --color-warning-400: #fbbf24;
+  --color-warning-500: #f59e0b;
+  --color-warning: #f59e0b;
+
+  /* Surfaces & Elevation Hierarchy (Dev Dark Theme) */
+  --color-surface-lowest: #080c14;
+  --color-surface: #0d1322;
+  --color-surface-container-low: #121b2d;
+  --color-surface-container: #18233a;
+  --color-surface-container-high: #202e4c;
+  --color-surface-container-highest: #2b3d63;
+
+  /* Neutral scale (Slate) */
+  --color-neutral-50: #f8fafc;
+  --color-neutral-100: #f1f5f9;
+  --color-neutral-200: #e2e8f0;
+  --color-neutral-300: #cbd5e1;
+  --color-neutral-400: #94a3b8;
+  --color-neutral-500: #64748b;
+  --color-neutral-600: #475569;
+  --color-neutral-700: #334155;
+  --color-neutral-800: #1e293b;
+  --color-neutral-900: #0f172a;
+}
+
+/* Material Symbols Outlined Configuration */
+.material-symbols-outlined {
+  font-family: 'Material Symbols Outlined';
+  font-weight: normal;
+  font-style: normal;
+  font-size: 20px;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-feature-settings: 'liga';
+  -webkit-font-smoothing: antialiased;
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+}
+
+/* Subtle Modern Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.2);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.4);
+}
+
+/* Glassmorphism & Backdrop Utilities */
+.glass-panel {
+  background: rgba(18, 27, 45, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}

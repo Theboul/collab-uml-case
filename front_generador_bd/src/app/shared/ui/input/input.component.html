@@ -1,0 +1,58 @@
+<div class="w-full flex flex-col gap-1.5" [ngClass]="customClass">
+  <!-- Label Section -->
+  <div *ngIf="label" class="flex items-center justify-between">
+    <label
+      [for]="inputId"
+      class="text-xs font-medium text-neutral-300 select-none tracking-wide"
+    >
+      {{ label }}
+      <span *ngIf="required" class="text-danger-400 ml-0.5">*</span>
+    </label>
+    <span *ngIf="hint" class="text-[11px] text-neutral-500 font-mono">{{ hint }}</span>
+  </div>
+
+  <!-- Input Wrapper with Focus Rings -->
+  <div
+    class="relative flex items-center w-full rounded-lg bg-surface-container border transition-all duration-150 group"
+    [ngClass]="{
+      'border-neutral-700/80 hover:border-neutral-600 focus-within:border-primary-500 focus-within:ring-2 focus-within:ring-primary-500/20': !error,
+      'border-danger-500/80 focus-within:border-danger-500 focus-within:ring-2 focus-within:ring-danger-500/20': !!error,
+      'opacity-50 cursor-not-allowed pointer-events-none': disabled
+    }"
+  >
+    <!-- Leading Icon -->
+    <div *ngIf="icon" class="pl-3 pr-1 text-neutral-500 flex items-center pointer-events-none">
+      <sc-icon [name]="icon" [size]="18"></sc-icon>
+    </div>
+
+    <!-- HTML Input Element -->
+    <input
+      [id]="inputId"
+      [type]="actualType"
+      [placeholder]="placeholder"
+      [disabled]="disabled"
+      [value]="value"
+      (input)="onInputChange($event)"
+      (blur)="onBlur()"
+      class="w-full bg-transparent text-sm text-neutral-100 placeholder-neutral-500 px-3 py-2.5 focus:outline-none disabled:cursor-not-allowed font-sans"
+      [ngClass]="{ 'pl-1': !!icon, 'pr-9': type === 'password' }"
+    />
+
+    <!-- Password Reveal Toggle -->
+    <button
+      *ngIf="type === 'password'"
+      type="button"
+      (click)="togglePasswordVisibility()"
+      class="absolute right-2.5 text-neutral-500 hover:text-neutral-300 p-1 rounded transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-primary-400 cursor-pointer"
+      [attr.aria-label]="showPassword ? 'Ocultar contraseña' : 'Ver contraseña'"
+    >
+      <sc-icon [name]="showPassword ? 'visibility_off' : 'visibility'" [size]="18"></sc-icon>
+    </button>
+  </div>
+
+  <!-- Error / Helper message -->
+  <div *ngIf="error" class="flex items-center gap-1 text-xs text-danger-400 animate-fadeIn">
+    <sc-icon name="error" [size]="14"></sc-icon>
+    <span class="error-message">{{ error }}</span>
+  </div>
+</div>
