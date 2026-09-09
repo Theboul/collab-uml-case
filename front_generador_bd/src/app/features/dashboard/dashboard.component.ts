@@ -1,6 +1,7 @@
-import { ChangeDetectionStrategy, Component, OnInit } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnDestroy, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Router } from '@angular/router';
+import { NavigationEnd, Router } from '@angular/router';
+import { filter, Subscription } from 'rxjs';
 import { ScAppShellComponent } from '../../layout/app-shell/app-shell.component';
 import {
   DashboardMetrics,
@@ -42,7 +43,7 @@ import { AuthService } from '../../core/auth';
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.css',
 })
-export class DashboardComponent implements OnInit {
+export class DashboardComponent implements OnInit, OnDestroy {
   userName: string = 'Desarrollador';
 
   metrics: DashboardMetrics = {
@@ -67,6 +68,8 @@ export class DashboardComponent implements OnInit {
 
   isCreating: boolean = false;
 
+  private navSub?: Subscription;
+
   constructor(
     private dashboardService: DashboardService,
     private authService: AuthService,
@@ -75,6 +78,20 @@ export class DashboardComponent implements OnInit {
 
   ngOnInit(): void {
     this.loadUserData();
+    this.refreshDashboard();
+
+    this.navSub = this.router.events
+      .pipe(filter((event): event is NavigationEnd => event instanceof NavigationEnd))
+      .subscribe(() => {
+        this.refreshDashboard();
+      });
+  }
+
+  ngOnDestroy(): void {
+    this.navSub?.unsubscribe();
+  }
+
+  refreshDashboard(): void {
     this.loadMetrics();
     this.loadRecentProjects();
     this.loadAllProjects();

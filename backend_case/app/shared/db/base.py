@@ -5,6 +5,7 @@ Infraestructura de base de datos compartida para FastAPI (PostgreSQL / SQLite as
 import logging
 import os
 from collections.abc import AsyncGenerator
+from pathlib import Path
 
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
@@ -19,16 +20,23 @@ Base = declarative_base()
 def get_database_url() -> str:
     """
     Obtiene la URL de conexión a la base de datos desde DATABASE_URL o usa SQLite local por defecto.
+    Garantiza que rutas SQLite relativas se resuelvan siempre contra backend_case/ independientemente del CWD.
     """
+    base_dir = Path(__file__).resolve().parent.parent.parent.parent  # backend_case/
     url = os.getenv("DATABASE_URL")
     if url:
         if url.startswith("postgres://"):
             url = url.replace("postgres://", "postgresql+psycopg://", 1)
         elif url.startswith("postgresql://") and "+psycopg" not in url and "+asyncpg" not in url:
             url = url.replace("postgresql://", "postgresql+psycopg://", 1)
+        if url.startswith("sqlite+aiosqlite:///./"):
+            rel_name = url.replace("sqlite+aiosqlite:///./", "")
+            db_path = (base_dir / rel_name).resolve()
+            return f"sqlite+aiosqlite:///{db_path.as_posix()}"
         return url
 
-    return "sqlite+aiosqlite:///./shared_case.db"
+    default_db = (base_dir / "shared_case.db").resolve()
+    return f"sqlite+aiosqlite:///{default_db.as_posix()}"
 
 
 engine = create_async_engine(get_database_url(), echo=False)

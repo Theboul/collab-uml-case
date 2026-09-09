@@ -361,6 +361,7 @@ Ubicación: `docs/architecture/adr/`. Formato: Context / Decision / Alternatives
 
 - [ ] Trazable a un CU del documento de Captura de Requisitos
 - [ ] Implementación respeta la regla de dependencias (sección 1)
+- [ ] RULE-CODE-QUALITY: ningún archivo fuente supera 1000 líneas (`python scripts/check-file-size.py`) y archivos >= 800 líneas revisados/refactorizados
 - [ ] Tipos completos (Python/TS)
 - [ ] Lint limpio (Ruff / ESLint)
 - [ ] Type check limpio (Mypy / tsc strict)
@@ -379,3 +380,5 @@ Ubicación: `docs/architecture/adr/`. Formato: Context / Decision / Alternatives
 4. **Si una tarea requiere tocar `core/uml_domain`, se detiene y se pide confirmación explícita antes de modificar** — es la pieza más protegida del sistema.
 5. Todo código generado debe pasar lint + type check antes de considerarse entregado.
 6. **Toda salida generada por IA (Gemini/LLM) debe ser validada antes de tocar el dominio**: bajo ningún concepto se debe omitir la validación de esquema, referencias e integridad UML de lo propuesto por la IA.
+7. **RULE-CODE-QUALITY — Modularidad y Límite de Tamaño**: Ninguna nueva funcionalidad deberá añadirse a un archivo que ya exceda 800 líneas sin realizar previamente una evaluación de responsabilidad y modularización. Ningún archivo fuente podrá superar 1000 líneas. El límite de líneas no debe cumplirse mediante fragmentación artificial, sino mediante separación coherente de responsabilidades siguiendo la arquitectura del proyecto. Al finalizar cada implementación deben ejecutarse automáticamente el control de tamaño (`python scripts/check-file-size.py`), linter, pruebas y compilación. Una tarea con cualquiera de estas validaciones fallidas se considera incompleta.
+

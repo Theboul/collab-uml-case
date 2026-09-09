@@ -75,13 +75,14 @@ class PydanticToDomainMapper:
                 for p in op.parameters:
                     params.append(
                         UmlParameter(
-                            id=str(uuid.uuid4()),
+                            id=p.id if getattr(p, "id", None) else str(uuid.uuid4()),
                             name=p.name,
                             type=p.type,
                             direction=ParameterDirectionKind(p.direction),
                             default_value=p.defaultValue,
                         )
                     )
+
                 ops.append(
                     UmlOperation(
                         id=op.id,
@@ -219,6 +220,7 @@ class DomainToPydanticMapper:
                     isAbstract=op.is_abstract,
                     parameters=[
                         ParameterSchema(
+                            id=p.id,
                             name=p.name,
                             type=p.type,
                             direction=p.direction.value,
@@ -226,6 +228,7 @@ class DomainToPydanticMapper:
                         )
                         for p in op.parameters
                     ],
+
                 )
                 for op in c.operations
             ]

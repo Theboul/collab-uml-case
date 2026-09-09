@@ -7,11 +7,10 @@ from datetime import datetime, timezone
 from typing import ClassVar
 
 from sqlalchemy import JSON, Column, DateTime, ForeignKey, Integer, String, Text
-
 from sqlalchemy.orm import relationship
 
 from backend_case.app.shared.db.base import Base
-from backend_case.app.shared.security.models import UserORM  # noqa: F401
+from backend_case.app.shared.security.models import UserORM
 
 
 class CanvasORM(Base):

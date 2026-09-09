@@ -3,6 +3,7 @@ Esquemas Pydantic v2 exclusivos para frontera HTTP (Request / Response DTOs).
 Conformes estrictamente con contracts/uml-model.v2.json.
 """
 
+import uuid
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -18,10 +19,12 @@ class MultiplicitySchema(BaseModel):
 class ParameterSchema(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="ID persistente estable del parámetro")
     name: str
     type: str
     direction: Literal["in", "out", "inout", "return"] = "in"
     defaultValue: str | None = None
+
 
 
 class OperationSchema(BaseModel):

@@ -74,7 +74,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=status.HTTP_409_CONFLICT,
             content={
-                "code": "CONCURRENT_EDIT_CONFLICT",
+                "code": "VERSION_CONFLICT",
                 "message": str(exc),
                 "details": getattr(exc, "details", []),
             },

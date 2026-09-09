@@ -53,6 +53,7 @@ export class EditionService {
       zIndex: '1000',
       fontSize: '14px',
       background: '#fff',
+      color: '#0f172a',
       minWidth: `${Math.max(120, bbox.width - 20)}px`,
       resize: field === 'name' ? 'none' : 'none'
     } as CSSStyleDeclaration);
@@ -118,6 +119,7 @@ export class EditionService {
       zIndex: '1000',
       fontSize: '12px',
       background: '#fff',
+      color: '#0f172a',
       minWidth: '60px'
     } as CSSStyleDeclaration);
 

@@ -1,8 +1,9 @@
+import copy
 import uuid
 from datetime import datetime, timezone
 from typing import Any, NamedTuple
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend_case.app.application.mappers import (
@@ -10,7 +11,11 @@ from backend_case.app.application.mappers import (
     PydanticToDomainMapper,
 )
 from backend_case.app.schemas.uml import UmlModelSchema
-from core.uml_domain.exceptions import CanvasNoEncontrado
+from core.uml_domain.exceptions import (
+    CanvasNoEncontrado,
+    ConcurrentEditConflict,
+    UmlDomainError,
+)
 from core.uml_domain.model import Lienzo
 
 from .db_models import CanvasCollaboratorORM, CanvasORM
@@ -23,6 +28,31 @@ class CanvasResult(NamedTuple):
     room_name: str | None = None
     role: str = "ANFITRION"
 
+
+def _needs_parameter_normalization(semantic_model: dict[str, Any]) -> bool:
+    classes = semantic_model.get("classes", [])
+    for c in classes:
+        ops_list = list(c.get("methods", [])) + list(c.get("operations", []))
+        for op in ops_list:
+            parameters = op.get("parameters", [])
+            for p in parameters:
+                if not p.get("id"):
+                    return True
+    return False
+
+
+def _normalize_parameters_in_dict(semantic_model: dict[str, Any]) -> dict[str, Any]:
+    data = copy.deepcopy(semantic_model)
+    for c in data.get("classes", []):
+        for op in c.get("methods", []):
+            for p in op.get("parameters", []):
+                if not p.get("id"):
+                    p["id"] = str(uuid.uuid4())
+        for op in c.get("operations", []):
+            for p in op.get("parameters", []):
+                if not p.get("id"):
+                    p["id"] = str(uuid.uuid4())
+    return data
 
 
 class CanvasRepository:
@@ -87,9 +117,108 @@ class CanvasRepository:
             room_name=canvas_orm.room_name,
         )
 
+    async def guardar_atomico(
+        self,
+        canvas_id: str,
+        expected_version: int,
+        lienzo: Lienzo,
+    ) -> CanvasResult:
+        """
+        Actualiza un lienzo de forma atómica comprobando que su versión coincida con expected_version.
+        Si la versión difiere o no existe, lanza ConcurrentEditConflict o CanvasNoEncontrado.
+        """
+        model_schema = DomainToPydanticMapper.to_pydantic_schema(lienzo.modelo)
+        semantic_model_data = model_schema.model_dump(mode="json")
+
+        stmt = (
+            update(CanvasORM)
+            .where(CanvasORM.id == canvas_id, CanvasORM.version == expected_version)
+            .values(
+                name=lienzo.modelo.name,
+                description=lienzo.modelo.description,
+                version=CanvasORM.version + 1,
+                semantic_model=semantic_model_data,
+                visual_layout=lienzo.visual_layout,
+                updated_at=datetime.now(timezone.utc),
+            )
+            .returning(CanvasORM.version, CanvasORM.owner_id, CanvasORM.room_name)
+        )
+        result = await self.session.execute(stmt)
+        row = result.first()
+        if row is None:
+            check_stmt = select(CanvasORM.version).where(CanvasORM.id == canvas_id)
+            check_res = await self.session.execute(check_stmt)
+            existing_version = check_res.scalar_one_or_none()
+            if existing_version is None:
+                raise CanvasNoEncontrado(f"Lienzo con ID '{canvas_id}' no encontrado.")
+            else:
+                raise ConcurrentEditConflict(
+                    f"Conflicto de versión al actualizar lienzo '{canvas_id}'. "
+                    f"Versión esperada: {expected_version}, versión actual en base de datos: {existing_version}."
+                )
+
+        new_version, owner_id, room_name = row
+        await self.session.flush()
+        return CanvasResult(
+            lienzo=lienzo,
+            version=new_version,
+            owner_id=owner_id,
+            room_name=room_name,
+        )
+
+    async def _asegurar_normalizacion_parametros(self, canvas_orm: CanvasORM) -> CanvasORM:
+        if not isinstance(canvas_orm.semantic_model, dict):
+            return canvas_orm
+        if not _needs_parameter_normalization(canvas_orm.semantic_model):
+            return canvas_orm
+
+        canvas_id = canvas_orm.id
+        max_retries = 3
+        for _ in range(max_retries):
+            normalized_data = _normalize_parameters_in_dict(canvas_orm.semantic_model)
+            current_version = canvas_orm.version
+            stmt_cas = (
+                update(CanvasORM)
+                .where(CanvasORM.id == canvas_id, CanvasORM.version == current_version)
+                .values(
+                    semantic_model=normalized_data,
+                    version=CanvasORM.version + 1,
+                    updated_at=datetime.now(timezone.utc),
+                )
+                .returning(CanvasORM.version)
+            )
+            cas_res = await self.session.execute(stmt_cas)
+            if cas_res.first() is not None:
+                await self.session.commit()
+                stmt_reload = select(CanvasORM).where(CanvasORM.id == canvas_id)
+                reload_res = await self.session.execute(stmt_reload)
+                return reload_res.scalar_one()
+            else:
+                await self.session.rollback()
+                stmt_reload = select(CanvasORM).where(CanvasORM.id == canvas_id)
+                reload_res = await self.session.execute(stmt_reload)
+                canvas_orm = reload_res.scalar_one_or_none()
+                if canvas_orm is None:
+                    raise CanvasNoEncontrado(f"Lienzo con ID '{canvas_id}' no encontrado.")
+                if not _needs_parameter_normalization(canvas_orm.semantic_model):
+                    return canvas_orm
+
+        # Agotados los 3 intentos:
+        stmt_reload = select(CanvasORM).where(CanvasORM.id == canvas_id)
+        reload_res = await self.session.execute(stmt_reload)
+        canvas_orm = reload_res.scalar_one_or_none()
+        if canvas_orm is None:
+            raise CanvasNoEncontrado(f"Lienzo con ID '{canvas_id}' no encontrado.")
+        if _needs_parameter_normalization(canvas_orm.semantic_model):
+            raise UmlDomainError(
+                "No se pudo normalizar los identificadores de parámetros históricos tras varios intentos por contención concurrente. Por favor, intente nuevamente."
+            )
+        return canvas_orm
+
     async def obtener(self, canvas_id: str) -> CanvasResult:
         """
         Recupera un Lienzo, su versión, anfitrión y sala por su ID o lanza CanvasNoEncontrado.
+        Normaliza preventivamente parámetros históricos sin ID si existen.
         """
         stmt = select(CanvasORM).where(CanvasORM.id == canvas_id)
         result = await self.session.execute(stmt)
@@ -97,6 +226,8 @@ class CanvasRepository:
 
         if canvas_orm is None:
             raise CanvasNoEncontrado(f"Lienzo con ID '{canvas_id}' no encontrado.")
+
+        canvas_orm = await self._asegurar_normalizacion_parametros(canvas_orm)
 
         schema = UmlModelSchema.model_validate(canvas_orm.semantic_model)
         domain_model = PydanticToDomainMapper.to_domain_model(schema)
@@ -123,6 +254,8 @@ class CanvasRepository:
 
         if canvas_orm is None:
             raise CanvasNoEncontrado(f"Lienzo con sala '{room_name}' no encontrado.")
+
+        canvas_orm = await self._asegurar_normalizacion_parametros(canvas_orm)
 
         schema = UmlModelSchema.model_validate(canvas_orm.semantic_model)
         domain_model = PydanticToDomainMapper.to_domain_model(schema)

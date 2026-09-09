@@ -114,6 +114,7 @@ class CommandResponse(BaseModel):
     version: int
     operationId: str | None = None
     canvas: CanvasDetailSchema | None = None
+    undoPayload: dict[str, Any] | None = None
 
 
 def _to_detail_schema(
@@ -229,7 +230,7 @@ async def execute_editor_command(
     """
     Ejecuta un comando del editor sobre el lienzo con control de versión optimista.
     """
-    res = await service.ejecutar_comando(
+    res, undo_payload = await service.ejecutar_comando(
         canvas_id=canvas_id,
         operation_id=command.operationId,
         expected_version=command.expectedVersion,
@@ -241,6 +242,7 @@ async def execute_editor_command(
         version=res.version,
         operationId=command.operationId,
         canvas=_to_detail_schema(res.lienzo, res.version, res.owner_id, res.room_name),
+        undoPayload=undo_payload,
     )
 
 

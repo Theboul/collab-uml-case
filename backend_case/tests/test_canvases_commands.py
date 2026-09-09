@@ -175,3 +175,188 @@ def test_execute_commands_lifecycle_and_versioning(client: TestClient):
     assert len(model["classes"]) == 1
     assert model["classes"][0]["id"] == pedido_id
     assert len(model["associations"]) == 0
+
+
+def test_create_generalization_relation_command(client: TestClient):
+    """CU4: Verificar que CREATE_RELATION con type GENERALIZATION crea una generalización en el modelo."""
+    res = client.post("/api/v2/canvases", json={"name": "Lienzo Herencia"})
+    assert res.status_code == 201
+    canvas_id = res.json()["id"]
+
+    # Crear superclase y subclase
+    cmd1 = client.post(
+        f"/api/v2/canvases/{canvas_id}/commands",
+        json={
+            "expectedVersion": 1,
+            "type": "CREATE_CLASS",
+            "payload": {"name": "Persona", "x": 100, "y": 100},
+        },
+    )
+    persona_id = cmd1.json()["canvas"]["model"]["classes"][0]["id"]
+
+    cmd2 = client.post(
+        f"/api/v2/canvases/{canvas_id}/commands",
+        json={
+            "expectedVersion": 2,
+            "type": "CREATE_CLASS",
+            "payload": {"name": "Empleado", "x": 100, "y": 300},
+        },
+    )
+    empleado_id = cmd2.json()["canvas"]["model"]["classes"][1]["id"]
+
+    # Crear generalización Empleado -> Persona
+    gen_cmd = client.post(
+        f"/api/v2/canvases/{canvas_id}/commands",
+        json={
+            "expectedVersion": 3,
+            "type": "CREATE_RELATION",
+            "payload": {
+                "sourceClassId": empleado_id,
+                "targetClassId": persona_id,
+                "type": "GENERALIZATION",
+            },
+        },
+    )
+    assert gen_cmd.status_code == 200
+    data = gen_cmd.json()
+    assert data["accepted"] is True
+    assert data["version"] == 4
+    generalizations = data["canvas"]["model"]["generalizations"]
+    assert len(generalizations) == 1
+    assert generalizations[0]["specificClassId"] == empleado_id
+    assert generalizations[0]["generalClassId"] == persona_id
+
+
+def test_update_relation_layout_persists_manual_port_override(client: TestClient):
+    """
+    Verifica que UPDATE_RELATION_LAYOUT guarda el puerto elegido manualmente en
+    visualLayout.links, sin tocar el modelo de dominio (associations/generalizations
+    quedan intactos), y que ese valor persiste en una recarga posterior del lienzo.
+    """
+    res = client.post("/api/v2/canvases", json={"name": "Lienzo Reconexion"})
+    canvas_id = res.json()["id"]
+
+    client.post(
+        f"/api/v2/canvases/{canvas_id}/commands",
+        json={
+            "expectedVersion": 1,
+            "type": "CREATE_CLASS",
+            "payload": {"classId": "c-a", "name": "ClaseA"},
+        },
+    )
+    client.post(
+        f"/api/v2/canvases/{canvas_id}/commands",
+        json={
+            "expectedVersion": 2,
+            "type": "CREATE_CLASS",
+            "payload": {"classId": "c-b", "name": "ClaseB"},
+        },
+    )
+    client.post(
+        f"/api/v2/canvases/{canvas_id}/commands",
+        json={
+            "expectedVersion": 3,
+            "type": "CREATE_RELATION",
+            "payload": {
+                "relationId": "rel-a-b",
+                "sourceClassId": "c-a",
+                "targetClassId": "c-b",
+                "type": "ASSOCIATION",
+            },
+        },
+    )
+
+    layout_res = client.post(
+        f"/api/v2/canvases/{canvas_id}/commands",
+        json={
+            "expectedVersion": 4,
+            "type": "UPDATE_RELATION_LAYOUT",
+            "payload": {
+                "relationId": "rel-a-b",
+                "sourcePort": "port-bottom-2",
+                "targetPort": "port-bottom-0",
+            },
+        },
+    )
+    assert layout_res.status_code == 200
+    data = layout_res.json()
+    links = data["canvas"]["visualLayout"]["links"]
+    assert links["rel-a-b"]["sourcePort"] == "port-bottom-2"
+    assert links["rel-a-b"]["targetPort"] == "port-bottom-0"
+    # No debe alterar el modelo de dominio, solo el layout visual.
+    assert len(data["canvas"]["model"]["associations"]) == 1
+
+    reloaded = client.get(f"/api/v2/canvases/{canvas_id}")
+    assert reloaded.status_code == 200
+    reloaded_links = reloaded.json()["visualLayout"]["links"]
+    assert reloaded_links["rel-a-b"]["sourcePort"] == "port-bottom-2"
+    assert reloaded_links["rel-a-b"]["targetPort"] == "port-bottom-0"
+
+
+def test_update_relation_vertices_persists_manual_path(client: TestClient):
+    """
+    Verifica que UPDATE_RELATION_VERTICES guarda los vértices intermedios arrastrados a mano
+    en visualLayout.links, sin tocar el modelo de dominio.
+    """
+    res = client.post("/api/v2/canvases", json={"name": "Lienzo Vertices"})
+    canvas_id = res.json()["id"]
+
+    client.post(
+        f"/api/v2/canvases/{canvas_id}/commands",
+        json={
+            "expectedVersion": 1,
+            "type": "CREATE_CLASS",
+            "payload": {"classId": "c-a", "name": "ClaseA"},
+        },
+    )
+    client.post(
+        f"/api/v2/canvases/{canvas_id}/commands",
+        json={
+            "expectedVersion": 2,
+            "type": "CREATE_CLASS",
+            "payload": {"classId": "c-b", "name": "ClaseB"},
+        },
+    )
+    client.post(
+        f"/api/v2/canvases/{canvas_id}/commands",
+        json={
+            "expectedVersion": 3,
+            "type": "CREATE_RELATION",
+            "payload": {
+                "relationId": "rel-a-b",
+                "sourceClassId": "c-a",
+                "targetClassId": "c-b",
+                "type": "ASSOCIATION",
+            },
+        },
+    )
+
+    vertices_res = client.post(
+        f"/api/v2/canvases/{canvas_id}/commands",
+        json={
+            "expectedVersion": 4,
+            "type": "UPDATE_RELATION_VERTICES",
+            "payload": {
+                "relationId": "rel-a-b",
+                "vertices": [{"x": 120.0, "y": 340.0}, {"x": 200.0, "y": 340.0}],
+            },
+        },
+    )
+    assert vertices_res.status_code == 200
+    data = vertices_res.json()
+    links = data["canvas"]["visualLayout"]["links"]
+    assert links["rel-a-b"]["vertices"] == [
+        {"x": 120.0, "y": 340.0},
+        {"x": 200.0, "y": 340.0},
+    ]
+    # No debe alterar el modelo de dominio, solo el layout visual.
+    assert len(data["canvas"]["model"]["associations"]) == 1
+
+    reloaded = client.get(f"/api/v2/canvases/{canvas_id}")
+    assert reloaded.status_code == 200
+    reloaded_links = reloaded.json()["visualLayout"]["links"]
+    assert reloaded_links["rel-a-b"]["vertices"] == [
+        {"x": 120.0, "y": 340.0},
+        {"x": 200.0, "y": 340.0},
+    ]
+

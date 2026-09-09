@@ -17,6 +17,14 @@ export type UmlMultiplicity = '1' | '0..1' | '*' | '0..*' | '1..*';
 
 export type VisibilityKind = '+' | '-' | '#' | '~';
 
+export interface UmlParameter {
+  id: string;
+  name: string;
+  type: string;
+  direction?: 'in' | 'out' | 'inout' | 'return';
+  defaultValue?: string;
+}
+
 export interface UmlAttribute {
   id: string;
   name: string;
@@ -30,7 +38,8 @@ export interface UmlOperation {
   name: string;
   returnType: string;
   visibility: VisibilityKind;
-  parameters?: string;
+  parameters?: UmlParameter[] | string;
+  isStatic?: boolean;
   isAbstract?: boolean;
 }
 
@@ -73,7 +82,14 @@ export interface DiagramLayout {
     panY: number;
   };
   nodes: Record<string, NodeLayout>;
-  links: Record<string, { vertices?: Array<{ x: number; y: number }> }>;
+  links: Record<
+    string,
+    {
+      vertices?: Array<{ x: number; y: number }>;
+      sourcePort?: string;
+      targetPort?: string;
+    }
+  >;
 }
 
 export interface LienzoDetailDto {
@@ -101,5 +117,37 @@ export interface CommandResponseDto {
   version: number;
   operationId?: string;
   canvas?: LienzoDetailDto;
+  undoPayload?: any;
 }
+
+export const UML_NODE_DIMENSIONS = {
+  HEADER_HEIGHT: 32,
+  TITLE_Y: 16,
+  ATTR_START_Y: 42,
+  LINE_HEIGHT: 16,
+  SEP_PADDING: 10,
+  BOTTOM_PADDING: 12,
+  MIN_WIDTH: 180,
+  MIN_HEIGHT: 110,
+} as const;
+
+export interface SubElementSelection {
+  type: 'attribute' | 'operation';
+  classId: string;
+  elementId: string;
+}
+
+export interface UmlNodeSubElementEvent {
+  classId: string;
+  type: 'class' | 'attribute' | 'operation';
+  elementId?: string;
+  name?: string;
+  typeOrReturn?: string;
+  visibility?: string;
+  itemRelY: number;
+  nodeBBox: { x: number; y: number; width: number; height: number };
+  clientX: number;
+  clientY: number;
+}
+
 

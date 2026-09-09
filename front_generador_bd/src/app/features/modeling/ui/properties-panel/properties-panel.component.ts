@@ -2,7 +2,7 @@ import { Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { UmlEditorFacade } from '../../application/uml-editor.facade';
-import { UmlAttribute, UmlOperation } from '../../domain/models/uml-editor.models';
+import { UmlAttribute, UmlClassDto, UmlOperation, UmlParameter } from '../../domain/models/uml-editor.models';
 import { ScButtonComponent } from '../../../../shared/ui/button/button.component';
 import { ScIconComponent } from '../../../../shared/ui/icon/icon.component';
 
@@ -20,61 +20,88 @@ export class PropertiesPanelComponent {
     this.facade.selectedNodes.set([]);
   }
 
-  onNameChange(classId: string, newName: string): void {
-    if (!newName.trim()) return;
-    this.facade.updateClassDetails(classId, { name: newName });
+  commitClassName(cls: UmlClassDto, value: string): void {
+    const trimmed = value.trim();
+    if (!trimmed || trimmed === cls.name) return;
+    this.facade.updateClassName(cls.id, trimmed);
   }
 
-  onAbstractToggle(classId: string, event: Event): void {
-    const cb = event.target as HTMLInputElement;
-    this.facade.updateClassDetails(classId, { isAbstract: cb.checked });
+  commitClassAbstract(cls: UmlClassDto, checked: boolean): void {
+    if (checked === cls.isAbstract) return;
+    this.facade.updateClassAbstract(cls.id, checked);
   }
 
-  addAttribute(cls: any): void {
-    const newAttr: UmlAttribute = {
-      id: crypto.randomUUID(),
-      name: `attr${cls.attributes.length + 1}`,
-      type: 'String',
-      visibility: '-',
-    };
-    this.facade.updateClassDetails(cls.id, {
-      attributes: [...cls.attributes, newAttr],
-    });
+  addAttribute(cls: UmlClassDto): void {
+    this.facade.addAttribute(cls.id);
   }
 
-  updateAttr(cls: any, attrId: string, updates: Partial<UmlAttribute>): void {
-    const updated = cls.attributes.map((a: UmlAttribute) =>
-      a.id === attrId ? { ...a, ...updates } : a
-    );
-    this.facade.updateClassDetails(cls.id, { attributes: updated });
+  commitAttrName(cls: UmlClassDto, attr: UmlAttribute, value: string): void {
+    const trimmed = value.trim();
+    if (!trimmed || trimmed === attr.name) return;
+    this.facade.updateAttribute(cls.id, attr.id, { name: trimmed });
   }
 
-  removeAttribute(cls: any, attrId: string): void {
-    const updated = cls.attributes.filter((a: UmlAttribute) => a.id !== attrId);
-    this.facade.updateClassDetails(cls.id, { attributes: updated });
+  commitAttrType(cls: UmlClassDto, attr: UmlAttribute, value: string): void {
+    const trimmed = value.trim();
+    if (!trimmed || trimmed === attr.type) return;
+    this.facade.updateAttribute(cls.id, attr.id, { type: trimmed });
   }
 
-  addOperation(cls: any): void {
-    const newOp: UmlOperation = {
-      id: crypto.randomUUID(),
-      name: `metodo${cls.operations.length + 1}`,
-      returnType: 'void',
-      visibility: '+',
-    };
-    this.facade.updateClassDetails(cls.id, {
-      operations: [...cls.operations, newOp],
-    });
+  commitAttrVisibility(cls: UmlClassDto, attr: UmlAttribute, value: string): void {
+    if (!value || value === attr.visibility) return;
+    this.facade.updateAttribute(cls.id, attr.id, { visibility: value as UmlAttribute['visibility'] });
   }
 
-  updateOp(cls: any, opId: string, updates: Partial<UmlOperation>): void {
-    const updated = cls.operations.map((o: UmlOperation) =>
-      o.id === opId ? { ...o, ...updates } : o
-    );
-    this.facade.updateClassDetails(cls.id, { operations: updated });
+  removeAttribute(cls: UmlClassDto, attrId: string): void {
+    this.facade.deleteAttribute(cls.id, attrId);
   }
 
-  removeOperation(cls: any, opId: string): void {
-    const updated = cls.operations.filter((o: UmlOperation) => o.id !== opId);
-    this.facade.updateClassDetails(cls.id, { operations: updated });
+  addOperation(cls: UmlClassDto): void {
+    this.facade.addOperation(cls.id);
+  }
+
+  commitOpName(cls: UmlClassDto, op: UmlOperation, value: string): void {
+    const trimmed = value.trim();
+    if (!trimmed || trimmed === op.name) return;
+    this.facade.updateOperation(cls.id, op.id, { name: trimmed });
+  }
+
+  commitOpReturnType(cls: UmlClassDto, op: UmlOperation, value: string): void {
+    const trimmed = value.trim();
+    if (!trimmed || trimmed === op.returnType) return;
+    this.facade.updateOperation(cls.id, op.id, { returnType: trimmed });
+  }
+
+  commitOpVisibility(cls: UmlClassDto, op: UmlOperation, value: string): void {
+    if (!value || value === op.visibility) return;
+    this.facade.updateOperation(cls.id, op.id, { visibility: value as UmlOperation['visibility'] });
+  }
+
+  removeOperation(cls: UmlClassDto, opId: string): void {
+    this.facade.deleteOperation(cls.id, opId);
+  }
+
+  addParameter(cls: UmlClassDto, op: UmlOperation): void {
+    this.facade.addParameter(cls.id, op.id);
+  }
+
+  commitParamName(cls: UmlClassDto, op: UmlOperation, param: UmlParameter, value: string): void {
+    const trimmed = value.trim();
+    if (!trimmed || trimmed === param.name) return;
+    this.facade.updateParameter(cls.id, op.id, param.id, { name: trimmed });
+  }
+
+  commitParamType(cls: UmlClassDto, op: UmlOperation, param: UmlParameter, value: string): void {
+    const trimmed = value.trim();
+    if (!trimmed || trimmed === param.type) return;
+    this.facade.updateParameter(cls.id, op.id, param.id, { type: trimmed });
+  }
+
+  removeParameter(cls: UmlClassDto, op: UmlOperation, paramId: string): void {
+    this.facade.deleteParameter(cls.id, op.id, paramId);
+  }
+
+  asArray(params: UmlParameter[] | string | undefined): UmlParameter[] {
+    return Array.isArray(params) ? params : [];
   }
 }

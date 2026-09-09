@@ -120,10 +120,30 @@ Para dar por terminada cualquier tarea:
    - Prueba de integración si interactúa con adaptadores (PostgreSQL, Redis, Gemini).
    - Si toca `assistant` (CU6/CU7): prueba donde la salida de la IA es inválida y se confirma que no muta el modelo.
    - Prueba de API/contrato HTTP si expone un endpoint nuevo.
-6. [ ] **Ejecución de regresión**: Ejecutar suite completa de pruebas:
+6. [ ] **Validación de Tamaño y Modularidad (RULE-CODE-QUALITY)**:
+   - Ningún archivo fuente supera 1000 líneas.
+   - Archivos >= 800 líneas revisados o refactorizados preventivamente.
+   - Ejecutar: `python scripts/check-file-size.py`.
+7. [ ] **Ejecución de regresión**: Ejecutar suite completa de pruebas:
    ```bash
    python -m pytest
    node --test tests/frontend/test_legacy_frontend_export.mjs
    ```
-7. [ ] **Documentación**: Docstring explicativo en código y actualización de la matriz de trazabilidad en `docs/traceability/matriz.md`.
+8. [ ] **Documentación**: Docstring explicativo en código y actualización de la matriz de trazabilidad en `docs/traceability/matriz.md`.
+
+---
+
+## 7. RULE-CODE-QUALITY — Modularidad y Límites de Tamaño
+
+* **Límite Absoluto**: 1000 líneas por archivo fuente. Fallo bloqueante.
+* **Límite Preventivo**: 800 líneas por archivo fuente. Refactor obligatorio antes de agregar nueva funcionalidad.
+* **Funciones**: <= 30 líneas ideal, > 60 líneas revisar, > 100 líneas refactor obligatorio.
+* **Prohibición de God Objects**: Descomponer fachadas y servicios masivos en servicios especializados cohesivos.
+* **Cero Duplicación**: Reutilizar mappers, constantes, validadores y contratos existentes.
+* **Pipeline de Validación Obligatorio**:
+  1. `python scripts/check-file-size.py`
+  2. Linter (`ruff` / `eslint`)
+  3. Tests (`pytest`)
+  4. Build (`npm run build`)
+
 

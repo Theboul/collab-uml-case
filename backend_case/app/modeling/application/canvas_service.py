@@ -1,8 +1,10 @@
-import uuid
 from typing import Any
 
 from fastapi import HTTPException, status
 
+from backend_case.app.modeling.application.commands.dispatcher import (
+    CommandDispatcher,
+)
 from backend_case.app.modeling.infrastructure.canvas_repository import (
     CanvasRepository,
     CanvasResult,
@@ -15,7 +17,6 @@ from core.uml_domain.model import (
     MultiplicityRange,
     UmlAssociation,
     UmlClass,
-    UmlGeneralization,
 )
 
 
@@ -26,6 +27,7 @@ class CanvasService:
 
     def __init__(self, repository: CanvasRepository) -> None:
         self.repository = repository
+        self.command_dispatcher = CommandDispatcher()
 
     async def crear_lienzo(
         self,
@@ -192,182 +194,30 @@ class CanvasService:
         expected_version: int,
         cmd_type: str,
         payload: dict[str, Any],
-    ) -> CanvasResult:
+    ) -> tuple[CanvasResult, dict[str, Any] | None]:
         """
-        Ejecuta un comando del editor sobre el lienzo con validación de versión optimista.
+        Ejecuta un comando del editor sobre el lienzo delegándolo al despachador modular
+        y persistiendo el cambio de manera atómica con verificación optimista de versión.
         """
         res = await self.repository.obtener(canvas_id)
-        if expected_version != res.version:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail={
-                    "code": "VERSION_CONFLICT",
-                    "message": f"Versión esperada {expected_version} no coincide con la versión actual {res.version}.",
-                    "details": [{"expectedVersion": expected_version, "currentVersion": res.version}],
-                },
-            )
-
-        lienzo = res.lienzo
-        if not isinstance(lienzo.visual_layout, dict):
-            lienzo.visual_layout = {
+        if not isinstance(res.lienzo.visual_layout, dict):
+            res.lienzo.visual_layout = {
                 "viewport": {"zoom": 1.0, "panX": 0.0, "panY": 0.0},
                 "nodes": {},
                 "links": {},
             }
 
-        nodes = lienzo.visual_layout.setdefault("nodes", {})
-        links = lienzo.visual_layout.setdefault("links", {})
-        cmd_upper = cmd_type.upper()
+        # Despachar comando semántico al handler correspondiente
+        _, undo_payload = self.command_dispatcher.dispatch(res.lienzo, cmd_type, payload)
 
-        if cmd_upper in ("CREATE_CLASS", "ADD_CLASS"):
-            class_id = payload.get("classId") or payload.get("id")
-            name = payload.get("name", "NuevaClase")
-            is_abstract = bool(payload.get("isAbstract", False))
-            clase, _ = lienzo.modelo.agregar_clase(nombre=name, is_abstract=is_abstract)
-            if class_id:
-                clase.id = str(class_id)
-            nodes[clase.id] = {
-                "x": float(payload.get("x", 100)),
-                "y": float(payload.get("y", 100)),
-                "width": float(payload.get("width", 180)),
-                "height": float(payload.get("height", 120)),
-            }
+        # Persistir de forma atómica validando que la versión siga siendo expected_version
+        saved_result = await self.repository.guardar_atomico(
+            canvas_id=canvas_id,
+            expected_version=expected_version,
+            lienzo=res.lienzo,
+        )
 
-        elif cmd_upper in ("MOVE_ELEMENT", "MOVE_CLASS"):
-            elem_id = payload.get("elementId") or payload.get("id")
-            if elem_id and str(elem_id) in nodes:
-                node = nodes[str(elem_id)]
-                node["x"] = float(payload.get("x", node.get("x", 0)))
-                node["y"] = float(payload.get("y", node.get("y", 0)))
-            elif elem_id:
-                nodes[str(elem_id)] = {
-                    "x": float(payload.get("x", 0)),
-                    "y": float(payload.get("y", 0)),
-                    "width": 180.0,
-                    "height": 120.0,
-                }
-
-        elif cmd_upper in ("RESIZE_ELEMENT", "RESIZE_CLASS"):
-            elem_id = payload.get("elementId") or payload.get("id")
-            if elem_id and str(elem_id) in nodes:
-                node = nodes[str(elem_id)]
-                node["width"] = max(140.0, float(payload.get("width", node.get("width", 180))))
-                node["height"] = max(80.0, float(payload.get("height", node.get("height", 120))))
-                if "x" in payload:
-                    node["x"] = float(payload["x"])
-                if "y" in payload:
-                    node["y"] = float(payload["y"])
-
-        elif cmd_upper in ("CREATE_RELATION", "ADD_RELATION", "ADD_ASSOCIATION"):
-            rel_id = payload.get("relationId") or payload.get("id")
-            source_id = str(payload.get("sourceClassId") or payload.get("sourceId"))
-            target_id = str(payload.get("targetClassId") or payload.get("targetId"))
-            rel_type = (payload.get("type") or "ASSOCIATION").upper()
-            name = payload.get("name")
-            source_role = payload.get("sourceRole")
-            target_role = payload.get("targetRole")
-            source_mult = payload.get("sourceMultiplicity", "1")
-            target_mult = payload.get("targetMultiplicity", "1")
-
-            if rel_type == "GENERALIZATION":
-                gen = UmlGeneralization(
-                    id=str(rel_id) if rel_id else str(uuid.uuid4()),
-                    specific_classifier_id=source_id,
-                    general_classifier_id=target_id,
-                )
-                lienzo.modelo.generalizations.append(gen)
-            else:
-                agg_source = AggregationKind.NONE
-                agg_target = AggregationKind.NONE
-                if rel_type == "AGGREGATION":
-                    agg_source = AggregationKind.SHARED
-                elif rel_type == "COMPOSITION":
-                    agg_source = AggregationKind.COMPOSITE
-
-                m_orig = LegacyMultiplicityParser.parse(source_mult) if source_mult else MultiplicityRange(1, 1)
-                m_dest = LegacyMultiplicityParser.parse(target_mult) if target_mult else MultiplicityRange(1, 1)
-
-                asoc, _ = lienzo.modelo.agregar_asociacion(
-                    origen_id=source_id,
-                    destino_id=target_id,
-                    nombre=name,
-                    rol_origen=source_role,
-                    rol_destino=target_role,
-                    multiplicidad_origen=m_orig,
-                    multiplicidad_destino=m_dest,
-                    agregacion_origen=agg_source,
-                    agregacion_destino=agg_target,
-                )
-                if rel_id:
-                    asoc.id = str(rel_id)
-
-        elif cmd_upper in ("UPDATE_RELATION", "EDIT_RELATION"):
-            rel_id = str(payload.get("relationId") or payload.get("id"))
-            new_type = payload.get("type")
-            source_mult = payload.get("sourceMultiplicity")
-            target_mult = payload.get("targetMultiplicity")
-
-            asoc = next((a for a in lienzo.modelo.associations if a.id == rel_id), None)
-            if asoc and len(asoc.member_ends) >= 2:
-                end1, end2 = asoc.member_ends[0], asoc.member_ends[1]
-                if new_type:
-                    u_type = new_type.upper()
-                    if u_type == "AGGREGATION":
-                        end1.aggregation_kind = AggregationKind.SHARED
-                        end2.aggregation_kind = AggregationKind.NONE
-                    elif u_type == "COMPOSITION":
-                        end1.aggregation_kind = AggregationKind.COMPOSITE
-                        end2.aggregation_kind = AggregationKind.NONE
-                    elif u_type == "ASSOCIATION":
-                        end1.aggregation_kind = AggregationKind.NONE
-                        end2.aggregation_kind = AggregationKind.NONE
-                if source_mult is not None:
-                    end1.multiplicity = LegacyMultiplicityParser.parse(source_mult)
-                if target_mult is not None:
-                    end2.multiplicity = LegacyMultiplicityParser.parse(target_mult)
-                if "sourceRole" in payload:
-                    end1.role_name = payload["sourceRole"]
-                if "targetRole" in payload:
-                    end2.role_name = payload["targetRole"]
-                if "name" in payload:
-                    asoc.name = payload["name"]
-
-        elif cmd_upper == "UPDATE_MULTIPLICITY":
-            rel_id = str(payload.get("relationId") or payload.get("id"))
-            asoc = next((a for a in lienzo.modelo.associations if a.id == rel_id), None)
-            if asoc and len(asoc.member_ends) >= 2:
-                if src_m := payload.get("sourceMultiplicity"):
-                    asoc.member_ends[0].multiplicity = LegacyMultiplicityParser.parse(src_m)
-                if tgt_m := payload.get("targetMultiplicity"):
-                    asoc.member_ends[1].multiplicity = LegacyMultiplicityParser.parse(tgt_m)
-
-        elif cmd_upper in ("DELETE_ELEMENT", "DELETE_CLASS"):
-            elem_id = str(payload.get("elementId") or payload.get("id"))
-            lienzo.modelo.classes = [c for c in lienzo.modelo.classes if c.id != elem_id]
-            lienzo.modelo.associations = [
-                a for a in lienzo.modelo.associations
-                if not any(end.class_id == elem_id for end in a.member_ends)
-            ]
-            lienzo.modelo.generalizations = [
-                g for g in lienzo.modelo.generalizations
-                if g.specific_classifier_id != elem_id and g.general_classifier_id != elem_id
-            ]
-            nodes.pop(elem_id, None)
-
-        elif cmd_upper in ("DELETE_RELATION", "DELETE_ASSOCIATION"):
-            rel_id = str(payload.get("relationId") or payload.get("id"))
-            lienzo.modelo.associations = [a for a in lienzo.modelo.associations if a.id != rel_id]
-            lienzo.modelo.generalizations = [g for g in lienzo.modelo.generalizations if g.id != rel_id]
-            links.pop(rel_id, None)
-
-        elif cmd_upper == "UPDATE_VIEWPORT":
-            lienzo.visual_layout["viewport"] = {
-                "zoom": float(payload.get("zoom", 1.0)),
-                "panX": float(payload.get("panX", 0.0)),
-                "panY": float(payload.get("panY", 0.0)),
-            }
-
-        return await self.repository.guardar(lienzo)
+        return saved_result, undo_payload
 
     async def listar_lienzos(self) -> list[dict[str, Any]]:
         """

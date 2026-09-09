@@ -20,7 +20,7 @@ describe('UmlDiagramAdapterService', () => {
     expect(service).toBeTruthy();
   });
 
-  it('should translate ModeloUML classes to X6 nodes with 4 ports', () => {
+  it('should translate ModeloUML classes to X6 nodes with 16 ports (4 per side)', () => {
     const model: ModeloUML = {
       classes: [
         {
@@ -53,7 +53,7 @@ describe('UmlDiagramAdapterService', () => {
     expect(nodes[0].width).toBe(200);
     expect(nodes[0].height).toBe(140);
     expect(nodes[0].data.name).toBe('Cliente');
-    expect(nodes[0].ports.items.length).toBe(4);
+    expect(nodes[0].ports.items.length).toBe(16);
   });
 
   it('should configure markers correctly based on relation type', () => {

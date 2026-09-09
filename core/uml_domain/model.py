@@ -17,6 +17,8 @@ from core.uml_domain.events import (
     ElementoAgregado,
     LienzoCreado,
     RelacionAgregada,
+    RelacionModificada,
+    RelacionEliminada,
     ElementoEliminado,
 )
 from core.uml_domain.exceptions import (
@@ -354,6 +356,73 @@ class UmlDomainModel:
         )
         self.associations.append(asociacion)
         return asociacion, RelacionAgregada(relacion_id=asociacion.id, tipo="UmlAssociation")
+
+    def editar_asociacion(
+        self,
+        relacion_id: str,
+        nombre: Optional[str] = None,
+        rol_origen: Optional[str] = None,
+        rol_destino: Optional[str] = None,
+        multiplicidad_origen: Optional[MultiplicityRange] = None,
+        multiplicidad_destino: Optional[MultiplicityRange] = None,
+        agregacion_origen: Optional[AggregationKind] = None,
+        agregacion_destino: Optional[AggregationKind] = None,
+    ) -> Tuple[UmlAssociation, DomainEvent]:
+        """CU4: Gestionar relaciones del diagrama de clases (edición). Solo muta los campos provistos (no-None)."""
+        asociacion = next((a for a in self.associations if a.id == relacion_id), None)
+        if asociacion is None:
+            raise ElementoNoEncontrado(f"La relación '{relacion_id}' no existe en el modelo.")
+
+        end_origen, end_destino = asociacion.member_ends[0], asociacion.member_ends[1]
+        if nombre is not None:
+            asociacion.name = nombre
+        if rol_origen is not None:
+            end_origen.role_name = rol_origen
+        if rol_destino is not None:
+            end_destino.role_name = rol_destino
+        if multiplicidad_origen is not None:
+            end_origen.multiplicity = multiplicidad_origen
+        if multiplicidad_destino is not None:
+            end_destino.multiplicity = multiplicidad_destino
+        if agregacion_origen is not None:
+            end_origen.aggregation_kind = agregacion_origen
+        if agregacion_destino is not None:
+            end_destino.aggregation_kind = agregacion_destino
+
+        return asociacion, RelacionModificada(relacion_id=asociacion.id, tipo="UmlAssociation")
+
+    def eliminar_asociacion(self, relacion_id: str) -> DomainEvent:
+        """CU4: Gestionar relaciones del diagrama de clases (eliminación)."""
+        asociacion = next((a for a in self.associations if a.id == relacion_id), None)
+        if asociacion is None:
+            raise ElementoNoEncontrado(f"La relación '{relacion_id}' no existe en el modelo.")
+        self.associations.remove(asociacion)
+        return RelacionEliminada(relacion_id=relacion_id, tipo="UmlAssociation")
+
+    def agregar_generalizacion(
+        self, origen_id: str, destino_id: str
+    ) -> Tuple[UmlGeneralization, DomainEvent]:
+        """CU4: Gestionar relaciones del diagrama de clases (creación de generalización)."""
+        if self.find_classifier_by_id(origen_id) is None:
+            raise ElementoNoEncontrado(f"El elemento origen '{origen_id}' no existe en el modelo.")
+        if self.find_classifier_by_id(destino_id) is None:
+            raise ElementoNoEncontrado(f"El elemento destino '{destino_id}' no existe en el modelo.")
+
+        generalizacion = UmlGeneralization(
+            id=str(uuid.uuid4()),
+            specific_class_id=origen_id,
+            general_class_id=destino_id,
+        )
+        self.generalizations.append(generalizacion)
+        return generalizacion, RelacionAgregada(relacion_id=generalizacion.id, tipo="UmlGeneralization")
+
+    def eliminar_generalizacion(self, relacion_id: str) -> DomainEvent:
+        """CU4: Gestionar relaciones del diagrama de clases (eliminación de generalización)."""
+        generalizacion = next((g for g in self.generalizations if g.id == relacion_id), None)
+        if generalizacion is None:
+            raise ElementoNoEncontrado(f"La relación '{relacion_id}' no existe en el modelo.")
+        self.generalizations.remove(generalizacion)
+        return RelacionEliminada(relacion_id=relacion_id, tipo="UmlGeneralization")
 
 
 # ==============================================================================

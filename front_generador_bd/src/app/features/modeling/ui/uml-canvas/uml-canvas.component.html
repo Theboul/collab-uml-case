@@ -4,4 +4,75 @@
   [class.cursor-crosshair]="facade.mode() === 'CREATE_CLASS'"
   [class.cursor-grab]="isSpacePressed && !isPanningActive"
   [class.cursor-grabbing]="isSpacePressed && isPanningActive"
-></div>
+>
+  @if (inlineEditState && inlineEditState.visible) {
+    <div
+      class="absolute z-30 animate-in fade-in zoom-in-95 duration-100"
+      [style.left.px]="inlineEditState.x"
+      [style.top.px]="inlineEditState.y"
+      [style.width.px]="inlineEditState.width"
+      (mousedown)="$event.stopPropagation()"
+      (click)="$event.stopPropagation()"
+      (dblclick)="$event.stopPropagation()"
+      (focusout)="onInlineFocusOut($event)"
+    >
+      @if (inlineEditState.targetType === 'class') {
+        <input
+          #inlineInput
+          type="text"
+          [ngModel]="inlineEditState.name"
+          (ngModelChange)="inlineEditState.name = $event"
+          (keydown.enter)="commitInlineEdit()"
+          (keydown.escape)="cancelInlineEdit()"
+          class="w-full px-2 py-0.5 text-center text-xs font-bold text-neutral-900 bg-white border-2 border-primary rounded shadow-md outline-none"
+        />
+      } @else if (inlineEditState.targetType === 'attribute') {
+        <div class="flex items-center gap-1 w-full bg-white p-1 rounded border-2 border-primary shadow-md text-xs font-mono">
+          <input
+            #inlineInput
+            type="text"
+            [ngModel]="inlineEditState.name"
+            (ngModelChange)="inlineEditState.name = $event"
+            (keydown.enter)="commitInlineEdit()"
+            (keydown.escape)="cancelInlineEdit()"
+            placeholder="nombre"
+            class="flex-1 px-1.5 py-0.5 border border-neutral-300 rounded bg-white text-neutral-900 font-semibold text-[11px] focus:outline-primary"
+          />
+          <span class="text-neutral-500 font-bold">:</span>
+          <input
+            type="text"
+            [ngModel]="inlineEditState.type"
+            (ngModelChange)="inlineEditState.type = $event"
+            (keydown.enter)="commitInlineEdit()"
+            (keydown.escape)="cancelInlineEdit()"
+            placeholder="tipo"
+            class="w-20 px-1.5 py-0.5 border border-neutral-300 rounded bg-white text-neutral-900 font-semibold text-[11px] focus:outline-primary"
+          />
+        </div>
+      } @else if (inlineEditState.targetType === 'operation') {
+        <div class="flex items-center gap-1 w-full bg-white p-1 rounded border-2 border-primary shadow-md text-xs font-mono">
+          <input
+            #inlineInput
+            type="text"
+            [ngModel]="inlineEditState.name"
+            (ngModelChange)="inlineEditState.name = $event"
+            (keydown.enter)="commitInlineEdit()"
+            (keydown.escape)="cancelInlineEdit()"
+            placeholder="metodo"
+            class="flex-1 px-1.5 py-0.5 border border-neutral-300 rounded bg-white text-neutral-900 font-semibold text-[11px] focus:outline-primary"
+          />
+          <span class="text-neutral-500 font-bold">:</span>
+          <input
+            type="text"
+            [ngModel]="inlineEditState.type"
+            (ngModelChange)="inlineEditState.type = $event"
+            (keydown.enter)="commitInlineEdit()"
+            (keydown.escape)="cancelInlineEdit()"
+            placeholder="void"
+            class="w-20 px-1.5 py-0.5 border border-neutral-300 rounded bg-white text-neutral-900 font-semibold text-[11px] focus:outline-primary"
+          />
+        </div>
+      }
+    </div>
+  }
+</div>

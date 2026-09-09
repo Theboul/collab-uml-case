@@ -35,5 +35,17 @@ class RelacionAgregada(DomainEvent):
 
 
 @dataclass(frozen=True)
+class RelacionModificada(DomainEvent):
+    relacion_id: str = ""
+    tipo: str = ""  # "UmlAssociation" | "UmlGeneralization" | "UmlRealization" | ...
+
+
+@dataclass(frozen=True)
+class RelacionEliminada(DomainEvent):
+    relacion_id: str = ""
+    tipo: str = ""  # "UmlAssociation" | "UmlGeneralization" | "UmlRealization" | ...
+
+
+@dataclass(frozen=True)
 class ElementoEliminado(DomainEvent):
     elemento_id: str = ""

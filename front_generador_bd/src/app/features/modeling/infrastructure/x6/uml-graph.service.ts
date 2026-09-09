@@ -8,7 +8,11 @@ import { Snapline } from '@antv/x6-plugin-snapline';
 import { Scroller } from '@antv/x6-plugin-scroller';
 import { Dnd } from '@antv/x6-plugin-dnd';
 import { Clipboard } from '@antv/x6-plugin-clipboard';
-import { X6EdgeConfig, X6NodeConfig } from './uml-diagram-adapter.service';
+import { UmlDiagramAdapterService, X6EdgeConfig, X6NodeConfig } from './uml-diagram-adapter.service';
+import { UML_NODE_DIMENSIONS, UmlNodeSubElementEvent } from '../../domain/models/uml-editor.models';
+import { UmlPortService } from './uml-port.service';
+import { UmlInteractionService } from './uml-interaction.service';
+import { UmlEdgeToolsService } from './uml-edge-tools.service';
 
 export interface CellSelectionEvent {
   selectedNodes: string[];
@@ -33,6 +37,27 @@ export interface EdgeConnectedEvent {
   edgeId: string;
   sourceId: string;
   targetId: string;
+  sourcePort?: string;
+  targetPort?: string;
+}
+
+export interface EdgeReconnectedEvent {
+  edgeId: string;
+  sourceId: string;
+  targetId: string;
+  sourcePort?: string;
+  targetPort?: string;
+}
+
+export interface NodeDblClickEvent {
+  nodeId: string;
+  targetType: 'class' | 'attribute' | 'operation';
+  targetId?: string;
+  name: string;
+  type?: string;
+  visibility?: string;
+  itemRelY: number;
+  nodeBBox: { x: number; y: number; width: number; height: number };
 }
 
 @Injectable({
@@ -40,18 +65,29 @@ export interface EdgeConnectedEvent {
 })
 export class UmlGraphService {
   private readonly ngZone = inject(NgZone);
+  private readonly portService = inject(UmlPortService);
+  private readonly interactionService = inject(UmlInteractionService);
+  private readonly edgeToolsService = inject(UmlEdgeToolsService);
+  private readonly adapter = inject(UmlDiagramAdapterService);
+
   private graph: Graph | null = null;
   private scrollerPlugin: Scroller | null = null;
+  private selectionPlugin: Selection | null = null;
   private dnd: Dnd | null = null;
   private registered = false;
+  private isPanningActive = false;
 
   readonly selectionChange$ = new Subject<CellSelectionEvent>();
   readonly nodeMoved$ = new Subject<NodePositionChangeEvent>();
   readonly nodeResized$ = new Subject<NodeSizeChangeEvent>();
   readonly edgeConnected$ = new Subject<EdgeConnectedEvent>();
+  readonly edgeReconnected$ = new Subject<EdgeReconnectedEvent>();
+  readonly edgeVerticesChanged$ = this.edgeToolsService.verticesChanged$;
   readonly edgeRightClick$ = new Subject<{ edgeId: string; x: number; y: number }>();
   readonly blankClick$ = new Subject<{ x: number; y: number }>();
   readonly nodeAdded$ = new Subject<{ nodeId: string; name: string; x: number; y: number }>();
+  readonly nodeDblClick$ = new Subject<NodeDblClickEvent>();
+  readonly nodeSubElementClick$ = new Subject<UmlNodeSubElementEvent>();
   readonly historyChange$ = new Subject<{ canUndo: boolean; canRedo: boolean }>();
 
   get isInitialized(): boolean {
@@ -76,11 +112,12 @@ export class UmlGraphService {
         markup: [
           { tagName: 'rect', selector: 'body' },
           { tagName: 'rect', selector: 'header' },
+          { tagName: 'rect', selector: 'rowHighlight' },
           { tagName: 'text', selector: 'title' },
           { tagName: 'line', selector: 'separator1' },
-          { tagName: 'text', selector: 'attributes' },
+          { tagName: 'text', selector: 'attributes', className: 'uml-attributes-text' },
           { tagName: 'line', selector: 'separator2' },
-          { tagName: 'text', selector: 'operations' },
+          { tagName: 'text', selector: 'operations', className: 'uml-operations-text' },
         ],
         attrs: {
           body: {
@@ -99,6 +136,16 @@ export class UmlGraphService {
             stroke: 'none',
             rx: 4,
             ry: 4,
+          },
+          rowHighlight: {
+            display: 'none',
+            fill: '#6366f1',
+            fillOpacity: 0.12,
+            stroke: '#818cf8',
+            strokeWidth: 1,
+            rx: 2,
+            ry: 2,
+            pointerEvents: 'none',
           },
           title: {
             refX: '50%',
@@ -161,6 +208,7 @@ export class UmlGraphService {
     this.graph = new Graph({
       container,
       autoResize: true,
+      moveThreshold: 2,
       background: {
         color: '#f8fafc',
       },
@@ -177,6 +225,8 @@ export class UmlGraphService {
         snap: true,
         allowBlank: false,
         allowLoop: false,
+        allowNode: true,
+        allowPort: true,
         highlight: true,
         router: { name: 'manhattan' },
         connector: { name: 'rounded' },
@@ -199,13 +249,15 @@ export class UmlGraphService {
             },
           });
         },
-        validateConnection({ sourceCell, targetCell }) {
-          return Boolean(sourceCell && targetCell && sourceCell !== targetCell);
-        },
+        validateMagnet: ({ magnet }) => this.portService.validateMagnet(magnet),
+        validateConnection: ({ sourceCell, targetCell, sourceMagnet }) =>
+          this.portService.validateConnection(sourceCell, targetCell, sourceMagnet),
       },
       interacting: {
-        nodeMovable: true,
-        edgeMovable: true,
+        nodeMovable: () => !this.isPanningActive,
+        edgeMovable: () => !this.isPanningActive,
+        vertexMovable: () => !this.isPanningActive,
+        arrowheadMovable: () => !this.isPanningActive,
       },
       mousewheel: {
         enabled: true,
@@ -215,19 +267,18 @@ export class UmlGraphService {
       },
     });
 
-    // 1. Selección (Rubberband activado, selección múltiple con Ctrl/Cmd)
-    this.graph.use(
-      new Selection({
-        enabled: true,
-        multiple: true,
-        rubberband: true,
-        movable: true,
-        showNodeSelectionBox: true,
-        showEdgeSelectionBox: true,
-        pointerEvents: 'auto',
-        modifiers: ['ctrl', 'meta'],
-      })
-    );
+    // 1. Selección (Rubberband activado en espacio vacío, selección múltiple con Ctrl/Cmd/Shift)
+    this.selectionPlugin = new Selection({
+      enabled: true,
+      multiple: true,
+      rubberband: true,
+      movable: true,
+      showNodeSelectionBox: true,
+      showEdgeSelectionBox: true,
+      pointerEvents: 'none',
+      multipleSelectionModifiers: ['ctrl', 'meta', 'shift'],
+    });
+    this.graph.use(this.selectionPlugin);
 
     // 2. Transform (Resize únicamente en las 4 esquinas para no chocar con los 4 puertos)
     this.graph.use(
@@ -249,14 +300,10 @@ export class UmlGraphService {
       })
     );
 
-    // 4. History (Deshacer / Rehacer)
+    // 4. History (Desactivado en X6; el historial semántico de UmlEditorFacade es la única fuente)
     this.graph.use(
       new History({
-        enabled: true,
-        beforeAddCommand: (_event, args: any) => {
-          if (args.key === 'tools' || args.key === 'selection') return false;
-          return true;
-        },
+        enabled: false,
       })
     );
 
@@ -284,13 +331,19 @@ export class UmlGraphService {
 
   /**
    * Habilita o deshabilita el modo paneo (utilizado con la barra espaciadora).
+   * Al activar, desactiva el rubberband de selección y bloquea el arrastre de nodos.
    */
   setPanning(enabled: boolean): void {
+    this.isPanningActive = enabled;
     if (this.scrollerPlugin) {
       if (enabled) {
+        this.selectionPlugin?.disableRubberband();
+        this.selectionPlugin?.disable();
         this.scrollerPlugin.enablePanning();
       } else {
         this.scrollerPlugin.disablePanning();
+        this.selectionPlugin?.enable();
+        this.selectionPlugin?.enableRubberband();
       }
     }
   }
@@ -298,8 +351,11 @@ export class UmlGraphService {
   private setupEventListeners(): void {
     if (!this.graph) return;
 
+    this.edgeToolsService.registerListeners(this.graph);
+
     // Movimiento persistente al terminar el arrastre
     this.graph.on('node:moved', ({ node }) => {
+      if (this.isPanningActive) return;
       this.ngZone.run(() => {
         const pos = node.getPosition();
         this.nodeMoved$.next({
@@ -307,6 +363,36 @@ export class UmlGraphService {
           x: pos.x,
           y: pos.y,
         });
+      });
+    });
+
+    // Clic en nodo -> Seleccionar nodo y detectar subelemento (Atributo, Operación o Encabezado)
+    this.graph.on('node:click', ({ node, e }) => {
+      this.ngZone.run(() => {
+        const subEvent = this.resolveSemanticTarget(node, e.clientX, e.clientY, e.target as SVGElement);
+        if (subEvent) {
+          this.nodeSubElementClick$.next(subEvent);
+        }
+      });
+    });
+
+    // Doble clic en nodo -> Edición inline semántica (Clase, Atributo u Operación)
+    this.graph.on('node:dblclick', ({ node, e }) => {
+      e.stopPropagation();
+      this.ngZone.run(() => {
+        const eventData = this.resolveSemanticTarget(node, e.clientX, e.clientY, e.target as SVGElement);
+        if (eventData) {
+          this.nodeDblClick$.next({
+            nodeId: eventData.classId,
+            targetType: eventData.type,
+            targetId: eventData.elementId,
+            name: eventData.name || '',
+            type: eventData.typeOrReturn,
+            visibility: eventData.visibility,
+            itemRelY: eventData.itemRelY,
+            nodeBBox: eventData.nodeBBox,
+          });
+        }
       });
     });
 
@@ -326,17 +412,33 @@ export class UmlGraphService {
     });
 
     // Conexión entre clases (desde puerto o herramienta)
-    this.graph.on('edge:connected', ({ edge }) => {
+    this.graph.on('edge:connected', ({ isNew, edge }) => {
       this.ngZone.run(() => {
         const source = edge.getSourceCell();
         const target = edge.getTargetCell();
-        if (source && target) {
+        if (!source || !target) return;
+
+        if (isNew) {
           this.edgeConnected$.next({
             edgeId: edge.id,
             sourceId: source.id,
             targetId: target.id,
+            sourcePort: edge.getSourcePortId(),
+            targetPort: edge.getTargetPortId(),
           });
+          return;
         }
+
+        // Reconexión de una relación ya existente (se arrastró uno de sus extremos a otro
+        // puerto/clase): NO se trata como una relación nueva, solo se actualiza dónde se
+        // conecta visualmente.
+        this.edgeReconnected$.next({
+          edgeId: edge.id,
+          sourceId: source.id,
+          targetId: target.id,
+          sourcePort: edge.getSourcePortId(),
+          targetPort: edge.getTargetPortId(),
+        });
       });
     });
 
@@ -366,9 +468,11 @@ export class UmlGraphService {
       });
     });
 
-    // Clic en fondo
+    // Clic en fondo -> ocultar puertos, limpiar highlight y notificar clic en blanco
     this.graph.on('blank:click', ({ e }) => {
       this.ngZone.run(() => {
+        this.clearRowHighlight();
+        this.hideAllPorts();
         if (this.graph) {
           const p = this.graph.clientToLocal(e.clientX, e.clientY);
           this.blankClick$.next({ x: p.x, y: p.y });
@@ -376,11 +480,15 @@ export class UmlGraphService {
       });
     });
 
-    // Selección
+    // Selección -> actualizar visibilidad de puertos según cardinalidad (1 clase = visible, multiselección/0 = oculto)
     this.graph.on('selection:changed', ({ selected }) => {
       this.ngZone.run(() => {
         const selectedNodes = selected.filter((c) => c.isNode()).map((c) => c.id);
         const selectedEdges = selected.filter((c) => c.isEdge()).map((c) => c.id);
+        this.updatePortsVisibility(selectedNodes);
+        if (selectedNodes.length !== 1) {
+          this.clearRowHighlight();
+        }
         this.selectionChange$.next({ selectedNodes, selectedEdges });
       });
     });
@@ -411,6 +519,69 @@ export class UmlGraphService {
   }
 
   /**
+   * Muestra los puertos de conexión de un nodo específico.
+   */
+  showPorts(nodeId: string): void {
+    this.portService.showPorts(this.graph, nodeId);
+  }
+
+  /**
+   * Oculta los puertos de conexión de un nodo específico.
+   */
+  hidePorts(nodeId: string): void {
+    this.portService.hidePorts(this.graph, nodeId);
+  }
+
+  /**
+   * Oculta los puertos de conexión de todos los nodos del lienzo.
+   */
+  hideAllPorts(): void {
+    this.portService.hideAllPorts(this.graph);
+  }
+
+  /**
+   * Encapsula la regla de visibilidad de puertos:
+   * 1 clase seleccionada -> 4 puertos visibles.
+   * 0 o 2+ clases seleccionadas -> puertos ocultos.
+   */
+  updatePortsVisibility(selectedNodeIds: string[]): void {
+    this.portService.updatePortsVisibility(this.graph, selectedNodeIds);
+  }
+
+  /**
+   * Resuelve semánticamente el objetivo de interacción (clic o doble clic) dentro de un nodo UML:
+   * Encabezado (Clase), Compartimento de Atributos (por attributeId), o de Operaciones (por operationId).
+   */
+  resolveSemanticTarget(
+    node: Node,
+    clientX: number,
+    clientY: number,
+    targetElem?: SVGElement | null
+  ): UmlNodeSubElementEvent | null {
+    return this.interactionService.resolveSemanticTarget(
+      this.graph,
+      node,
+      clientX,
+      clientY,
+      targetElem
+    );
+  }
+
+  /**
+   * Resalta visualmente una fila específica dentro de un nodo UML mediante el subelemento SVG nativo.
+   */
+  setRowHighlight(nodeId: string, itemRelY: number): void {
+    this.interactionService.setRowHighlight(this.graph, nodeId, itemRelY);
+  }
+
+  /**
+   * Oculta el resaltado visual de fila en un nodo o en todos los nodos del lienzo.
+   */
+  clearRowHighlight(nodeId?: string): void {
+    this.interactionService.clearRowHighlight(this.graph, nodeId);
+  }
+
+  /**
    * Renderiza el diagrama completo a partir de las configuraciones traducidas.
    */
   renderCells(nodes: X6NodeConfig[], edges: X6EdgeConfig[]): void {
@@ -424,6 +595,8 @@ export class UmlGraphService {
     for (const edgeConfig of edges) {
       this.graph.addEdge(edgeConfig);
     }
+
+    this.hideAllPorts();
   }
 
   addNode(config: X6NodeConfig): Node {
@@ -432,17 +605,41 @@ export class UmlGraphService {
     const titleText = config.data.name + (config.data.isAbstract ? ' {abstract}' : '');
     const attrsList = config.data.attributes?.length > 0
       ? config.data.attributes.map((a) => `${a.visibility} ${a.name} : ${a.type}`).join('\n')
-      : '- id : UUID';
+      : '';
+
     const opsList = config.data.operations?.length > 0
-      ? config.data.operations.map((o) => `${o.visibility} ${o.name}() : ${o.returnType}`).join('\n')
-      : '+ ejecutar() : void';
+      ? config.data.operations
+          .map((o) => {
+            let paramsStr = '';
+            if (Array.isArray(o.parameters)) {
+              paramsStr = o.parameters.map((p: any) => `${p.name}: ${p.type}`).join(', ');
+            } else if (typeof o.parameters === 'string') {
+              paramsStr = o.parameters;
+            }
+            return `${o.visibility || '+'} ${o.name}(${paramsStr}) : ${o.returnType || 'void'}`;
+          })
+          .join('\n')
+      : '';
+
+    const attrLines = (config.data.attributes || []).length;
+    const attrHeight = Math.max(1, attrLines) * UML_NODE_DIMENSIONS.LINE_HEIGHT;
+    const sep2Y = UML_NODE_DIMENSIONS.HEADER_HEIGHT + UML_NODE_DIMENSIONS.SEP_PADDING + attrHeight + 6;
+    const opY = sep2Y + UML_NODE_DIMENSIONS.SEP_PADDING;
+    const opLines = (config.data.operations || []).length;
+    const opHeight = Math.max(1, opLines) * UML_NODE_DIMENSIONS.LINE_HEIGHT;
+    const totalHeight = Math.max(
+      config.height || UML_NODE_DIMENSIONS.MIN_HEIGHT,
+      opY + opHeight + UML_NODE_DIMENSIONS.BOTTOM_PADDING
+    );
 
     return this.graph.addNode({
       ...config,
+      height: Math.max(config.height || UML_NODE_DIMENSIONS.MIN_HEIGHT, totalHeight),
       attrs: {
         title: { text: titleText },
         attributes: { text: attrsList },
-        operations: { text: opsList },
+        separator2: { y1: sep2Y, y2: sep2Y },
+        operations: { text: opsList, refY: opY },
       },
     });
   }
@@ -460,14 +657,47 @@ export class UmlGraphService {
       const titleText = data.name + (data.isAbstract ? ' {abstract}' : '');
       const attrsList = data.attributes?.length > 0
         ? data.attributes.map((a: any) => `${a.visibility} ${a.name} : ${a.type}`).join('\n')
-        : '- id : UUID';
+        : '';
       const opsList = data.operations?.length > 0
-        ? data.operations.map((o: any) => `${o.visibility} ${o.name}() : ${o.returnType}`).join('\n')
-        : '+ ejecutar() : void';
+        ? data.operations
+            .map((o: any) => {
+              let paramsStr = '';
+              if (Array.isArray(o.parameters)) {
+                paramsStr = o.parameters.map((p: any) => `${p.name}: ${p.type}`).join(', ');
+              } else if (typeof o.parameters === 'string') {
+                paramsStr = o.parameters;
+              }
+              return `${o.visibility || '+'} ${o.name}(${paramsStr}) : ${o.returnType || 'void'}`;
+            })
+            .join('\n')
+        : '';
+
+      const attrLines = (data.attributes || []).length;
+      const attrHeight = Math.max(1, attrLines) * UML_NODE_DIMENSIONS.LINE_HEIGHT;
+      const sep2Y = UML_NODE_DIMENSIONS.HEADER_HEIGHT + UML_NODE_DIMENSIONS.SEP_PADDING + attrHeight + 6;
+      const opY = sep2Y + UML_NODE_DIMENSIONS.SEP_PADDING;
+      const opLines = (data.operations || []).length;
+      const opHeight = Math.max(1, opLines) * UML_NODE_DIMENSIONS.LINE_HEIGHT;
+      const totalHeight = Math.max(
+        UML_NODE_DIMENSIONS.MIN_HEIGHT,
+        opY + opHeight + UML_NODE_DIMENSIONS.BOTTOM_PADDING
+      );
 
       node.setAttrByPath('title/text', titleText);
       node.setAttrByPath('attributes/text', attrsList);
+      node.setAttrByPath('separator2/y1', sep2Y);
+      node.setAttrByPath('separator2/y2', sep2Y);
       node.setAttrByPath('operations/text', opsList);
+      node.setAttrByPath('operations/refY', opY);
+
+      const currentSize = node.getSize();
+      node.setSize({
+        width: Math.max(currentSize.width, UML_NODE_DIMENSIONS.MIN_WIDTH),
+        height: Math.max(currentSize.height, totalHeight),
+      });
+
+      const selected = this.graph.getSelectedCells().filter((c) => c.isNode()).map((c) => c.id);
+      this.updatePortsVisibility(selected);
     }
   }
 
@@ -499,28 +729,15 @@ export class UmlGraphService {
       data: {
         name: defaultName,
         isAbstract: false,
-        attributes: [{ name: 'id', type: 'UUID', visibility: '-' }],
-        operations: [{ name: 'ejecutar', returnType: 'void', visibility: '+' }],
+        attributes: [],
+        operations: [],
       },
       attrs: {
         title: { text: defaultName },
-        attributes: { text: '- id : UUID' },
-        operations: { text: '+ ejecutar() : void' },
+        attributes: { text: '' },
+        operations: { text: '' },
       },
-      ports: {
-        groups: {
-          top: { position: 'top', attrs: { circle: { r: 5, magnet: true, fill: '#fff', stroke: '#6366f1', strokeWidth: 2 } } },
-          right: { position: 'right', attrs: { circle: { r: 5, magnet: true, fill: '#fff', stroke: '#6366f1', strokeWidth: 2 } } },
-          bottom: { position: 'bottom', attrs: { circle: { r: 5, magnet: true, fill: '#fff', stroke: '#6366f1', strokeWidth: 2 } } },
-          left: { position: 'left', attrs: { circle: { r: 5, magnet: true, fill: '#fff', stroke: '#6366f1', strokeWidth: 2 } } },
-        },
-        items: [
-          { id: 'port-top', group: 'top' },
-          { id: 'port-right', group: 'right' },
-          { id: 'port-bottom', group: 'bottom' },
-          { id: 'port-left', group: 'left' },
-        ],
-      },
+      ports: this.adapter.getDefaultPorts(),
     });
     this.dnd.start(node, event);
   }
@@ -534,7 +751,12 @@ export class UmlGraphService {
   }
 
   zoomToFit(): void {
-    this.graph?.zoomToFit({ padding: 30, maxScale: 1.5 });
+    if (this.scrollerPlugin) {
+      this.scrollerPlugin.zoomToFit({ padding: 30, maxScale: 1.5 });
+      this.scrollerPlugin.centerContent();
+    } else {
+      this.graph?.zoomToFit({ padding: 30, maxScale: 1.5 });
+    }
   }
 
   resetZoom(): void {
@@ -562,5 +784,6 @@ export class UmlGraphService {
     this.graph = null;
     this.dnd = null;
     this.scrollerPlugin = null;
+    this.selectionPlugin = null;
   }
 }

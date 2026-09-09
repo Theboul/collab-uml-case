@@ -22,3 +22,29 @@
   fill: #6366f1 !important;
   stroke: #ffffff !important;
 }
+
+/* Ports están ocultos por defecto */
+:host ::ng-deep .x6-node .x6-port {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease-in-out;
+}
+
+/* Ports visibles cuando el nodo está seleccionado individualmente, o al pasar el mouse por
+   encima (necesario para poder soltar el extremo de una relación sobre un puerto: al arrastrar
+   un endpoint ya existente el nodo destino no queda seleccionado, solo "hovereado"). */
+:host ::ng-deep .x6-node.uml-ports-visible .x6-port,
+:host ::ng-deep .x6-node:hover .x6-port {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Feedback visual pasivo en atributos y operaciones sin listeners JS */
+:host ::ng-deep .uml-attributes-text,
+:host ::ng-deep .uml-operations-text {
+  cursor: pointer;
+}
+
+

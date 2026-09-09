@@ -1,5 +1,5 @@
 @if (facade.selectedClass(); as cls) {
-  <aside class="w-80 border-l border-neutral-200 bg-white h-full flex flex-col select-none shadow-xs text-xs animate-in slide-in-from-right-4 duration-150">
+  <aside class="w-80 border-l border-neutral-200 bg-white h-full flex flex-col select-none shadow-xs text-xs text-neutral-900 animate-in slide-in-from-right-4 duration-150">
     <!-- Encabezado -->
     <div class="p-3 border-b border-neutral-100 flex items-center justify-between bg-neutral-50">
       <div class="flex items-center gap-2">
@@ -26,10 +26,12 @@
         </label>
         <input
           id="classNameInput"
+          #classNameInput
           type="text"
-          [ngModel]="cls.name"
-          (ngModelChange)="onNameChange(cls.id, $event)"
-          class="w-full px-3 py-1.5 border border-neutral-300 rounded-md text-neutral-800 font-semibold focus:outline-primary bg-white transition-colors"
+          [value]="cls.name"
+          (keydown.enter)="commitClassName(cls, classNameInput.value); classNameInput.blur()"
+          (blur)="commitClassName(cls, classNameInput.value)"
+          class="w-full px-3 py-1.5 border border-neutral-300 rounded-md text-neutral-900 font-semibold focus:outline-primary bg-white transition-colors"
         />
       </div>
 
@@ -38,8 +40,9 @@
         <input
           type="checkbox"
           id="isAbstractCb"
+          #isAbstractCb
           [checked]="cls.isAbstract"
-          (change)="onAbstractToggle(cls.id, $event)"
+          (change)="commitClassAbstract(cls, isAbstractCb.checked)"
           class="rounded border-neutral-300 text-primary focus:ring-primary"
         />
         <label for="isAbstractCb" class="text-xs text-neutral-700 font-medium cursor-pointer">
@@ -68,9 +71,10 @@
           @for (attr of cls.attributes; track attr.id) {
             <div class="flex items-center gap-1.5 bg-neutral-50 p-1.5 rounded border border-neutral-200">
               <select
-                [ngModel]="attr.visibility"
-                (ngModelChange)="updateAttr(cls, attr.id, { visibility: $event })"
-                class="bg-white border border-neutral-200 rounded px-1 py-0.5 font-mono text-[11px] focus:outline-primary"
+                [value]="attr.visibility"
+                #attrVis
+                (change)="commitAttrVisibility(cls, attr, attrVis.value)"
+                class="bg-white border border-neutral-200 rounded px-1 py-0.5 font-mono text-[11px] text-neutral-900 focus:outline-primary"
               >
                 <option value="+">+</option>
                 <option value="-">-</option>
@@ -79,18 +83,22 @@
               </select>
               <input
                 type="text"
-                [ngModel]="attr.name"
-                (ngModelChange)="updateAttr(cls, attr.id, { name: $event })"
+                #attrNameInput
+                [value]="attr.name"
+                (keydown.enter)="commitAttrName(cls, attr, attrNameInput.value); attrNameInput.blur()"
+                (blur)="commitAttrName(cls, attr, attrNameInput.value)"
                 placeholder="nombre"
-                class="flex-1 px-1.5 py-0.5 border border-neutral-200 rounded font-mono text-[11px] bg-white focus:outline-primary"
+                class="flex-1 px-1.5 py-0.5 border border-neutral-200 rounded font-mono text-[11px] bg-white text-neutral-900 font-medium focus:outline-primary"
               />
-              <span class="text-neutral-400 font-mono">:</span>
+              <span class="text-neutral-500 font-mono font-bold">:</span>
               <input
                 type="text"
-                [ngModel]="attr.type"
-                (ngModelChange)="updateAttr(cls, attr.id, { type: $event })"
+                #attrTypeInput
+                [value]="attr.type"
+                (keydown.enter)="commitAttrType(cls, attr, attrTypeInput.value); attrTypeInput.blur()"
+                (blur)="commitAttrType(cls, attr, attrTypeInput.value)"
                 placeholder="tipo"
-                class="w-20 px-1.5 py-0.5 border border-neutral-200 rounded font-mono text-[11px] bg-white focus:outline-primary"
+                class="w-20 px-1.5 py-0.5 border border-neutral-200 rounded font-mono text-[11px] bg-white text-neutral-900 font-medium focus:outline-primary"
               />
               <sc-button
                 variant="ghost"
@@ -125,43 +133,99 @@
           </sc-button>
         </div>
 
-        <div class="space-y-1.5">
+        <div class="space-y-3">
           @for (op of cls.operations; track op.id) {
-            <div class="flex items-center gap-1.5 bg-neutral-50 p-1.5 rounded border border-neutral-200">
-              <select
-                [ngModel]="op.visibility"
-                (ngModelChange)="updateOp(cls, op.id, { visibility: $event })"
-                class="bg-white border border-neutral-200 rounded px-1 py-0.5 font-mono text-[11px] focus:outline-primary"
-              >
-                <option value="+">+</option>
-                <option value="-">-</option>
-                <option value="#">#</option>
-                <option value="~">~</option>
-              </select>
-              <input
-                type="text"
-                [ngModel]="op.name"
-                (ngModelChange)="updateOp(cls, op.id, { name: $event })"
-                placeholder="metodo"
-                class="flex-1 px-1.5 py-0.5 border border-neutral-200 rounded font-mono text-[11px] bg-white focus:outline-primary"
-              />
-              <span class="text-neutral-400 font-mono">:</span>
-              <input
-                type="text"
-                [ngModel]="op.returnType"
-                (ngModelChange)="updateOp(cls, op.id, { returnType: $event })"
-                placeholder="void"
-                class="w-20 px-1.5 py-0.5 border border-neutral-200 rounded font-mono text-[11px] bg-white focus:outline-primary"
-              />
-              <sc-button
-                variant="ghost"
-                size="xs"
-                (onClick)="removeOperation(cls, op.id)"
-                ariaLabel="Eliminar operación"
-                customClass="text-danger hover:text-danger-600 p-0.5"
-              >
-                <sc-icon name="delete" [size]="14" />
-              </sc-button>
+            <div class="bg-neutral-50 p-2 rounded border border-neutral-200 space-y-2">
+              <div class="flex items-center gap-1.5">
+                <select
+                  [value]="op.visibility"
+                  #opVis
+                  (change)="commitOpVisibility(cls, op, opVis.value)"
+                  class="bg-white border border-neutral-200 rounded px-1 py-0.5 font-mono text-[11px] text-neutral-900 focus:outline-primary"
+                >
+                  <option value="+">+</option>
+                  <option value="-">-</option>
+                  <option value="#">#</option>
+                  <option value="~">~</option>
+                </select>
+                <input
+                  type="text"
+                  #opNameInput
+                  [value]="op.name"
+                  (keydown.enter)="commitOpName(cls, op, opNameInput.value); opNameInput.blur()"
+                  (blur)="commitOpName(cls, op, opNameInput.value)"
+                  placeholder="metodo"
+                  class="flex-1 px-1.5 py-0.5 border border-neutral-200 rounded font-mono text-[11px] bg-white text-neutral-900 font-medium focus:outline-primary"
+                />
+                <span class="text-neutral-500 font-mono font-bold">:</span>
+                <input
+                  type="text"
+                  #opReturnInput
+                  [value]="op.returnType"
+                  (keydown.enter)="commitOpReturnType(cls, op, opReturnInput.value); opReturnInput.blur()"
+                  (blur)="commitOpReturnType(cls, op, opReturnInput.value)"
+                  placeholder="void"
+                  class="w-20 px-1.5 py-0.5 border border-neutral-200 rounded font-mono text-[11px] bg-white text-neutral-900 font-medium focus:outline-primary"
+                />
+                <sc-button
+                  variant="ghost"
+                  size="xs"
+                  (onClick)="removeOperation(cls, op.id)"
+                  ariaLabel="Eliminar operación"
+                  customClass="text-danger hover:text-danger-600 p-0.5"
+                >
+                  <sc-icon name="delete" [size]="14" />
+                </sc-button>
+              </div>
+
+              <!-- Parámetros de la Operación -->
+              <div class="pl-3 border-l-2 border-primary/30 space-y-1 mt-1">
+                <div class="flex items-center justify-between text-[10px] font-semibold text-neutral-500">
+                  <span>Parámetros:</span>
+                  <button
+                    type="button"
+                    (click)="addParameter(cls, op)"
+                    class="text-primary hover:underline flex items-center gap-0.5 cursor-pointer"
+                  >
+                    <sc-icon name="add" [size]="12" />
+                    <span>Agregar</span>
+                  </button>
+                </div>
+
+                @for (param of asArray(op.parameters); track param.id) {
+                  <div class="flex items-center gap-1">
+                    <input
+                      type="text"
+                      #paramNameInput
+                      [value]="param.name"
+                      (keydown.enter)="commitParamName(cls, op, param, paramNameInput.value); paramNameInput.blur()"
+                      (blur)="commitParamName(cls, op, param, paramNameInput.value)"
+                      placeholder="nombre"
+                      class="flex-1 px-1 py-0.5 border border-neutral-200 rounded font-mono text-[10px] bg-white text-neutral-900 font-medium focus:outline-primary"
+                    />
+                    <span class="text-neutral-500 font-mono font-bold text-[10px]">:</span>
+                    <input
+                      type="text"
+                      #paramTypeInput
+                      [value]="param.type"
+                      (keydown.enter)="commitParamType(cls, op, param, paramTypeInput.value); paramTypeInput.blur()"
+                      (blur)="commitParamType(cls, op, param, paramTypeInput.value)"
+                      placeholder="tipo"
+                      class="w-16 px-1 py-0.5 border border-neutral-200 rounded font-mono text-[10px] bg-white text-neutral-900 font-medium focus:outline-primary"
+                    />
+                    <button
+                      type="button"
+                      (click)="removeParameter(cls, op, param.id)"
+                      class="text-danger hover:text-danger-600 p-0.5 cursor-pointer"
+                      title="Eliminar parámetro"
+                    >
+                      <sc-icon name="close" [size]="12" />
+                    </button>
+                  </div>
+                } @empty {
+                  <p class="text-neutral-400 text-[10px] italic">Sin parámetros</p>
+                }
+              </div>
             </div>
           } @empty {
             <p class="text-neutral-400 text-[11px] italic py-1">Sin operaciones definidas.</p>
