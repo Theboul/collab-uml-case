@@ -13,6 +13,7 @@ import { UML_NODE_DIMENSIONS, UmlNodeSubElementEvent } from '../../domain/models
 import { UmlPortService } from './uml-port.service';
 import { UmlInteractionService } from './uml-interaction.service';
 import { UmlEdgeToolsService } from './uml-edge-tools.service';
+import { registerUmlClassNode } from './uml-class-node.registration';
 
 export interface CellSelectionEvent {
   selectedNodes: string[];
@@ -74,8 +75,13 @@ export class UmlGraphService {
   private scrollerPlugin: Scroller | null = null;
   private selectionPlugin: Selection | null = null;
   private dnd: Dnd | null = null;
-  private registered = false;
   private isPanningActive = false;
+  private pointerMoveContainer: HTMLElement | null = null;
+  private readonly handlePointerMove = (e: MouseEvent): void => {
+    if (!this.graph) return;
+    const { x, y } = this.graph.clientToLocal(e.clientX, e.clientY);
+    this.localPointerMove$.next({ x, y });
+  };
 
   readonly selectionChange$ = new Subject<CellSelectionEvent>();
   readonly nodeMoved$ = new Subject<NodePositionChangeEvent>();
@@ -89,6 +95,14 @@ export class UmlGraphService {
   readonly nodeDblClick$ = new Subject<NodeDblClickEvent>();
   readonly nodeSubElementClick$ = new Subject<UmlNodeSubElementEvent>();
   readonly historyChange$ = new Subject<{ canUndo: boolean; canRedo: boolean }>();
+  /**
+   * Posición del mouse en coordenadas locales del canvas (ya convertidas vía
+   * clientToLocal, robustas a pan/zoom), sin throttle — eso es
+   * responsabilidad del consumidor (ver UmlEditorFacade). Se emite fuera de
+   * la zona de Angular por ser de alta frecuencia; no hace falta CD para
+   * mandar la posición por WebSocket.
+   */
+  readonly localPointerMove$ = new Subject<{ x: number; y: number }>();
 
   get isInitialized(): boolean {
     return this.graph !== null;
@@ -99,111 +113,10 @@ export class UmlGraphService {
   }
 
   /**
-   * Registra el nodo visual canónico ClaseUML con estructura compartimental
-   * (Nombre, Atributos y Operaciones) con SVG responsive y estilizado.
-   */
-  private registerUmlClassNode(): void {
-    if (this.registered) return;
-    try {
-      Graph.registerNode('uml-class-node', {
-        inherit: 'rect',
-        width: 190,
-        height: 130,
-        markup: [
-          { tagName: 'rect', selector: 'body' },
-          { tagName: 'rect', selector: 'header' },
-          { tagName: 'rect', selector: 'rowHighlight' },
-          { tagName: 'text', selector: 'title' },
-          { tagName: 'line', selector: 'separator1' },
-          { tagName: 'text', selector: 'attributes', className: 'uml-attributes-text' },
-          { tagName: 'line', selector: 'separator2' },
-          { tagName: 'text', selector: 'operations', className: 'uml-operations-text' },
-        ],
-        attrs: {
-          body: {
-            refWidth: '100%',
-            refHeight: '100%',
-            fill: '#ffffff',
-            stroke: '#1e293b',
-            strokeWidth: 1.5,
-            rx: 4,
-            ry: 4,
-          },
-          header: {
-            refWidth: '100%',
-            height: 32,
-            fill: '#f8fafc',
-            stroke: 'none',
-            rx: 4,
-            ry: 4,
-          },
-          rowHighlight: {
-            display: 'none',
-            fill: '#6366f1',
-            fillOpacity: 0.12,
-            stroke: '#818cf8',
-            strokeWidth: 1,
-            rx: 2,
-            ry: 2,
-            pointerEvents: 'none',
-          },
-          title: {
-            refX: '50%',
-            refY: 16,
-            textAnchor: 'middle',
-            textVerticalAnchor: 'middle',
-            fontFamily: 'Inter, system-ui, sans-serif',
-            fontSize: 13,
-            fontWeight: 700,
-            fill: '#0f172a',
-          },
-          separator1: {
-            stroke: '#1e293b',
-            strokeWidth: 1.5,
-            x1: 0,
-            refX2: '100%',
-            y1: 32,
-            y2: 32,
-          },
-          attributes: {
-            refX: 10,
-            refY: 42,
-            fontFamily: 'JetBrains Mono, monospace',
-            fontSize: 11,
-            fill: '#334155',
-            textAnchor: 'start',
-            textVerticalAnchor: 'top',
-          },
-          separator2: {
-            stroke: '#cbd5e1',
-            strokeWidth: 1,
-            x1: 0,
-            refX2: '100%',
-            y1: 82,
-            y2: 82,
-          },
-          operations: {
-            refX: 10,
-            refY: 92,
-            fontFamily: 'JetBrains Mono, monospace',
-            fontSize: 11,
-            fill: '#334155',
-            textAnchor: 'start',
-            textVerticalAnchor: 'top',
-          },
-        },
-      });
-      this.registered = true;
-    } catch {
-      this.registered = true;
-    }
-  }
-
-  /**
    * Inicializa el Grafo X6 en el elemento contenedor con los plugins configurados.
    */
   initGraph(container: HTMLElement): Graph {
-    this.registerUmlClassNode();
+    registerUmlClassNode();
 
     this.graph = new Graph({
       container,
@@ -326,6 +239,12 @@ export class UmlGraphService {
     });
 
     this.setupEventListeners();
+
+    this.pointerMoveContainer = container;
+    this.ngZone.runOutsideAngular(() => {
+      container.addEventListener('mousemove', this.handlePointerMove);
+    });
+
     return this.graph;
   }
 
@@ -780,6 +699,8 @@ export class UmlGraphService {
   }
 
   dispose(): void {
+    this.pointerMoveContainer?.removeEventListener('mousemove', this.handlePointerMove);
+    this.pointerMoveContainer = null;
     this.graph?.dispose();
     this.graph = null;
     this.dnd = null;

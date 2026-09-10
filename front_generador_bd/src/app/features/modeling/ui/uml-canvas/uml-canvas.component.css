@@ -47,4 +47,31 @@
   cursor: pointer;
 }
 
+/* Cursores remotos (ADR-0003 paso 2). El color de fondo es dinámico por
+   peer (ver [style.background] en la plantilla) — no hardcodeable acá. */
+.collab-cursor {
+  pointer-events: none;
+  transition: left 0.08s linear, top 0.08s linear;
+}
+
+.collab-cursor-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 9999px;
+  border: 2px solid #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  flex-shrink: 0;
+}
+
+.collab-cursor-label {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: #ffffff;
+  padding: 1px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+
 

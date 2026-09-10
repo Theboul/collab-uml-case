@@ -23,7 +23,7 @@
 
 | CU | Funcionalidad | Área / Paquete | Componente Backend (`backend_case`) | Núcleo de Dominio (`core/uml_domain`) | Pruebas Asociadas | Estado |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **CU5** | Colaborar en la edición | PA2: Colaboración | `app/collaboration/` (con puerto `LockStore`)<br>`app/legacy/ws_router.py` (Señalización WebRTC) | N/A (PA1 aislado) | `test_legacy_parity_ws.py` | **Parcial** (WebRTC y broadcast listos; bloqueo granular pendiente de ADR-0003) |
+| **CU5** | Colaborar en la edición | PA2: Colaboración | `app/collaboration/` (pendiente de implementar según ADR-0003: endpoint WebSocket + LockStore) | N/A (PA1 aislado) | Sin pruebas del mecanismo aprobado todavía — pendiente a medida que se implemente el roadmap de ADR-0003 | **No implementado en el stack activo (X6)** — solo un No-Op gateway confirmado; ADR-0003 aprobado, implementación pendiente siguiendo el roadmap de 4 pasos |
 | **CU8** | Importar y exportar modelos UML | PA2: Interoperabilidad | `app/interoperability/` (Frontera de transformación Enterprise Architect) | N/A (PA1 aislado; `CU8 <<include>> CU9`) | *Por definir* | **Pendiente** (Decisión de formato físico en diseño) |
 | **CU9** | Validar modelo UML | PA1 / Transversal | Reutilizado como guardián en `app/shared/errors/` | `validation.py` (`UMLValidator`, reglas VUML-01 a VUML-09) | `test_validator.py` (9 tests unitarios puros) | **Implementado en dominio** (Falta conectar como compuerta) |
 

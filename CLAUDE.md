@@ -137,4 +137,4 @@ Enforced by `scripts/check-file-size.py` (`.py`/`.ts`/`.html`/`.css`/`.scss`, ig
 
 ### Traceability
 
-Every feature should be traceable to a use case (CU) in the requirements capture document; there's a traceability matrix at `docs/traceability/requirements-matrix.md`. Check `docs/architecture/adr/` before implementing anything touching concurrent collaboration (CU5, ADR-0003, pending) or offline sync (CU13, ADR-0004, pending) — those are frozen until their ADRs are resolved. Auth (ADR-0005) is approved and implemented in `app/shared/security/`.
+Every feature should be traceable to a use case (CU) in the requirements capture document; there's a traceability matrix at `docs/traceability/requirements-matrix.md`. Check `docs/architecture/adr/` before implementing anything touching concurrent collaboration (CU5) or offline sync (CU13, ADR-0004, pending) — offline sync is frozen until its ADR is resolved. Estrategia de colaboración (CU5): lock pesimista granular por elemento vía Redis/LockStore, TTL+heartbeat, ver docs/architecture/adr/0003-*.md. Auth (ADR-0005) is approved and implemented in `app/shared/security/`.

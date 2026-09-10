@@ -75,4 +75,17 @@
       }
     </div>
   }
+
+  @for (cursor of cursorMarkers(); track cursor.peerId) {
+    <div
+      class="collab-cursor absolute z-40 flex items-start gap-1"
+      [style.left.px]="cursor.left"
+      [style.top.px]="cursor.top"
+    >
+      <div class="collab-cursor-dot" [style.background]="cursor.color"></div>
+      @if (cursor.displayName) {
+        <span class="collab-cursor-label" [style.background]="cursor.color">{{ cursor.displayName }}</span>
+      }
+    </div>
+  }
 </div>

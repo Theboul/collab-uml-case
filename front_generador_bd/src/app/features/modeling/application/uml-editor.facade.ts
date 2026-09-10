@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { Observable, tap } from 'rxjs';
+import { Observable, tap, throttleTime } from 'rxjs';
 import {
   DiagramLayout,
   EditorMode,
@@ -18,11 +18,15 @@ import { UmlApiService } from './uml-api.service';
 import { UmlDiagramAdapterService } from '../infrastructure/x6/uml-diagram-adapter.service';
 import { UmlGraphService } from '../infrastructure/x6/uml-graph.service';
 import { COLLABORATION_GATEWAY } from './collaboration-gateway.service';
+import { RemoteCursorsService } from './remote-cursors.service';
 import { EditorStateService } from './editor-state.service';
 import { EditorHistoryService } from './editor-history.service';
 import { EditorSelectionService } from './editor-selection.service';
 import { EditorCommandService } from './editor-command.service';
 import { EditorMemberCommandService } from './editor-member-command.service';
+
+/** Cadencia de emisión del cursor propio hacia los demás peers (dentro del rango 50-100ms del ADR). */
+const CURSOR_BROADCAST_THROTTLE_MS = 80;
 
 @Injectable({
   providedIn: 'root',
@@ -38,6 +42,7 @@ export class UmlEditorFacade {
   private readonly adapter = inject(UmlDiagramAdapterService);
   private readonly graphService = inject(UmlGraphService);
   private readonly collabGateway = inject(COLLABORATION_GATEWAY);
+  private readonly remoteCursorsService = inject(RemoteCursorsService);
 
   // Re-export reactive signals from specialized services (no API breaking changes)
   readonly canvasId = this.state.canvasId;
@@ -66,6 +71,7 @@ export class UmlEditorFacade {
   readonly lastSaved = this.state.lastSaved;
   readonly isShareModalOpen = this.state.isShareModalOpen;
   readonly contextMenu = this.state.contextMenu;
+  readonly remoteCursors = this.remoteCursorsService.cursors;
 
   constructor() {
     this.setupGraphSubscriptions();
@@ -91,6 +97,12 @@ export class UmlEditorFacade {
     this.graphService.edgeVerticesChanged$.subscribe(({ edgeId, vertices }) => {
       this.updateRelationVertices(edgeId, vertices);
     });
+
+    this.graphService.localPointerMove$
+      .pipe(throttleTime(CURSOR_BROADCAST_THROTTLE_MS, undefined, { leading: true, trailing: true }))
+      .subscribe(({ x, y }) => {
+        this.collabGateway.sendCursorPosition(x, y);
+      });
 
     this.graphService.edgeRightClick$.subscribe(({ edgeId, x, y }) => {
       this.contextMenu.set({ visible: true, edgeId, x, y });
@@ -190,9 +202,11 @@ export class UmlEditorFacade {
 
           this.state.setSnapshot(loadedModel, loadedLayout);
 
-          if (dto.roomName) {
-            this.collabGateway.connect(dto.roomName);
-          }
+          // El canal de colaboración usa el id real del lienzo (no `roomName`,
+          // que es un identificador aparte heredado del stack legacy de
+          // señalización WebRTC) — coincide con el `canvas_id` del endpoint
+          // `/ws/canvas/{canvas_id}/collaboration`.
+          this.collabGateway.connect(dto.id);
 
           if (this.graphService.isInitialized) {
             const cells = this.adapter.modelToCells(loadedModel, loadedLayout);
@@ -316,6 +330,12 @@ export class UmlEditorFacade {
 
   updateRelationVertices(relationId: string, vertices: Array<{ x: number; y: number }>): void {
     this.commandService.updateRelationVertices(relationId, vertices);
+  }
+
+  /** Cierra el canal de colaboración y limpia los cursores remotos — llamar al salir del lienzo. */
+  disconnectCollaboration(): void {
+    this.collabGateway.disconnect();
+    this.remoteCursorsService.reset();
   }
 
   deleteElement(elementId: string): void {

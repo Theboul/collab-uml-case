@@ -7,6 +7,7 @@ import {
   OnDestroy,
   PLATFORM_ID,
   ViewChild,
+  computed,
   inject,
 } from '@angular/core';
 import { CommonModule, isPlatformBrowser } from '@angular/common';
@@ -14,6 +15,14 @@ import { FormsModule } from '@angular/forms';
 import { Subscription } from 'rxjs';
 import { UmlGraphService } from '../../infrastructure/x6/uml-graph.service';
 import { UmlEditorFacade } from '../../application/uml-editor.facade';
+
+export interface CursorMarker {
+  peerId: string;
+  displayName: string | null;
+  color: string;
+  left: number;
+  top: number;
+}
 
 export interface InlineEditState {
   visible: boolean;
@@ -52,6 +61,30 @@ export class UmlCanvasComponent implements AfterViewInit, OnDestroy {
   inlineEditState: InlineEditState | null = null;
   private dblClickSub?: Subscription;
   private focusOutTimer?: ReturnType<typeof setTimeout>;
+
+  /**
+   * Posición en pantalla de cada cursor remoto, recalculada cada vez que
+   * llega una posición nueva de algún peer (facade.remoteCursors() cambia).
+   * No sigue tu propio pan/zoom en tiempo real — se reubica en la próxima
+   * actualización de ese peer (ADR-0003 paso 2, best-effort por diseño).
+   */
+  readonly cursorMarkers = computed<CursorMarker[]>(() => {
+    const cursors = this.facade.remoteCursors();
+    const graph = this.graphService.rawGraph;
+    if (!graph) return [];
+    const containerRect = this.containerRef.nativeElement.getBoundingClientRect();
+
+    return cursors.map((cursor) => {
+      const clientPos = graph.localToClient(cursor.x, cursor.y);
+      return {
+        peerId: cursor.peerId,
+        displayName: cursor.displayName,
+        color: cursor.color,
+        left: clientPos.x - containerRect.left,
+        top: clientPos.y - containerRect.top,
+      };
+    });
+  });
 
   constructor(@Inject(PLATFORM_ID) private platformId: Object) {}
 
@@ -254,6 +287,7 @@ export class UmlCanvasComponent implements AfterViewInit, OnDestroy {
   ngOnDestroy(): void {
     clearTimeout(this.focusOutTimer);
     this.dblClickSub?.unsubscribe();
+    this.facade.disconnectCollaboration();
     if (isPlatformBrowser(this.platformId)) {
       this.graphService.dispose();
     }

@@ -214,6 +214,7 @@ export class EditorCommandService {
     };
 
     this.state.setSnapshot(loadedModel, loadedLayout);
+    this.state.setVersion(dto.version);
     if (this.graphService.isInitialized) {
       const cells = this.adapter.modelToCells(loadedModel, loadedLayout);
       this.graphService.renderCells(cells.nodes, cells.edges);
