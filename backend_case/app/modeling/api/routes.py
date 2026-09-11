@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from backend_case.app.application.mappers import DomainToPydanticMapper
+from backend_case.app.collaboration.room_registry import collaboration_room_registry
 from backend_case.app.modeling.application.canvas_service import CanvasService
 from backend_case.app.schemas.uml import UmlModelSchema
 from backend_case.app.shared.deps import get_canvas_service
@@ -237,11 +238,20 @@ async def execute_editor_command(
         cmd_type=command.type,
         payload=command.payload,
     )
+    canvas_schema = _to_detail_schema(res.lienzo, res.version, res.owner_id, res.room_name)
+    # "" nunca matchea un peer_id real (siempre uuid4().hex[:12]): este POST HTTP no
+    # tiene un peer de WS propio que excluir, así que el broadcast llega a toda la sala.
+    # El cliente descarta su propio eco comparando versión (ver EditorCommandService).
+    await collaboration_room_registry.broadcast(
+        canvas_id,
+        "",
+        {"type": "canvas_update", "canvas": canvas_schema.model_dump(mode="json")},
+    )
     return CommandResponse(
         accepted=True,
         version=res.version,
         operationId=command.operationId,
-        canvas=_to_detail_schema(res.lienzo, res.version, res.owner_id, res.room_name),
+        canvas=canvas_schema,
         undoPayload=undo_payload,
     )
 

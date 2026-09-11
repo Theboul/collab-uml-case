@@ -76,6 +76,23 @@ export class UmlGraphService {
   private selectionPlugin: Selection | null = null;
   private dnd: Dnd | null = null;
   private isPanningActive = false;
+  /**
+   * Evita el eco: mientras se aplica una posición remota vía
+   * `setNodePositionSilent`, los listeners `node:move`/`node:moved` locales
+   * se ignoran para no re-emitir esa misma posición como si fuera un
+   * arrastre propio (que causaría un loop entre dos pestañas).
+   */
+  private isApplyingRemotePosition = false;
+  /**
+   * True entre el `node:move` real de inicio de un arrastre local y el
+   * `node:moved` de fin (contrato de X6 confirmado en node.ts: cada uno
+   * dispara una única vez por gesto). Lo consulta RemoteCanvasSyncService
+   * para diferir un `canvas_update` entrante mientras el usuario tiene el
+   * mouse apretado sobre un nodo — aplicarlo de inmediato dispara
+   * clearCells()+renderCells(), que destruye y recrea el nodo arrastrado a
+   * mitad de gesto y corta el drag físico.
+   */
+  private _isDraggingLocally = false;
   private pointerMoveContainer: HTMLElement | null = null;
   private readonly handlePointerMove = (e: MouseEvent): void => {
     if (!this.graph) return;
@@ -85,6 +102,12 @@ export class UmlGraphService {
 
   readonly selectionChange$ = new Subject<CellSelectionEvent>();
   readonly nodeMoved$ = new Subject<NodePositionChangeEvent>();
+  /**
+   * Posición del nodo en cada frame del arrastre (no solo al soltar, a
+   * diferencia de `nodeMoved$`). Sin throttle acá — el consumidor decide la
+   * cadencia de envío por WS (ver UmlEditorFacade + collaboration-tuning.ts).
+   */
+  readonly nodeDragging$ = new Subject<NodePositionChangeEvent>();
   readonly nodeResized$ = new Subject<NodeSizeChangeEvent>();
   readonly edgeConnected$ = new Subject<EdgeConnectedEvent>();
   readonly edgeReconnected$ = new Subject<EdgeReconnectedEvent>();
@@ -106,6 +129,10 @@ export class UmlGraphService {
 
   get isInitialized(): boolean {
     return this.graph !== null;
+  }
+
+  get isDraggingLocally(): boolean {
+    return this._isDraggingLocally;
   }
 
   get rawGraph(): Graph | null {
@@ -272,9 +299,33 @@ export class UmlGraphService {
 
     this.edgeToolsService.registerListeners(this.graph);
 
+    // Posición en vivo durante el arrastre (para el streaming a otros peers)
+    this.graph.on('node:move', ({ node }) => {
+      console.log('[DIAG] node:move fired', node.id);
+      if (this.isPanningActive || this.isApplyingRemotePosition) {
+        console.log('[DIAG] node:move BLOCKED by guard', {
+          isPanningActive: this.isPanningActive,
+          isApplyingRemotePosition: this.isApplyingRemotePosition,
+        });
+        return;
+      }
+      console.log('[DIAG] node:move passed guard, emitting nodeDragging$');
+      this._isDraggingLocally = true;
+      this.ngZone.run(() => {
+        const pos = node.getPosition();
+        this.nodeDragging$.next({
+          nodeId: node.id,
+          x: pos.x,
+          y: pos.y,
+        });
+      });
+    });
+
     // Movimiento persistente al terminar el arrastre
     this.graph.on('node:moved', ({ node }) => {
-      if (this.isPanningActive) return;
+      console.log('[DIAG-MOVE-COUNT] node:moved fired', Date.now(), node.id);
+      if (this.isPanningActive || this.isApplyingRemotePosition) return;
+      this._isDraggingLocally = false;
       this.ngZone.run(() => {
         const pos = node.getPosition();
         this.nodeMoved$.next({
@@ -617,6 +668,25 @@ export class UmlGraphService {
 
       const selected = this.graph.getSelectedCells().filter((c) => c.isNode()).map((c) => c.id);
       this.updatePortsVisibility(selected);
+    }
+  }
+
+  /**
+   * Mueve un nodo visualmente sin tocar el modelo de dominio ni disparar
+   * ningún comando/historial — usado para reflejar el arrastre en vivo de un
+   * peer remoto (ver RemoteNodeDragService). `silent: true` evita que X6
+   * dispare eventos de cambio de posición; la guarda de reentrancia además
+   * blindea `node:move`/`node:moved` por si la librería igual los emitiera.
+   */
+  setNodePositionSilent(nodeId: string, x: number, y: number): void {
+    if (!this.graph) return;
+    const node = this.graph.getCellById(nodeId);
+    if (!node || !node.isNode()) return;
+    this.isApplyingRemotePosition = true;
+    try {
+      node.position(x, y, { silent: true });
+    } finally {
+      this.isApplyingRemotePosition = false;
     }
   }
 

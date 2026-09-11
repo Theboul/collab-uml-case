@@ -19,6 +19,9 @@ import { UmlDiagramAdapterService } from '../infrastructure/x6/uml-diagram-adapt
 import { UmlGraphService } from '../infrastructure/x6/uml-graph.service';
 import { COLLABORATION_GATEWAY } from './collaboration-gateway.service';
 import { RemoteCursorsService } from './remote-cursors.service';
+import { RemoteCanvasSyncService } from './remote-canvas-sync.service';
+import { RemoteNodeDragService } from './remote-node-drag.service';
+import { NODE_DRAG_BROADCAST_THROTTLE_MS } from './collaboration-tuning';
 import { EditorStateService } from './editor-state.service';
 import { EditorHistoryService } from './editor-history.service';
 import { EditorSelectionService } from './editor-selection.service';
@@ -43,6 +46,8 @@ export class UmlEditorFacade {
   private readonly graphService = inject(UmlGraphService);
   private readonly collabGateway = inject(COLLABORATION_GATEWAY);
   private readonly remoteCursorsService = inject(RemoteCursorsService);
+  private readonly remoteCanvasSyncService = inject(RemoteCanvasSyncService);
+  private readonly remoteNodeDragService = inject(RemoteNodeDragService);
 
   // Re-export reactive signals from specialized services (no API breaking changes)
   readonly canvasId = this.state.canvasId;
@@ -80,7 +85,18 @@ export class UmlEditorFacade {
   private setupGraphSubscriptions(): void {
     this.graphService.nodeMoved$.subscribe(({ nodeId, x, y }) => {
       this.moveElement(nodeId, x, y);
+      this.collabGateway.sendNodeDragEnd(nodeId);
     });
+
+    this.graphService.nodeDragging$
+      .pipe(
+        tap((e) => console.log('[DIAG] nodeDragging$ PRE-throttle', e)),
+        throttleTime(NODE_DRAG_BROADCAST_THROTTLE_MS, undefined, { leading: true, trailing: true })
+      )
+      .subscribe(({ nodeId, x, y }) => {
+        console.log('[DIAG] nodeDragging$ POST-throttle -> sendNodeDragPosition', { nodeId, x, y });
+        this.collabGateway.sendNodeDragPosition(nodeId, x, y);
+      });
 
     this.graphService.nodeResized$.subscribe(({ nodeId, width, height, x, y }) => {
       this.resizeElement(nodeId, width, height, x, y);
@@ -336,6 +352,7 @@ export class UmlEditorFacade {
   disconnectCollaboration(): void {
     this.collabGateway.disconnect();
     this.remoteCursorsService.reset();
+    this.remoteNodeDragService.reset();
   }
 
   deleteElement(elementId: string): void {

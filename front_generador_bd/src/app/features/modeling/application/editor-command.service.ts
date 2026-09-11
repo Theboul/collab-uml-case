@@ -308,6 +308,7 @@ export class EditorCommandService {
   }
 
   moveElement(classId: string, x: number, y: number): void {
+    console.log('[DIAG-MOVE-COUNT] moveElement() called', Date.now(), { classId, x, y });
     const currentLayout = this.state.layout();
     const oldNode = currentLayout.nodes[classId];
     const oldX = oldNode ? oldNode.x : x;

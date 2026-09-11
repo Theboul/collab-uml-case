@@ -12,7 +12,38 @@ export interface CursorPositionMessage {
   y: number;
 }
 
-export type CollaborationMessage = CursorPositionMessage;
+/** Snapshot completo del lienzo tras un comando exitoso de otro peer (Problema B). */
+export interface CanvasUpdateMessage {
+  type: 'canvas_update';
+  canvas: unknown;
+}
+
+/** Posición en vivo de un nodo siendo arrastrado por un peer, efímera y sin persistir. */
+export interface NodeDragMessage {
+  type: 'node_drag';
+  nodeId: string;
+  x: number;
+  y: number;
+}
+
+/** Fin del arrastre en vivo — el resultado final llega por su lado vía `canvas_update`. */
+export interface NodeDragEndMessage {
+  type: 'node_drag_end';
+  nodeId: string;
+}
+
+export type CollaborationMessage =
+  | CursorPositionMessage
+  | CanvasUpdateMessage
+  | NodeDragMessage
+  | NodeDragEndMessage;
+
+/** Evento crudo de arrastre remoto tal como lo entrega el gateway. */
+export interface RemoteNodeDragEvent {
+  nodeId: string;
+  x: number;
+  y: number;
+}
 
 /** Evento crudo tal como lo entrega el gateway (sin color asignado todavía). */
 export interface IncomingCursorEvent {

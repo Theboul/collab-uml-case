@@ -85,7 +85,8 @@ export class UmlApiService {
    * `model.relations` siempre llega `undefined` y las relaciones se pierden al
    * recargar el lienzo (aunque sí están persistidas en el backend).
    */
-  private normalizeCanvas(raw: any): LienzoDetailDto {
+  /** Público: también lo usa RemoteCanvasSyncService para normalizar snapshots recibidos por WS. */
+  normalizeCanvas(raw: any): LienzoDetailDto {
     return { ...raw, model: this.normalizeModel(raw.model) };
   }
 
