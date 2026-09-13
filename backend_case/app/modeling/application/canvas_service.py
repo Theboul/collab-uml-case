@@ -29,6 +29,24 @@ class CanvasService:
         self.repository = repository
         self.command_dispatcher = CommandDispatcher()
 
+    async def _verificar_acceso_edicion(
+        self, canvas_id: str, owner_id: str | None, user_id: str | None
+    ) -> None:
+        """
+        Rechaza la mutación si el solicitante no tiene rol de edición (ANFITRION o
+        COLABORADOR) sobre el lienzo. INVITADO (sin unirse, o sin autenticar contra
+        un lienzo con dueño real) no puede escribir, solo leer vía /by-room.
+        """
+        role = await self.repository.resolver_rol(canvas_id, owner_id, user_id)
+        if role not in ("ANFITRION", "COLABORADOR"):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "code": "CANVAS_ACCESS_FORBIDDEN",
+                    "message": "No tenés acceso de edición a este lienzo.",
+                },
+            )
+
     async def crear_lienzo(
         self,
         nombre: str = "Diagrama Sin Título",
@@ -128,12 +146,17 @@ class CanvasService:
 
 
     async def agregar_clase(
-        self, canvas_id: str, nombre: str, is_abstract: bool = False
+        self,
+        canvas_id: str,
+        nombre: str,
+        is_abstract: bool = False,
+        user_id: str | None = None,
     ) -> tuple[Lienzo, int, UmlClass, DomainEvent]:
         """
         CU3: Agregar una nueva clase al lienzo.
         """
         res = await self.repository.obtener(canvas_id)
+        await self._verificar_acceso_edicion(canvas_id, res.owner_id, user_id)
         lienzo = res.lienzo
         clase, evento = lienzo.modelo.agregar_clase(nombre=nombre, is_abstract=is_abstract)
         saved = await self.repository.guardar(lienzo)
@@ -151,11 +174,13 @@ class CanvasService:
         multiplicidad_destino: str | None = "1",
         agregacion_origen: str = "none",
         agregacion_destino: str = "none",
+        user_id: str | None = None,
     ) -> tuple[Lienzo, int, UmlAssociation, DomainEvent]:
         """
         CU4: Agregar una asociación binaria entre dos clases en el lienzo.
         """
         res = await self.repository.obtener(canvas_id)
+        await self._verificar_acceso_edicion(canvas_id, res.owner_id, user_id)
         lienzo = res.lienzo
 
         mult_orig = (
@@ -194,12 +219,14 @@ class CanvasService:
         expected_version: int,
         cmd_type: str,
         payload: dict[str, Any],
+        user_id: str | None = None,
     ) -> tuple[CanvasResult, dict[str, Any] | None]:
         """
         Ejecuta un comando del editor sobre el lienzo delegándolo al despachador modular
         y persistiendo el cambio de manera atómica con verificación optimista de versión.
         """
         res = await self.repository.obtener(canvas_id)
+        await self._verificar_acceso_edicion(canvas_id, res.owner_id, user_id)
         if not isinstance(res.lienzo.visual_layout, dict):
             res.lienzo.visual_layout = {
                 "viewport": {"zoom": 1.0, "panX": 0.0, "panY": 0.0},
@@ -219,9 +246,9 @@ class CanvasService:
 
         return saved_result, undo_payload
 
-    async def listar_lienzos(self) -> list[dict[str, Any]]:
+    async def listar_lienzos(self, user_id: str | None = None) -> list[dict[str, Any]]:
         """
-        Lista todos los lienzos registrados en la base de datos.
+        Lista los lienzos visibles para el usuario (propios o donde colabora).
         """
-        return await self.repository.listar()
+        return await self.repository.listar(user_id=user_id)
 

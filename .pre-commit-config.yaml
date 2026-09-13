@@ -1,0 +1,55 @@
+# Gate de calidad del repo — ver AGENTS.md y .agents/rules/tooling_and_quality_gates.md
+# Instalacion: pip install pre-commit && pre-commit install
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=2000"]
+
+  - repo: local
+    hooks:
+      - id: check-file-size
+        name: RULE-CODE-QUALITY — límite de tamaño de archivo (800/1000 líneas)
+        entry: python scripts/check-file-size.py
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: ruff-lint
+        name: Ruff lint — backend_case + core/uml_domain
+        entry: python -m ruff check backend_case/app backend_case/tests core
+        language: system
+        pass_filenames: false
+        files: ^(backend_case|core)/.*\.py$
+
+      - id: ruff-format-check
+        name: Ruff format --check — backend_case + core/uml_domain
+        entry: python -m ruff format --check backend_case/app backend_case/tests core
+        language: system
+        pass_filenames: false
+        files: ^(backend_case|core)/.*\.py$
+
+      - id: mypy
+        name: Mypy — backend_case/app + core/uml_domain
+        entry: python -m mypy backend_case/app core/uml_domain
+        language: system
+        pass_filenames: false
+        files: ^(backend_case/app|core/uml_domain)/.*\.py$
+
+      - id: eslint
+        name: ESLint — front_generador_bd
+        entry: npm --prefix front_generador_bd run lint
+        language: system
+        pass_filenames: false
+        files: ^front_generador_bd/src/.*\.(ts|html)$
+
+      - id: prettier-check
+        name: Prettier --check — front_generador_bd
+        entry: npm --prefix front_generador_bd run format:check
+        language: system
+        pass_filenames: false
+        files: ^front_generador_bd/src/.*\.(ts|html|scss|css)$

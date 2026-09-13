@@ -129,6 +129,12 @@ export const UML_NODE_DIMENSIONS = {
   BOTTOM_PADDING: 12,
   MIN_WIDTH: 180,
   MIN_HEIGHT: 110,
+  /** Alto de fila real de atributo (Fase 2) — más alto que LINE_HEIGHT (16) para
+   *  fuente 12px con line-height ~1.5 y para dar lugar al ícono de eliminar. */
+  ATTR_ROW_HEIGHT: 22,
+  ATTR_FONT_SIZE: 12,
+  /** Filas visibles antes de que el compartimento de atributos entre en scroll interno. */
+  ATTR_MAX_VISIBLE_ROWS: 7,
 } as const;
 
 export interface SubElementSelection {

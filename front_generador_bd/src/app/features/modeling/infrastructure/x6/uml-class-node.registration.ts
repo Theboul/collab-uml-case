@@ -21,7 +21,10 @@ export function registerUmlClassNode(): void {
         { tagName: 'rect', selector: 'rowHighlight' },
         { tagName: 'text', selector: 'title' },
         { tagName: 'line', selector: 'separator1' },
-        { tagName: 'text', selector: 'attributes', className: 'uml-attributes-text' },
+        // Filas reales de atributo (Fase 2): grupo vacío poblado/mutado directamente
+        // en el DOM por UmlAttributeRowsService, fuera del sistema declarativo de
+        // attrs de X6 (necesita clip + scroll + listeners por fila).
+        { tagName: 'g', selector: 'attributeRows' },
         { tagName: 'line', selector: 'separator2' },
         { tagName: 'text', selector: 'operations', className: 'uml-operations-text' },
       ],
@@ -71,14 +74,9 @@ export function registerUmlClassNode(): void {
           y1: 32,
           y2: 32,
         },
-        attributes: {
-          refX: 10,
+        attributeRows: {
+          refX: 0,
           refY: 42,
-          fontFamily: 'JetBrains Mono, monospace',
-          fontSize: 11,
-          fill: '#334155',
-          textAnchor: 'start',
-          textVerticalAnchor: 'top',
         },
         separator2: {
           stroke: '#cbd5e1',

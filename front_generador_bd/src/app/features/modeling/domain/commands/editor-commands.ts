@@ -30,6 +30,7 @@ export interface EditorCommand<T = any> {
   expectedVersion: number;
   type: EditorCommandType | string;
   payload: T;
+  peerId?: string;
 }
 
 export interface CreateClassPayload {

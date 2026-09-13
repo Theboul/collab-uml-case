@@ -13,6 +13,12 @@ Esta skill guía el desarrollo de nuevas funcionalidades en el proyecto siguiend
 
 ---
 
+## 0. Tooling de calidad (lint/format/type-check por stack)
+
+Config real y comandos: `.agents/rules/tooling_and_quality_gates.md` (Ruff+Mypy para
+`backend_case`/`core`, ESLint+Prettier para `front_generador_bd`, convenciones de Redis y
+preparación de Spring Boot). Ejecutar antes de dar cualquier tarea por terminada.
+
 ## 1. Verificación Inicial Obligatoria
 
 Antes de escribir cualquier línea de código o crear nuevos archivos:

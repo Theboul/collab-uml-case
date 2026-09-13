@@ -1,0 +1,65 @@
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["backend_case", "core", "tests"]
+exclude = [
+    "front_generador_bd",
+    "back_generator_uml",
+    "mobile_app_reference",
+    ".venv",
+    "venv",
+]
+
+[tool.ruff.lint]
+# E/F/W: pycodestyle+pyflakes | I: import sort | UP: pyupgrade | B: bugbear
+# C4: comprehensions | SIM: simplify | N: pep8-naming | RUF: ruff-native checks
+# TRY002: bloquea "raise Exception(...)" generico (ver AGENTS.md seccion 5)
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "N", "RUF", "TRY002"]
+ignore = [
+    "E203",  # espacios antes de ':' — delegado al formatter
+    "N815",  # campos Pydantic en camelCase a proposito: reflejan contracts/uml-model.v2.json y JSON legado
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Los __init__.py de paquetes re-exportan simbolos a proposito.
+"**/__init__.py" = ["F401"]
+"backend_case/tests/**" = ["N802", "N806"]
+"tests/**" = ["N802", "N806"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["core", "app"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.mypy]
+python_version = "3.12"
+namespace_packages = true
+explicit_package_bases = true
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+no_implicit_optional = true
+check_untyped_defs = true
+disallow_untyped_defs = true
+exclude = "^(front_generador_bd|back_generator_uml|mobile_app_reference)/"
+
+# core/uml_domain es dominio puro: se exige el maximo rigor de tipos (AGENTS.md #0.1)
+[[tool.mypy.overrides]]
+module = ["core.uml_domain.*"]
+strict = true
+
+# Application services son la logica de negocio del backend — mismo rigor que el dominio
+[[tool.mypy.overrides]]
+module = ["backend_case.app.*.application.*"]
+strict = true
+
+# legacy/ preserva contratos Django-era intactos; no vale la pena tipar retroactivamente
+[[tool.mypy.overrides]]
+module = ["backend_case.app.legacy.*"]
+disallow_untyped_defs = false
+check_untyped_defs = false
+
+# Si un SDK de terceros sin stubs entra a infrastructure/ (ej. google-generativeai para
+# AiCommandInterpreter, CU6/CU7), agregar aqui su override con ignore_missing_imports = true.

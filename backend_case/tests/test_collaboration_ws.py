@@ -8,25 +8,30 @@ desconectar. Sin locks, sin presencia todavía.
 import asyncio
 from unittest.mock import AsyncMock
 
-from fastapi.testclient import TestClient
-
 from backend_case.app.collaboration.room_registry import (
     CollaborationRoomRegistry,
     ConnectedPeer,
     collaboration_room_registry,
 )
 from backend_case.app.main import app
+from fastapi.testclient import TestClient
 
 client = TestClient(app)
 
 
 def test_broadcast_reaches_other_peers_in_same_room_not_the_sender():
-    canvas_id = "canvas-collab-1"
+    # Lienzo real sin autenticación (owner_id=None -> ANFITRION para cualquiera,
+    # ver resolver_rol): el WS ahora exige que el canvas_id exista y resuelva un
+    # rol de edición antes de aceptar el handshake.
+    canvas_id = client.post("/api/v2/canvases", json={"name": "WS Broadcast Test"}).json()["id"]
 
     with (
         client.websocket_connect(f"/ws/canvas/{canvas_id}/collaboration") as ws1,
         client.websocket_connect(f"/ws/canvas/{canvas_id}/collaboration") as ws2,
     ):
+        ws1.receive_json()  # handshake "connected" propio, no es el broadcast
+        ws2.receive_json()
+
         payload = {"action": "move_node", "nodeId": "n1", "x": 10, "y": 20}
         ws1.send_json(payload)
 
@@ -46,7 +51,7 @@ def test_broadcast_includes_sender_display_name_end_to_end():
     poder pintar su nombre junto al cursor remoto. Verifica que viaja por el
     envelope real (no sólo que quede guardado en el registro interno).
     """
-    canvas_id = "canvas-collab-name-broadcast"
+    canvas_id = client.post("/api/v2/canvases", json={"name": "WS DisplayName Test"}).json()["id"]
 
     with (
         client.websocket_connect(
@@ -54,6 +59,9 @@ def test_broadcast_includes_sender_display_name_end_to_end():
         ) as ws1,
         client.websocket_connect(f"/ws/canvas/{canvas_id}/collaboration") as ws2,
     ):
+        ws1.receive_json()  # handshake "connected" propio, no es el broadcast
+        ws2.receive_json()
+
         ws1.send_json({"type": "cursor", "x": 10, "y": 20})
         received = ws2.receive_json()
         assert received["fromDisplayName"] == "Ana"
@@ -69,8 +77,8 @@ def test_peers_in_different_canvas_are_registered_in_separate_rooms():
     # "ws_b no recibe nada de la sala A" por WS sería un test que puede
     # colgarse. En su lugar verificamos el aislamiento donde es determinista:
     # el estado del registro, más el broadcast intra-sala (ya cubierto arriba).
-    canvas_a = "canvas-collab-a"
-    canvas_b = "canvas-collab-b"
+    canvas_a = client.post("/api/v2/canvases", json={"name": "WS Room A"}).json()["id"]
+    canvas_b = client.post("/api/v2/canvases", json={"name": "WS Room B"}).json()["id"]
 
     with (
         client.websocket_connect(f"/ws/canvas/{canvas_a}/collaboration"),
@@ -84,7 +92,7 @@ def test_peers_in_different_canvas_are_registered_in_separate_rooms():
 
 
 def test_display_name_is_stored_on_connect():
-    canvas_id = "canvas-collab-name"
+    canvas_id = client.post("/api/v2/canvases", json={"name": "WS DisplayName Stored"}).json()["id"]
 
     with client.websocket_connect(
         f"/ws/canvas/{canvas_id}/collaboration?display_name=Ana"
@@ -100,7 +108,7 @@ def test_display_name_is_stored_on_connect():
 
 
 def test_disconnect_removes_peer_from_registry():
-    canvas_id = "canvas-collab-disconnect"
+    canvas_id = client.post("/api/v2/canvases", json={"name": "WS Disconnect Test"}).json()["id"]
 
     with client.websocket_connect(f"/ws/canvas/{canvas_id}/collaboration"):
         assert len(collaboration_room_registry.rooms.get(canvas_id, {})) == 1
@@ -180,3 +188,144 @@ def test_disconnect_is_safe_when_it_was_the_last_peer_and_gets_called_twice():
         assert canvas_id not in registry.rooms
 
     asyncio.run(_run())
+
+
+def test_connect_sends_peer_id_handshake():
+    """El cliente necesita su propio peer_id para poder excluirse del broadcast
+    de sus propios canvas_update (ver EditorCommandService/routes.py)."""
+    canvas_id = client.post("/api/v2/canvases", json={"name": "WS Handshake Test"}).json()["id"]
+
+    with client.websocket_connect(f"/ws/canvas/{canvas_id}/collaboration") as ws:
+        handshake = ws.receive_json()
+        assert handshake["type"] == "connected"
+        assert isinstance(handshake["peerId"], str) and handshake["peerId"]
+
+
+def test_http_command_broadcast_excludes_sender_via_peer_id():
+    """
+    Reproduce el escenario real: un comando ejecutado por HTTP con el peerId
+    de la conexión WS activa del emisor no debe hacerle eco a ese mismo peer,
+    pero sí debe llegar a los demás en la sala.
+    """
+    from backend_case.app.main import app as _app
+    from fastapi.testclient import TestClient as _TestClient
+
+    with _TestClient(_app) as scoped_client:
+        canvas_id = scoped_client.post(
+            "/api/v2/canvases", json={"name": "Lienzo Colab Peer"}
+        ).json()["id"]
+
+        with (
+            scoped_client.websocket_connect(f"/ws/canvas/{canvas_id}/collaboration") as ws1,
+            scoped_client.websocket_connect(f"/ws/canvas/{canvas_id}/collaboration") as ws2,
+        ):
+            ws1_peer_id = ws1.receive_json()["peerId"]
+            ws2.receive_json()
+
+            cmd_res = scoped_client.post(
+                f"/api/v2/canvases/{canvas_id}/commands",
+                json={
+                    "expectedVersion": 1,
+                    "type": "CREATE_CLASS",
+                    "payload": {"name": "Cliente", "x": 0, "y": 0, "width": 180, "height": 100},
+                    "peerId": ws1_peer_id,
+                },
+            )
+            assert cmd_res.status_code == 200
+
+            received = ws2.receive_json()
+            assert received["payload"]["type"] == "canvas_update"
+            assert received["from"] == ws1_peer_id
+
+
+def _register_and_get_token(client_: TestClient, email_prefix: str) -> str:
+    """El sufijo uuid evita choques de email si el archivo SQLite persiste entre corridas."""
+    import uuid as _uuid
+
+    email = f"{email_prefix}-{_uuid.uuid4().hex[:8]}@schemacraft.dev"
+    res = client_.post(
+        "/api/v2/auth/register",
+        json={"email": email, "password": "Password123!", "fullName": "Test User"},
+    )
+    assert res.status_code == 201, res.text
+    return res.json()["accessToken"]
+
+
+def test_ws_rejects_connection_without_valid_role():
+    """
+    Hallazgo #1 de la auditoría: el WS de colaboración no validaba rol alguno.
+    Sin token, o con el token de un usuario ajeno al lienzo, la conexión debe
+    cerrarse con el código 4403 antes de entrar a la sala — nunca se le asigna
+    peer_id ni queda registrada en collaboration_room_registry.
+    """
+    import pytest
+    from backend_case.app.main import app as _app
+    from starlette.websockets import WebSocketDisconnect
+
+    with TestClient(_app) as scoped_client:
+        owner_token = _register_and_get_token(scoped_client, "owner-ws-403")
+        outsider_token = _register_and_get_token(scoped_client, "outsider-ws-403")
+
+        canvas_res = scoped_client.post(
+            "/api/v2/canvases",
+            json={"name": "Lienzo WS Privado"},
+            headers={"Authorization": f"Bearer {owner_token}"},
+        )
+        canvas_id = canvas_res.json()["id"]
+
+        # Sin ningún token -> rechazado
+        with (
+            pytest.raises(WebSocketDisconnect) as exc_no_token,
+            scoped_client.websocket_connect(f"/ws/canvas/{canvas_id}/collaboration"),
+        ):
+            pass
+        assert exc_no_token.value.code == 4403
+
+        # Con token de un usuario autenticado pero ajeno al lienzo -> también rechazado
+        with (
+            pytest.raises(WebSocketDisconnect) as exc_outsider,
+            scoped_client.websocket_connect(
+                f"/ws/canvas/{canvas_id}/collaboration?token={outsider_token}"
+            ),
+        ):
+            pass
+        assert exc_outsider.value.code == 4403
+
+        assert canvas_id not in collaboration_room_registry.rooms
+
+
+def test_ws_accepts_connection_for_owner_and_joined_collaborator():
+    """Contraparte del test anterior: el fix no debe romper el flujo legítimo."""
+    from backend_case.app.main import app as _app
+
+    with TestClient(_app) as scoped_client:
+        owner_token = _register_and_get_token(scoped_client, "owner-ws-ok")
+        collab_token = _register_and_get_token(scoped_client, "collab-ws-ok")
+
+        canvas_res = scoped_client.post(
+            "/api/v2/canvases",
+            json={"name": "Lienzo WS Colaborativo"},
+            headers={"Authorization": f"Bearer {owner_token}"},
+        )
+        canvas_id = canvas_res.json()["id"]
+        room_name = canvas_res.json()["roomName"]
+
+        join_res = scoped_client.post(
+            "/api/v2/canvases/join",
+            json={"accessCode": room_name},
+            headers={"Authorization": f"Bearer {collab_token}"},
+        )
+        assert join_res.status_code == 200
+
+        with scoped_client.websocket_connect(
+            f"/ws/canvas/{canvas_id}/collaboration?token={owner_token}"
+        ) as owner_ws:
+            handshake = owner_ws.receive_json()
+            assert handshake["type"] == "connected"
+
+            with scoped_client.websocket_connect(
+                f"/ws/canvas/{canvas_id}/collaboration?token={collab_token}"
+            ) as collab_ws:
+                collab_handshake = collab_ws.receive_json()
+                assert collab_handshake["type"] == "connected"
+                assert len(collaboration_room_registry.rooms.get(canvas_id, {})) == 2

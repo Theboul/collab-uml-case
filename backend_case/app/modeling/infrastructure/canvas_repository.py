@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, NamedTuple
 
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend_case.app.application.mappers import (
@@ -272,11 +272,26 @@ class CanvasRepository:
             room_name=canvas_orm.room_name,
         )
 
-    async def listar(self) -> list[dict[str, Any]]:
+    async def listar(self, user_id: str | None = None) -> list[dict[str, Any]]:
         """
-        Lista resúmenes de los lienzos existentes.
+        Lista resúmenes de los lienzos visibles para el usuario: aquellos de los que es
+        ANFITRION (owner_id) o COLABORADOR (fila en canvas_collaborators). Sin usuario
+        autenticado, solo expone los lienzos anónimos (sin owner) para no filtrar datos
+        de otras cuentas.
         """
         stmt = select(CanvasORM).order_by(CanvasORM.updated_at.desc())
+        if user_id is not None:
+            es_colaborador = (
+                select(CanvasCollaboratorORM.canvas_id)
+                .where(
+                    CanvasCollaboratorORM.canvas_id == CanvasORM.id,
+                    CanvasCollaboratorORM.user_id == user_id,
+                )
+                .exists()
+            )
+            stmt = stmt.where(or_(CanvasORM.owner_id == user_id, es_colaborador))
+        else:
+            stmt = stmt.where(CanvasORM.owner_id.is_(None))
         result = await self.session.execute(stmt)
         canvases = result.scalars().all()
         return [
@@ -322,6 +337,11 @@ class CanvasRepository:
         """
         Resuelve dinámicamente el rol del usuario para el lienzo (ANFITRION, COLABORADOR o INVITADO).
         """
+        if owner_id is None:
+            # Lienzo creado sin autenticación: no hay dueño a quien proteger — mismo
+            # comportamiento abierto que ya permite la creación anónima (evita romper
+            # los tests/flujos históricos que operan sin token).
+            return "ANFITRION"
         if not user_id:
             return "INVITADO"
         if owner_id and owner_id == user_id:

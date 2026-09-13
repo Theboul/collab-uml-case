@@ -360,3 +360,198 @@ def test_update_relation_vertices_persists_manual_path(client: TestClient):
         {"x": 200.0, "y": 340.0},
     ]
 
+
+def _register_user(client: TestClient, email_prefix: str) -> str:
+    """Registra un usuario nuevo con email único (uuid) y devuelve su accessToken."""
+    import uuid as _uuid
+
+    email = f"{email_prefix}-{_uuid.uuid4().hex[:8]}@schemacraft.dev"
+    res = client.post(
+        "/api/v2/auth/register",
+        json={"email": email, "password": "Password123!", "fullName": "Test User"},
+    )
+    assert res.status_code == 201, res.text
+    return res.json()["accessToken"]
+
+
+def _auth_headers(token: str) -> dict[str, str]:
+    return {"Authorization": f"Bearer {token}"}
+
+
+def test_get_canvas_forbidden_for_user_without_access(client: TestClient):
+    """Hallazgo #1 de la auditoría: un usuario autenticado ajeno al lienzo no puede leerlo."""
+    owner_token = _register_user(client, "owner-403-get")
+    outsider_token = _register_user(client, "outsider-403-get")
+
+    create_res = client.post(
+        "/api/v2/canvases", json={"name": "Lienzo Privado GET"}, headers=_auth_headers(owner_token)
+    )
+    canvas_id = create_res.json()["id"]
+
+    outsider_res = client.get(
+        f"/api/v2/canvases/{canvas_id}", headers=_auth_headers(outsider_token)
+    )
+    assert outsider_res.status_code == 403
+    assert outsider_res.json()["code"] == "CANVAS_ACCESS_FORBIDDEN"
+
+    owner_res = client.get(f"/api/v2/canvases/{canvas_id}", headers=_auth_headers(owner_token))
+    assert owner_res.status_code == 200
+
+
+def test_get_canvas_by_room_allowed_for_invitado_with_link(client: TestClient):
+    """
+    Decisión de diseño confirmada: conocer el room_name (link compartido) sigue
+    siendo suficiente para VER el lienzo aunque el usuario no se haya unido todavía
+    — a diferencia de GET /{canvas_id}, que sí exige rol ANFITRION/COLABORADOR.
+    """
+    owner_token = _register_user(client, "owner-byroom")
+    outsider_token = _register_user(client, "outsider-byroom")
+
+    create_res = client.post(
+        "/api/v2/canvases", json={"name": "Lienzo Por Link"}, headers=_auth_headers(owner_token)
+    )
+    room_name = create_res.json()["roomName"]
+
+    outsider_res = client.get(
+        f"/api/v2/canvases/by-room/{room_name}", headers=_auth_headers(outsider_token)
+    )
+    assert outsider_res.status_code == 200
+    assert outsider_res.json()["role"] == "INVITADO"
+
+
+def test_execute_command_forbidden_for_user_without_access(client: TestClient):
+    owner_token = _register_user(client, "owner-403-cmd")
+    outsider_token = _register_user(client, "outsider-403-cmd")
+
+    create_res = client.post(
+        "/api/v2/canvases", json={"name": "Lienzo Privado CMD"}, headers=_auth_headers(owner_token)
+    )
+    canvas_id = create_res.json()["id"]
+
+    outsider_res = client.post(
+        f"/api/v2/canvases/{canvas_id}/commands",
+        json={
+            "expectedVersion": 1,
+            "type": "CREATE_CLASS",
+            "payload": {"name": "Intrusa", "x": 0, "y": 0, "width": 180, "height": 100},
+        },
+        headers=_auth_headers(outsider_token),
+    )
+    assert outsider_res.status_code == 403
+    assert outsider_res.json()["code"] == "CANVAS_ACCESS_FORBIDDEN"
+
+    owner_res = client.post(
+        f"/api/v2/canvases/{canvas_id}/commands",
+        json={
+            "expectedVersion": 1,
+            "type": "CREATE_CLASS",
+            "payload": {"name": "Legitima", "x": 0, "y": 0, "width": 180, "height": 100},
+        },
+        headers=_auth_headers(owner_token),
+    )
+    assert owner_res.status_code == 200
+
+
+def test_execute_command_allowed_for_joined_collaborator(client: TestClient):
+    owner_token = _register_user(client, "owner-collab-cmd")
+    collab_token = _register_user(client, "collab-cmd")
+
+    create_res = client.post(
+        "/api/v2/canvases",
+        json={"name": "Lienzo Colaborativo CMD"},
+        headers=_auth_headers(owner_token),
+    )
+    canvas_id = create_res.json()["id"]
+    room_name = create_res.json()["roomName"]
+
+    join_res = client.post(
+        "/api/v2/canvases/join", json={"accessCode": room_name}, headers=_auth_headers(collab_token)
+    )
+    assert join_res.status_code == 200
+    assert join_res.json()["role"] == "COLABORADOR"
+
+    collab_res = client.post(
+        f"/api/v2/canvases/{canvas_id}/commands",
+        json={
+            "expectedVersion": 1,
+            "type": "CREATE_CLASS",
+            "payload": {"name": "DeColaborador", "x": 0, "y": 0, "width": 180, "height": 100},
+        },
+        headers=_auth_headers(collab_token),
+    )
+    assert collab_res.status_code == 200
+
+
+def test_add_class_and_add_association_forbidden_for_user_without_access(client: TestClient):
+    owner_token = _register_user(client, "owner-403-legacy")
+    outsider_token = _register_user(client, "outsider-403-legacy")
+
+    create_res = client.post(
+        "/api/v2/canvases",
+        json={"name": "Lienzo Privado Legacy"},
+        headers=_auth_headers(owner_token),
+    )
+    canvas_id = create_res.json()["id"]
+
+    forbidden_class_res = client.post(
+        f"/api/v2/canvases/{canvas_id}/classes",
+        json={"name": "Intrusa"},
+        headers=_auth_headers(outsider_token),
+    )
+    assert forbidden_class_res.status_code == 403
+    assert forbidden_class_res.json()["code"] == "CANVAS_ACCESS_FORBIDDEN"
+
+    owner_class_a_res = client.post(
+        f"/api/v2/canvases/{canvas_id}/classes",
+        json={"name": "ClienteA"},
+        headers=_auth_headers(owner_token),
+    )
+    assert owner_class_a_res.status_code == 201
+    class_a_id = owner_class_a_res.json()["model"]["classes"][0]["id"]
+
+    owner_class_b_res = client.post(
+        f"/api/v2/canvases/{canvas_id}/classes",
+        json={"name": "ClienteB"},
+        headers=_auth_headers(owner_token),
+    )
+    class_b_id = owner_class_b_res.json()["model"]["classes"][1]["id"]
+
+    forbidden_assoc_res = client.post(
+        f"/api/v2/canvases/{canvas_id}/associations",
+        json={"sourceClassId": class_a_id, "targetClassId": class_b_id},
+        headers=_auth_headers(outsider_token),
+    )
+    assert forbidden_assoc_res.status_code == 403
+    assert forbidden_assoc_res.json()["code"] == "CANVAS_ACCESS_FORBIDDEN"
+
+    owner_assoc_res = client.post(
+        f"/api/v2/canvases/{canvas_id}/associations",
+        json={"sourceClassId": class_a_id, "targetClassId": class_b_id},
+        headers=_auth_headers(owner_token),
+    )
+    assert owner_assoc_res.status_code == 201
+
+
+def test_anonymous_canvas_without_owner_remains_open_for_edits(client: TestClient):
+    """
+    Regresión explícita de la decisión de diseño: un lienzo creado SIN
+    autenticación (owner_id=None, como hacen los tests históricos de este
+    módulo) debe seguir editable por cualquiera — no hay dueño real a quien
+    proteger.
+    """
+    create_res = client.post("/api/v2/canvases", json={"name": "Lienzo Anonimo"})
+    canvas_id = create_res.json()["id"]
+
+    cmd_res = client.post(
+        f"/api/v2/canvases/{canvas_id}/commands",
+        json={
+            "expectedVersion": 1,
+            "type": "CREATE_CLASS",
+            "payload": {"name": "Anonima", "x": 0, "y": 0, "width": 180, "height": 100},
+        },
+    )
+    assert cmd_res.status_code == 200
+
+    get_res = client.get(f"/api/v2/canvases/{canvas_id}")
+    assert get_res.status_code == 200
+

@@ -4,7 +4,7 @@ Rutas API v2 para el módulo de modelado UML (CU1 - CU4).
 import uuid
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from backend_case.app.application.mappers import DomainToPydanticMapper
@@ -59,6 +59,14 @@ class EditorCommandRequest(BaseModel):
     expectedVersion: int
     type: str
     payload: dict[str, Any] = Field(default_factory=dict)
+    peerId: str | None = Field(
+        default=None,
+        description=(
+            "peer_id de la conexión WS activa del emisor, si la tiene. Permite excluirlo del "
+            "broadcast de canvas_update para que no reciba su propio eco antes de que la "
+            "respuesta HTTP actualice su versión local."
+        ),
+    )
 
 
 class JoinCanvasRequest(BaseModel):
@@ -149,11 +157,14 @@ def _to_detail_schema(
 @router.get("", response_model=list[CanvasSummarySchema])
 async def list_canvases(
     service: CanvasServiceDep,
+    current_user: CurrentUserOptionalDep = None,
 ):
     """
-    Lista todos los lienzos de modelado registrados.
+    Lista los lienzos de modelado visibles para el usuario autenticado (propios o
+    donde colabora).
     """
-    return await service.listar_lienzos()
+    user_id = current_user.id if current_user else None
+    return await service.listar_lienzos(user_id=user_id)
 
 
 @router.post("", response_model=CanvasDetailSchema, status_code=status.HTTP_201_CREATED)
@@ -219,6 +230,17 @@ async def get_canvas(
     """
     user_id = current_user.id if current_user else None
     res = await service.obtener_lienzo(canvas_id, user_id=user_id)
+    if res.role == "INVITADO":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "CANVAS_ACCESS_FORBIDDEN",
+                "message": (
+                    "No tenés acceso a este lienzo. Unite con el código de acceso "
+                    "o el enlace de invitación."
+                ),
+            },
+        )
     return _to_detail_schema(res.lienzo, res.version, res.owner_id, res.room_name, res.role)
 
 
@@ -227,6 +249,7 @@ async def execute_editor_command(
     canvas_id: str,
     command: EditorCommandRequest,
     service: CanvasServiceDep,
+    current_user: CurrentUserOptionalDep = None,
 ):
     """
     Ejecuta un comando del editor sobre el lienzo con control de versión optimista.
@@ -237,14 +260,19 @@ async def execute_editor_command(
         expected_version=command.expectedVersion,
         cmd_type=command.type,
         payload=command.payload,
+        user_id=current_user.id if current_user else None,
     )
     canvas_schema = _to_detail_schema(res.lienzo, res.version, res.owner_id, res.room_name)
-    # "" nunca matchea un peer_id real (siempre uuid4().hex[:12]): este POST HTTP no
-    # tiene un peer de WS propio que excluir, así que el broadcast llega a toda la sala.
-    # El cliente descarta su propio eco comparando versión (ver EditorCommandService).
+    # command.peerId es el peer_id de la conexión WS activa del emisor (si mandó uno):
+    # lo excluye del broadcast para que no compita con la actualización de versión que
+    # trae esta misma respuesta HTTP (root cause del ciclo node:move/node:moved en drag,
+    # ver [DIAG] de la investigación). Sin peerId (cliente sin WS activo), "" no matchea
+    # ningún peer real y el broadcast llega a toda la sala como antes — el guard de
+    # versión en RemoteCanvasSyncService sigue como red de seguridad para ese caso y
+    # cualquier otro desfasaje real.
     await collaboration_room_registry.broadcast(
         canvas_id,
-        "",
+        command.peerId or "",
         {"type": "canvas_update", "canvas": canvas_schema.model_dump(mode="json")},
     )
     return CommandResponse(
@@ -261,6 +289,7 @@ async def add_class(
     canvas_id: str,
     payload: AddClassRequest,
     service: CanvasServiceDep,
+    current_user: CurrentUserOptionalDep = None,
 ):
     """
     CU3: Agregar una clase al modelo del lienzo.
@@ -269,6 +298,7 @@ async def add_class(
         canvas_id=canvas_id,
         nombre=payload.name,
         is_abstract=payload.isAbstract,
+        user_id=current_user.id if current_user else None,
     )
     return _to_detail_schema(lienzo, version)
 
@@ -278,6 +308,7 @@ async def add_association(
     canvas_id: str,
     payload: AddAssociationRequest,
     service: CanvasServiceDep,
+    current_user: CurrentUserOptionalDep = None,
 ):
     """
     CU4: Agregar una asociación binaria entre dos clases en el lienzo.
@@ -293,6 +324,7 @@ async def add_association(
         multiplicidad_destino=payload.targetMultiplicity,
         agregacion_origen=payload.sourceAggregation,
         agregacion_destino=payload.targetAggregation,
+        user_id=current_user.id if current_user else None,
     )
     return _to_detail_schema(lienzo, version)
 

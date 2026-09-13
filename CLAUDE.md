@@ -15,7 +15,25 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `docs/architecture/adr/` — Architecture Decision Records; check these before touching collaboration (CU5), offline sync (CU13), or auth.
 - `tests/` — cross-system / characterization tests (domain model, legacy Spring/Flutter/Postman generator output, legacy frontend export).
 
-The project standards live in `AGENTS.md` (root) and `.agents/rules/*.md` / `.agents/skills/uml-case-standards/SKILL.md` — **read those before making architectural changes**; this file only summarizes what's needed to navigate and run things.
+## Where the detailed rules live
+
+This file stays intentionally short (project shape + commands). Stack-specific conventions
+auto-load by path via Claude Code's native `.claude/rules/*.md` (frontmatter `paths:` — each file
+only enters context when you're touching matching files):
+
+| File | Loads on | Covers |
+|---|---|---|
+| `.claude/rules/angular.md` | `front_generador_bd/**/*.ts`, `**/*.html`, `**/*.component.ts` | folder layout, naming, X6/JointJS confinement, design tokens, a11y |
+| `.claude/rules/fastapi.md` | `backend_case/**/*.py`, `core/uml_domain/**/*.py` | layering, ports/adapters pragmatism, error taxonomy, API conventions, `assistant` AI-validation pipeline |
+| `.claude/rules/redis.md` | `backend_case/app/collaboration/**/*.py`, `**/*redis*.py` | key naming, TTL policy, which layer may touch the client |
+| `.claude/rules/springboot.md` | `**/*.java` | layer structure + linter choice reserved for `back_generator_uml` |
+
+Also read before implementing anything: `.agents/skills/uml-case-standards/SKILL.md` (a Claude
+Code **Skill** — invoke it explicitly for the full pre-work checklist: CU traceability, ADR
+status, Definition of Done). `AGENTS.md` (root) is the older, non-Claude-specific standards
+doc kept for other tools/agents; `.agents/rules/*.md` still holds a few things that don't fit
+either CLAUDE.md's budget or a single stack file (ADR process, generic DoD checklist, cross-layer
+testing strategy) — treat those two as the fallback reference, not the primary one.
 
 ## Commands
 
@@ -25,18 +43,18 @@ The project standards live in `AGENTS.md` (root) and `.agents/rules/*.md` / `.ag
 # Run the dev server
 python -m uvicorn backend_case.app.main:app --host 0.0.0.0 --port 8001 --reload
 
-# Run backend tests only
+# Tests
 python -m pytest backend_case/tests/ -v
-
-# Run a single test file / test
-python -m pytest backend_case/tests/test_canvases_commands.py -v
 python -m pytest backend_case/tests/test_canvases_commands.py::test_name -v
+python -m pytest   # entire repo suite: domain + legacy generator characterization + FastAPI
 
-# Run the entire repo suite (domain + legacy generator characterization + FastAPI)
-python -m pytest
+# Lint / format (config: pyproject.toml at repo root)
+python -m ruff check backend_case/app backend_case/tests core
+python -m ruff format backend_case/app backend_case/tests core          # apply
+python -m ruff format --check backend_case/app backend_case/tests core  # verify only
 
-# Lint
-python -m ruff check backend_case/app backend_case/tests
+# Type check (strict on core/uml_domain and app/*/application — see pyproject.toml)
+python -m mypy backend_case/app core/uml_domain
 ```
 
 Notes:
@@ -49,92 +67,38 @@ Notes:
 ```bash
 cd front_generador_bd
 ng serve            # dev server on :4200
-ng build             # production build
+ng build             # production build (also enforces tsc strict)
 ng test              # Karma unit tests
+
+# Lint / format (config: eslint.config.js, .prettierrc.json)
+pnpm run lint
+pnpm run lint:fix
+pnpm run format:check
+pnpm run format
 ```
 
-### Repo-wide code-quality gate (required before considering any task done)
+### Repo-wide gate (required before considering any task done)
 
 ```bash
 python scripts/check-file-size.py     # fails (exit 1) if any .py/.ts/.html/.css/.scss file >= 1000 lines; warns at >= 800
 ```
 
-This is enforced project policy (`.agents/rules/code_quality.md`), not optional tooling — run it after any nontrivial change alongside the linters/tests above.
+`.pre-commit-config.yaml` (repo root) wires the whole gate (file-size, Ruff, Mypy, ESLint,
+Prettier) into git hooks: `pip install pre-commit && pre-commit install`.
 
-## Architecture
+## Non-negotiables (apply everywhere, not just one stack)
 
-### Layering (non-negotiable dependency rule)
-
-```
-API (routers) → Application (services/use cases) → Domain (core/uml_domain)
-Infrastructure → implements Application Ports (never the reverse)
-Domain → depends on nothing above it
-```
-
-`core/uml_domain` is pure Python: **never** import FastAPI, SQLAlchemy, Pydantic, or any framework into it. It is the most protected part of the system — if a task seems to require modifying it, stop and get explicit user confirmation first rather than proceeding.
-
-### Backend module layout (`backend_case/app/`)
-
-Each functional module (`modeling`, `collaboration`, `assistant`, `interoperability`, `generation`) follows `api/` (routers — orchestration only, no business logic or SQL), `application/` (services/use cases), and, only where justified, `application/ports/` + `infrastructure/`. A **pragmatism rule** decides whether a module gets ports/adapters at all — don't add them speculatively:
-
-| Module | Ports/adapters? | Why |
-|---|---|---|
-| `modeling` | No — direct service over `core/uml_domain` | Domain is already isolated; no variable infra to protect |
-| `collaboration` | Yes, `LockStore` port | Redis today, a real candidate to change |
-| `assistant` | Yes, `AiCommandInterpreter` port | Gemini today, local model is a realistic future swap |
-| `interoperability` | No (yet) | Single format (XMI); YAGNI until a second format is real |
-| `generation` | Yes, one port per generator | Spring Boot and Postman are two real, distinct outputs |
-| `legacy` | No | Flat compat routes/WebSockets for the Angular client during transition, not core code |
-
-`app/legacy/` preserves the old Django-era HTTP/WebSocket contracts untouched (`/api/chatbot/`, `/api/set_backup_uml/`, `/ws/canvas/`, etc.) so the existing frontend keeps working during migration — don't "clean up" its contract shape. New endpoints always go under `/api/v2/...` with plural resource names, and use the structured error shape:
-```json
-{ "code": "UML_INVALID_MODEL", "message": "...", "details": [] }
-```
-Domain errors are a real exception taxonomy (`UmlDomainError`, `UmlValidationError`, `CanvasNotFound`, `ConcurrentEditConflict`, ...) in `app/shared/errors/` — never `raise Exception(...)`.
-
-### The `assistant` module's mandatory AI-output validation pipeline (CU6/CU7)
-
-Any AI-derived input (Gemini or otherwise; text, voice, or image) **must** flow through this pipeline with no bypass, ever (not even "for debug"):
-
-```
-User input → InterpretadorComandosModelado / AnalizadorDiagramaImagen
-           → raw AI output (ComandoModelado / PropuestaModelo)
-           → ValidadorComandoModelado / ValidadorModelo   ← mandatory, no exceptions
-           → GestorElementosUML / GestorRelacionesUML     ← only things allowed to touch the UML model
-```
-AI output is treated exactly like untrusted HTTP input: validate schema/structure, validate that referenced element/relation IDs actually exist in the current model, and validate UML business rules (multiplicities, valid types, disallowed cycles). On validation failure, respond with an explicit error — never partially apply or silently "correct" what the AI proposed. All model calls go through the `AiCommandInterpreter` port; nothing calls the Gemini SDK directly from a router or from `application/`.
-
-### Frontend architecture (`front_generador_bd/src/app/`)
-
-```
-core/      # singleton services, guards, interceptors — no UI
-layout/    # AppShellComponent (login/dashboard, no project sidebar) and
-           # ProjectShellComponent (single sidebar + toolbar shared by every
-           # in-project view: canvas, SQL editor, tables, relationships, etc.)
-shared/ui/ # presentational-only components (sc-button, sc-badge, sc-data-type-tag,
-           # sc-table-card, sc-modal-shell, sc-icon, ...) — no HttpClient, no business logic
-features/  # modeling, collaboration, assistant, interoperability, generation
-           # each split into application/ (facades), infrastructure/ (x6 adapters,
-           # gateways), ui/ (smart components)
-```
-
-Rules that matter when adding to this tree:
-- Data flow is always `Component → Facade/Application Service → Gateway/Adapter → HttpClient`. Components never inject `HttpClient` directly.
-- All canvas rendering code (AntV X6, and any remaining JointJS) is confined to `features/modeling/infrastructure/x6/` (or `.../jointjs/`) — never leaks into facades or shared UI.
-- Every view inside an opened project uses `ProjectShellComponent`; every view outside one (login, dashboard) uses `AppShellComponent`. If it's unclear which one a new view belongs to, that's a sign the view isn't ready to build yet.
-- Before adding a new button/badge/tag/card, check `shared/ui` first — copy-pasted markup for these is explicitly disallowed.
-- All components are `standalone: true`; no per-feature NgModules.
-- Styling uses semantic design tokens only (`bg-primary`, `text-on-primary-container`, the `gutter-*`/`toolbar-height`/`sidebar-width` spacing scale, `font-headline-*`/`font-body-*`/`font-code-*`) — never hardcoded hex colors or magic `px`/`mt-[13px]` values. Technical values (table names, SQL types, IDs) always render in `font-code-*`, never the body font.
-- TypeScript is `strict: true`; `any` is disallowed unless documented inline with `// any justificado: ...`.
-
-### Contracts and cross-system consistency
-
-`contracts/uml-model.v2.json` is the single source of truth for the UML model shape shared by the Angular frontend, FastAPI backend, and the Spring/Postman generators in `back_generator_uml/`. Changes there ripple across all three — check `docs/domain-model/` and the relevant ADR before altering it.
-
-### File-size / modularity discipline
-
-Enforced by `scripts/check-file-size.py` (`.py`/`.ts`/`.html`/`.css`/`.scss`, ignoring `node_modules`/`dist`/`venv`/etc.): 800 lines is a preventive warning (refactor before adding more to that file), 1000 lines is a hard failure. When a facade/service is getting overloaded, split it by cohesive responsibility (see e.g. how `uml-editor.facade.ts` was decomposed into `editor-selection.service.ts`, `editor-history.service.ts`, `editor-command.service.ts`, or how backend command handlers live under `app/modeling/application/commands/` split per entity: `class_handlers.py`, `attribute_handlers.py`, `relation_handlers.py`, etc.) rather than splitting mechanically (`part1.ts`/`misc.ts` style splits are explicitly disallowed).
-
-### Traceability
-
-Every feature should be traceable to a use case (CU) in the requirements capture document; there's a traceability matrix at `docs/traceability/requirements-matrix.md`. Check `docs/architecture/adr/` before implementing anything touching concurrent collaboration (CU5) or offline sync (CU13, ADR-0004, pending) — offline sync is frozen until its ADR is resolved. Estrategia de colaboración (CU5): lock pesimista granular por elemento vía Redis/LockStore, TTL+heartbeat, ver docs/architecture/adr/0003-*.md. Auth (ADR-0005) is approved and implemented in `app/shared/security/`.
+- **`core/uml_domain`** is the most protected part of the system: pure Python, never imports a
+  framework. If a task seems to require modifying it, **stop and get explicit user confirmation
+  first**. Detail: `.claude/rules/fastapi.md`.
+- **Layering**: `API → Application → Domain` (backend), `Component → Facade → Gateway → HttpClient`
+  (frontend). Infrastructure implements ports, never the reverse. Domain depends on nothing above it.
+- **File-size / modularity**: 800 lines on any source file is a preventive-refactor warning, 1000
+  is a hard failure (`scripts/check-file-size.py`). Split by cohesive responsibility, never
+  mechanically (`part1.ts`/`misc.ts` splits are disallowed).
+- **`contracts/uml-model.v2.json`** is the single source of truth for the UML model shape shared
+  by the Angular frontend, FastAPI backend, and the Spring/Postman generators — changes ripple
+  across all three; check `docs/domain-model/` and the relevant ADR before altering it.
+- **Traceability**: every feature should trace to a use case (CU) in the requirements capture doc
+  (`docs/traceability/requirements-matrix.md`). Check `docs/architecture/adr/` before touching
+  concurrent collaboration (CU5) or offline sync (CU13 — frozen until ADR-0004 resolves).

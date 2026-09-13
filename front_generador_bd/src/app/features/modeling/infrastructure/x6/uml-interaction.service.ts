@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import { Graph, Node } from '@antv/x6';
 import { UML_NODE_DIMENSIONS, UmlNodeSubElementEvent } from '../../domain/models/uml-editor.models';
+import { visibleAttributeRowCount } from './uml-class-node-visual';
 
 @Injectable({
   providedIn: 'root',
@@ -25,9 +26,8 @@ export class UmlInteractionService {
     const operations: Array<{ id: string; name: string; returnType: string; visibility: string }> =
       data.operations || [];
 
-    const attrCount = Math.max(1, attributes.length);
-    const attrHeight = attrCount * UML_NODE_DIMENSIONS.LINE_HEIGHT;
-    const sep2Y = UML_NODE_DIMENSIONS.HEADER_HEIGHT + UML_NODE_DIMENSIONS.SEP_PADDING + attrHeight + 6;
+    const attrBlockHeight = visibleAttributeRowCount(attributes.length) * UML_NODE_DIMENSIONS.ATTR_ROW_HEIGHT;
+    const sep2Y = UML_NODE_DIMENSIONS.HEADER_HEIGHT + UML_NODE_DIMENSIONS.SEP_PADDING + attrBlockHeight + 6;
     const opStartY = sep2Y + UML_NODE_DIMENSIONS.SEP_PADDING;
 
     const nodeBBox = { x: pos.x, y: pos.y, width: size.width, height: size.height };
@@ -48,40 +48,12 @@ export class UmlInteractionService {
     // 2. Resolver por elemento SVG específico (tspan / text)
     const isTspan = targetElem?.tagName?.toLowerCase() === 'tspan';
 
-    // 3. Zona de Atributos
+    // 3. Zona de Atributos: filas reales con sus propios listeners nativos
+    // (ver UmlAttributeRowsService) — un click que llega hasta acá es espacio en
+    // blanco del compartimento (menos atributos que ATTR_MAX_VISIBLE_ROWS), no
+    // resuelve a nada.
     if (relY < sep2Y) {
-      if (attributes.length === 0) return null;
-
-      let attrIndex = -1;
-      if (isTspan && targetElem?.parentElement) {
-        const tspans = Array.from(targetElem.parentElement.children);
-        attrIndex = tspans.indexOf(targetElem);
-      }
-      if (attrIndex < 0 || attrIndex >= attributes.length) {
-        attrIndex = Math.max(
-          0,
-          Math.min(
-            attributes.length - 1,
-            Math.floor((relY - UML_NODE_DIMENSIONS.ATTR_START_Y + 2) / UML_NODE_DIMENSIONS.LINE_HEIGHT)
-          )
-        );
-      }
-
-      const attr = attributes[attrIndex];
-      if (!attr) return null;
-
-      return {
-        classId: node.id,
-        type: 'attribute',
-        elementId: attr.id,
-        name: attr.name,
-        typeOrReturn: attr.type,
-        visibility: attr.visibility,
-        itemRelY: UML_NODE_DIMENSIONS.ATTR_START_Y - 4 + attrIndex * UML_NODE_DIMENSIONS.LINE_HEIGHT,
-        nodeBBox,
-        clientX,
-        clientY,
-      };
+      return null;
     }
 
     // 4. Zona de Operaciones
@@ -119,7 +91,12 @@ export class UmlInteractionService {
     };
   }
 
-  setRowHighlight(graph: Graph | null, nodeId: string, itemRelY: number): void {
+  setRowHighlight(
+    graph: Graph | null,
+    nodeId: string,
+    itemRelY: number,
+    height: number = UML_NODE_DIMENSIONS.LINE_HEIGHT
+  ): void {
     if (!graph) return;
     const node = graph.getCellById(nodeId);
     if (!node || !node.isNode()) return;
@@ -131,7 +108,7 @@ export class UmlInteractionService {
       refX: 4,
       refY: itemRelY,
       refWidth: -8,
-      height: UML_NODE_DIMENSIONS.LINE_HEIGHT,
+      height,
       fill: '#6366f1',
       fillOpacity: 0.12,
       stroke: '#818cf8',

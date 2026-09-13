@@ -41,10 +41,45 @@
   pointer-events: auto;
 }
 
-/* Feedback visual pasivo en atributos y operaciones sin listeners JS */
-:host ::ng-deep .uml-attributes-text,
+/* Feedback visual pasivo en operaciones (todavía texto plano, sin filas reales) */
 :host ::ng-deep .uml-operations-text {
   cursor: pointer;
+}
+
+/* Filas reales de atributo (Fase 2) — ver UmlAttributeRowsService */
+:host ::ng-deep .uml-attr-row {
+  cursor: pointer;
+}
+
+:host ::ng-deep .uml-attr-row-bg {
+  fill: transparent;
+  pointer-events: all;
+}
+
+:host ::ng-deep .uml-attr-row:hover .uml-attr-row-bg {
+  fill: #f8fafc;
+}
+
+:host ::ng-deep .uml-attr-name,
+:host ::ng-deep .uml-attr-type {
+  fill: #334155;
+  pointer-events: none;
+}
+
+/* Ícono de eliminar: oculto por defecto, visible solo al pasar el mouse por la fila */
+:host ::ng-deep .uml-attr-delete {
+  fill: #f43f5e;
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 0.15s ease-in-out;
+}
+
+:host ::ng-deep .uml-attr-row:hover .uml-attr-delete {
+  opacity: 1;
+}
+
+:host ::ng-deep .uml-attr-delete:hover {
+  fill: #e11d48;
 }
 
 /* Cursores remotos (ADR-0003 paso 2). El color de fondo es dinámico por

@@ -9,6 +9,7 @@ import {
   UmlRelationType,
   UML_NODE_DIMENSIONS,
 } from '../../domain/models/uml-editor.models';
+import { buildUmlClassNodeVisual } from './uml-class-node-visual';
 
 export interface X6NodeConfig {
   id: string;
@@ -75,36 +76,7 @@ export class UmlDiagramAdapterService {
   ): { nodes: X6NodeConfig[]; edges: X6EdgeConfig[] } {
     const nodes: X6NodeConfig[] = (model.classes || []).map((c) => {
       const nodeLayout = layout?.nodes?.[c.id] || { x: 100, y: 100, width: 190, height: 130 };
-      const titleText = c.name + (c.isAbstract ? ' {abstract}' : '');
-
-      const attrsList = (c.attributes || []).length > 0
-        ? c.attributes.map((a) => `${a.visibility} ${a.name} : ${a.type}`).join('\n')
-        : '';
-
-      const opsList = (c.operations || []).length > 0
-        ? c.operations
-            .map((o) => {
-              let paramsStr = '';
-              if (Array.isArray(o.parameters)) {
-                paramsStr = o.parameters.map((p) => `${p.name}: ${p.type}`).join(', ');
-              } else if (typeof o.parameters === 'string') {
-                paramsStr = o.parameters;
-              }
-              return `${o.visibility} ${o.name}(${paramsStr}) : ${o.returnType}`;
-            })
-            .join('\n')
-        : '';
-
-      const attrLines = (c.attributes || []).length;
-      const opLines = (c.operations || []).length;
-      const attrHeight = Math.max(1, attrLines) * UML_NODE_DIMENSIONS.LINE_HEIGHT;
-      const sep2Y = UML_NODE_DIMENSIONS.HEADER_HEIGHT + UML_NODE_DIMENSIONS.SEP_PADDING + attrHeight + 6;
-      const opY = sep2Y + UML_NODE_DIMENSIONS.SEP_PADDING;
-      const opHeight = Math.max(1, opLines) * UML_NODE_DIMENSIONS.LINE_HEIGHT;
-      const calculatedMinHeight = Math.max(
-        UML_NODE_DIMENSIONS.MIN_HEIGHT,
-        opY + opHeight + UML_NODE_DIMENSIONS.BOTTOM_PADDING
-      );
+      const visual = buildUmlClassNodeVisual(c);
       const calculatedMinWidth = Math.max(UML_NODE_DIMENSIONS.MIN_WIDTH, nodeLayout.width || 190);
 
       return {
@@ -113,19 +85,14 @@ export class UmlDiagramAdapterService {
         x: nodeLayout.x,
         y: nodeLayout.y,
         width: Math.max(calculatedMinWidth, nodeLayout.width || 180),
-        height: Math.max(calculatedMinHeight, nodeLayout.height || 120),
+        height: Math.max(visual.minHeight, nodeLayout.height || 120),
         data: {
           name: c.name,
           isAbstract: c.isAbstract,
           attributes: c.attributes || [],
           operations: c.operations || [],
         },
-        attrs: {
-          title: { text: titleText },
-          attributes: { text: attrsList },
-          separator2: { y1: sep2Y, y2: sep2Y },
-          operations: { text: opsList, refY: opY },
-        },
+        attrs: visual.attrs,
         ports: this.getDefaultPorts(),
       };
     });

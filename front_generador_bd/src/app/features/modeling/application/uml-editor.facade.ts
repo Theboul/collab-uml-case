@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { Observable, tap, throttleTime } from 'rxjs';
+import { Observable, merge, tap, throttleTime } from 'rxjs';
 import {
   DiagramLayout,
   EditorMode,
@@ -17,6 +17,7 @@ import {
 import { UmlApiService } from './uml-api.service';
 import { UmlDiagramAdapterService } from '../infrastructure/x6/uml-diagram-adapter.service';
 import { UmlGraphService } from '../infrastructure/x6/uml-graph.service';
+import { UmlAttributeRowsService } from '../infrastructure/x6/uml-attribute-rows.service';
 import { COLLABORATION_GATEWAY } from './collaboration-gateway.service';
 import { RemoteCursorsService } from './remote-cursors.service';
 import { RemoteCanvasSyncService } from './remote-canvas-sync.service';
@@ -44,6 +45,7 @@ export class UmlEditorFacade {
   private readonly api = inject(UmlApiService);
   private readonly adapter = inject(UmlDiagramAdapterService);
   private readonly graphService = inject(UmlGraphService);
+  private readonly attributeRowsService = inject(UmlAttributeRowsService);
   private readonly collabGateway = inject(COLLABORATION_GATEWAY);
   private readonly remoteCursorsService = inject(RemoteCursorsService);
   private readonly remoteCanvasSyncService = inject(RemoteCanvasSyncService);
@@ -90,11 +92,9 @@ export class UmlEditorFacade {
 
     this.graphService.nodeDragging$
       .pipe(
-        tap((e) => console.log('[DIAG] nodeDragging$ PRE-throttle', e)),
         throttleTime(NODE_DRAG_BROADCAST_THROTTLE_MS, undefined, { leading: true, trailing: true })
       )
       .subscribe(({ nodeId, x, y }) => {
-        console.log('[DIAG] nodeDragging$ POST-throttle -> sendNodeDragPosition', { nodeId, x, y });
         this.collabGateway.sendNodeDragPosition(nodeId, x, y);
       });
 
@@ -141,18 +141,29 @@ export class UmlEditorFacade {
       }
     });
 
-    this.graphService.nodeSubElementClick$.subscribe((event) => {
-      if (event.type === 'class') {
-        this.clearSubElement();
-      } else if (event.type === 'attribute' || event.type === 'operation') {
-        if (event.elementId) {
-          this.selectSubElement({
-            type: event.type,
-            classId: event.classId,
-            elementId: event.elementId,
-          });
+    // El compartimento de atributos (Fase 2) resuelve su propio click/doble-click
+    // con listeners nativos por fila (ver UmlAttributeRowsService) en vez de la
+    // geometría genérica de resolveSemanticTarget — mismo shape de evento, se
+    // mergea acá para que el resto de la lógica de selección no distinga la fuente.
+    merge(this.graphService.nodeSubElementClick$, this.attributeRowsService.rowClick$).subscribe(
+      (event) => {
+        if (event.type === 'class') {
+          this.clearSubElement();
+        } else if (event.type === 'attribute' || event.type === 'operation') {
+          if (event.elementId) {
+            this.selectSubElement({
+              type: event.type,
+              classId: event.classId,
+              elementId: event.elementId,
+            });
+          }
         }
       }
+    );
+
+    this.attributeRowsService.deleteRequested$.subscribe(({ classId, attributeId }) => {
+      this.deleteAttribute(classId, attributeId);
+      this.clearSubElement();
     });
 
     this.graphService.nodeAdded$.subscribe(({ nodeId, name, x, y }) => {

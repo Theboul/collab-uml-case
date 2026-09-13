@@ -30,14 +30,6 @@ export class RemoteNodeDragService {
 
   constructor() {
     this.gateway.remoteNodeDrag$.subscribe(({ nodeId, x, y }) => {
-      const cell = this.graphService.rawGraph?.getCellById(nodeId);
-      console.log('[DIAG] RemoteNodeDragService received remoteNodeDrag$', {
-        nodeId,
-        x,
-        y,
-        cellFound: !!cell,
-        isNode: cell?.isNode?.() ?? null,
-      });
       this.graphService.setNodePositionSilent(nodeId, x, y);
       this.scheduleStaleSnapBack(nodeId);
     });

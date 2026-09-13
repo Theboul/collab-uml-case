@@ -12,8 +12,9 @@ import {
 } from '@angular/core';
 import { CommonModule, isPlatformBrowser } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Subscription } from 'rxjs';
+import { Subscription, merge } from 'rxjs';
 import { UmlGraphService } from '../../infrastructure/x6/uml-graph.service';
+import { UmlAttributeRowsService } from '../../infrastructure/x6/uml-attribute-rows.service';
 import { UmlEditorFacade } from '../../application/uml-editor.facade';
 
 export interface CursorMarker {
@@ -54,6 +55,7 @@ export class UmlCanvasComponent implements AfterViewInit, OnDestroy {
 
   readonly facade = inject(UmlEditorFacade);
   readonly graphService = inject(UmlGraphService);
+  readonly attributeRowsService = inject(UmlAttributeRowsService);
 
   isSpacePressed = false;
   isPanningActive = false;
@@ -93,7 +95,13 @@ export class UmlCanvasComponent implements AfterViewInit, OnDestroy {
       this.graphService.initGraph(this.containerRef.nativeElement);
       this.facade.renderLoadedModel();
 
-      this.dblClickSub = this.graphService.nodeDblClick$.subscribe((event) => {
+      // El compartimento de atributos (Fase 2) dispara su propio evento de
+      // doble-click (misma forma que nodeDblClick$, ver UmlAttributeRowsService)
+      // porque resuelve el hit-test con filas reales, no con la geometría genérica.
+      this.dblClickSub = merge(
+        this.graphService.nodeDblClick$,
+        this.attributeRowsService.rowDblClick$
+      ).subscribe((event) => {
         const graph = this.graphService.rawGraph;
         if (!graph) return;
         const node = graph.getCellById(event.nodeId);

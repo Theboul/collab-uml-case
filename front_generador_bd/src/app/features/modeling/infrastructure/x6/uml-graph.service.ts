@@ -14,6 +14,9 @@ import { UmlPortService } from './uml-port.service';
 import { UmlInteractionService } from './uml-interaction.service';
 import { UmlEdgeToolsService } from './uml-edge-tools.service';
 import { registerUmlClassNode } from './uml-class-node.registration';
+import { UmlGraphReconciliationService } from './uml-graph-reconciliation.service';
+import { buildUmlClassNodeVisual } from './uml-class-node-visual';
+import { UmlAttributeRowsService } from './uml-attribute-rows.service';
 
 export interface CellSelectionEvent {
   selectedNodes: string[];
@@ -70,6 +73,8 @@ export class UmlGraphService {
   private readonly interactionService = inject(UmlInteractionService);
   private readonly edgeToolsService = inject(UmlEdgeToolsService);
   private readonly adapter = inject(UmlDiagramAdapterService);
+  private readonly reconciliationService = inject(UmlGraphReconciliationService);
+  private readonly attributeRowsService = inject(UmlAttributeRowsService);
 
   private graph: Graph | null = null;
   private scrollerPlugin: Scroller | null = null;
@@ -301,15 +306,9 @@ export class UmlGraphService {
 
     // Posición en vivo durante el arrastre (para el streaming a otros peers)
     this.graph.on('node:move', ({ node }) => {
-      console.log('[DIAG] node:move fired', node.id);
       if (this.isPanningActive || this.isApplyingRemotePosition) {
-        console.log('[DIAG] node:move BLOCKED by guard', {
-          isPanningActive: this.isPanningActive,
-          isApplyingRemotePosition: this.isApplyingRemotePosition,
-        });
         return;
       }
-      console.log('[DIAG] node:move passed guard, emitting nodeDragging$');
       this._isDraggingLocally = true;
       this.ngZone.run(() => {
         const pos = node.getPosition();
@@ -323,7 +322,6 @@ export class UmlGraphService {
 
     // Movimiento persistente al terminar el arrastre
     this.graph.on('node:moved', ({ node }) => {
-      console.log('[DIAG-MOVE-COUNT] node:moved fired', Date.now(), node.id);
       if (this.isPanningActive || this.isApplyingRemotePosition) return;
       this._isDraggingLocally = false;
       this.ngZone.run(() => {
@@ -540,8 +538,13 @@ export class UmlGraphService {
   /**
    * Resalta visualmente una fila específica dentro de un nodo UML mediante el subelemento SVG nativo.
    */
-  setRowHighlight(nodeId: string, itemRelY: number): void {
-    this.interactionService.setRowHighlight(this.graph, nodeId, itemRelY);
+  setRowHighlight(nodeId: string, itemRelY: number, height?: number): void {
+    this.interactionService.setRowHighlight(this.graph, nodeId, itemRelY, height);
+  }
+
+  /** Fila actualmente en el tope del scroll del compartimento de atributos de un nodo. */
+  getAttributeScrollRow(nodeId: string): number {
+    return this.attributeRowsService.getScrollRow(this.graph, nodeId);
   }
 
   /**
@@ -552,66 +555,35 @@ export class UmlGraphService {
   }
 
   /**
-   * Renderiza el diagrama completo a partir de las configuraciones traducidas.
+   * Renderiza el diagrama a partir de las configuraciones traducidas, reconciliando
+   * contra el estado actual del grafo en vez de destruirlo y reconstruirlo (ver
+   * UmlGraphReconciliationService — evita tools de edición huérfanas y duplicados
+   * visuales al restaurar una pestaña minimizada).
    */
   renderCells(nodes: X6NodeConfig[], edges: X6EdgeConfig[]): void {
     if (!this.graph) return;
-    this.graph.clearCells();
-
-    for (const nodeConfig of nodes) {
-      this.addNode(nodeConfig);
-    }
-
-    for (const edgeConfig of edges) {
-      this.graph.addEdge(edgeConfig);
-    }
-
+    this.reconciliationService.reconcile(this.graph, nodes, edges, {
+      addNode: (config) => this.addNode(config),
+      addEdge: (config) => this.addEdge(config),
+      setNodePosition: (nodeId, x, y) => this.setNodePositionSilent(nodeId, x, y),
+      renderAttributeRows: (node, attributes, attrBlockHeight) =>
+        this.attributeRowsService.render(this.graph!, node, attributes, attrBlockHeight),
+    });
     this.hideAllPorts();
   }
 
   addNode(config: X6NodeConfig): Node {
     if (!this.graph) throw new Error('Graph no inicializado');
 
-    const titleText = config.data.name + (config.data.isAbstract ? ' {abstract}' : '');
-    const attrsList = config.data.attributes?.length > 0
-      ? config.data.attributes.map((a) => `${a.visibility} ${a.name} : ${a.type}`).join('\n')
-      : '';
+    const visual = buildUmlClassNodeVisual(config.data);
 
-    const opsList = config.data.operations?.length > 0
-      ? config.data.operations
-          .map((o) => {
-            let paramsStr = '';
-            if (Array.isArray(o.parameters)) {
-              paramsStr = o.parameters.map((p: any) => `${p.name}: ${p.type}`).join(', ');
-            } else if (typeof o.parameters === 'string') {
-              paramsStr = o.parameters;
-            }
-            return `${o.visibility || '+'} ${o.name}(${paramsStr}) : ${o.returnType || 'void'}`;
-          })
-          .join('\n')
-      : '';
-
-    const attrLines = (config.data.attributes || []).length;
-    const attrHeight = Math.max(1, attrLines) * UML_NODE_DIMENSIONS.LINE_HEIGHT;
-    const sep2Y = UML_NODE_DIMENSIONS.HEADER_HEIGHT + UML_NODE_DIMENSIONS.SEP_PADDING + attrHeight + 6;
-    const opY = sep2Y + UML_NODE_DIMENSIONS.SEP_PADDING;
-    const opLines = (config.data.operations || []).length;
-    const opHeight = Math.max(1, opLines) * UML_NODE_DIMENSIONS.LINE_HEIGHT;
-    const totalHeight = Math.max(
-      config.height || UML_NODE_DIMENSIONS.MIN_HEIGHT,
-      opY + opHeight + UML_NODE_DIMENSIONS.BOTTOM_PADDING
-    );
-
-    return this.graph.addNode({
+    const node = this.graph.addNode({
       ...config,
-      height: Math.max(config.height || UML_NODE_DIMENSIONS.MIN_HEIGHT, totalHeight),
-      attrs: {
-        title: { text: titleText },
-        attributes: { text: attrsList },
-        separator2: { y1: sep2Y, y2: sep2Y },
-        operations: { text: opsList, refY: opY },
-      },
+      height: Math.max(config.height || UML_NODE_DIMENSIONS.MIN_HEIGHT, visual.minHeight),
+      attrs: visual.attrs,
     });
+    this.attributeRowsService.render(this.graph, node, config.data.attributes || [], visual.attrBlockHeight);
+    return node;
   }
 
   addEdge(config: X6EdgeConfig): Edge {
@@ -623,47 +595,33 @@ export class UmlGraphService {
     if (!this.graph) return;
     const node = this.graph.getCellById(nodeId);
     if (node && node.isNode()) {
+      // Alto de contenido ANTES de la mutación — con esto se distingue "la caja
+      // está en su tamaño de contenido" (puede achicarse si el contenido nuevo
+      // pide menos) de "el usuario la agrandó a mano más allá del contenido"
+      // (se preserva ese tamaño). Sin esto, `Math.max(currentSize.height, ...)`
+      // es un trinquete de una sola dirección: crece con altas pero nunca baja
+      // con bajas — bug real de Fase 2 (eliminar un atributo no achicaba la
+      // clase), más visible ahora que cada fila mide 22px en vez de 16px.
+      const previousVisual = buildUmlClassNodeVisual(node.getData() || {});
+
       node.setData(data);
-      const titleText = data.name + (data.isAbstract ? ' {abstract}' : '');
-      const attrsList = data.attributes?.length > 0
-        ? data.attributes.map((a: any) => `${a.visibility} ${a.name} : ${a.type}`).join('\n')
-        : '';
-      const opsList = data.operations?.length > 0
-        ? data.operations
-            .map((o: any) => {
-              let paramsStr = '';
-              if (Array.isArray(o.parameters)) {
-                paramsStr = o.parameters.map((p: any) => `${p.name}: ${p.type}`).join(', ');
-              } else if (typeof o.parameters === 'string') {
-                paramsStr = o.parameters;
-              }
-              return `${o.visibility || '+'} ${o.name}(${paramsStr}) : ${o.returnType || 'void'}`;
-            })
-            .join('\n')
-        : '';
+      const visual = buildUmlClassNodeVisual(data);
 
-      const attrLines = (data.attributes || []).length;
-      const attrHeight = Math.max(1, attrLines) * UML_NODE_DIMENSIONS.LINE_HEIGHT;
-      const sep2Y = UML_NODE_DIMENSIONS.HEADER_HEIGHT + UML_NODE_DIMENSIONS.SEP_PADDING + attrHeight + 6;
-      const opY = sep2Y + UML_NODE_DIMENSIONS.SEP_PADDING;
-      const opLines = (data.operations || []).length;
-      const opHeight = Math.max(1, opLines) * UML_NODE_DIMENSIONS.LINE_HEIGHT;
-      const totalHeight = Math.max(
-        UML_NODE_DIMENSIONS.MIN_HEIGHT,
-        opY + opHeight + UML_NODE_DIMENSIONS.BOTTOM_PADDING
-      );
-
-      node.setAttrByPath('title/text', titleText);
-      node.setAttrByPath('attributes/text', attrsList);
-      node.setAttrByPath('separator2/y1', sep2Y);
-      node.setAttrByPath('separator2/y2', sep2Y);
-      node.setAttrByPath('operations/text', opsList);
-      node.setAttrByPath('operations/refY', opY);
+      node.setAttrByPath('title/text', visual.attrs.title.text);
+      node.setAttrByPath('separator2/y1', visual.attrs.separator2.y1);
+      node.setAttrByPath('separator2/y2', visual.attrs.separator2.y2);
+      node.setAttrByPath('operations/text', visual.attrs.operations.text);
+      node.setAttrByPath('operations/refY', visual.attrs.operations.refY);
+      this.attributeRowsService.render(this.graph, node, data.attributes || [], visual.attrBlockHeight);
 
       const currentSize = node.getSize();
+      const wasAtContentHeight = currentSize.height <= previousVisual.minHeight;
+      const nextHeight = wasAtContentHeight
+        ? visual.minHeight
+        : Math.max(currentSize.height, visual.minHeight);
       node.setSize({
         width: Math.max(currentSize.width, UML_NODE_DIMENSIONS.MIN_WIDTH),
-        height: Math.max(currentSize.height, totalHeight),
+        height: nextHeight,
       });
 
       const selected = this.graph.getSelectedCells().filter((c) => c.isNode()).map((c) => c.id);
@@ -674,9 +632,15 @@ export class UmlGraphService {
   /**
    * Mueve un nodo visualmente sin tocar el modelo de dominio ni disparar
    * ningún comando/historial — usado para reflejar el arrastre en vivo de un
-   * peer remoto (ver RemoteNodeDragService). `silent: true` evita que X6
-   * dispare eventos de cambio de posición; la guarda de reentrancia además
-   * blindea `node:move`/`node:moved` por si la librería igual los emitiera.
+   * peer remoto (ver RemoteNodeDragService). Sin `silent` — el repintado de
+   * X6 depende del evento `'changed'` del store (ver `view/cell.ts` setup()
+   * → onCellChanged → requestViewUpdate); `silent: true` lo suprimía y el
+   * nodo se movía en el modelo sin nunca pintarse en el DOM (confirmado con
+   * [DIAG]: readBack coincidía con el valor enviado, pero no había repintado
+   * visual). La guarda de reentrancia (`isApplyingRemotePosition`) ya blinda
+   * `node:move`/`node:moved` por su cuenta — son eventos de la interacción
+   * del mouse en la vista, no del store, así que no dependen de `silent`
+   * para evitar el eco entre pestañas.
    */
   setNodePositionSilent(nodeId: string, x: number, y: number): void {
     if (!this.graph) return;
@@ -684,7 +648,7 @@ export class UmlGraphService {
     if (!node || !node.isNode()) return;
     this.isApplyingRemotePosition = true;
     try {
-      node.position(x, y, { silent: true });
+      node.position(x, y);
     } finally {
       this.isApplyingRemotePosition = false;
     }

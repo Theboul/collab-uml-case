@@ -54,6 +54,7 @@ export class EditorCommandService {
       expectedVersion: this.state.version(),
       type: forward.type as any,
       payload: forward.payload,
+      peerId: this.collabGateway.peerId ?? undefined,
     };
 
     if (onSuccessLocal) {
@@ -110,6 +111,7 @@ export class EditorCommandService {
       expectedVersion: this.state.version(),
       type,
       payload,
+      peerId: this.collabGateway.peerId ?? undefined,
     };
 
     this.state.setSaving(true);
@@ -139,6 +141,7 @@ export class EditorCommandService {
       expectedVersion: this.state.version(),
       type: action.inverseCommand.type as any,
       payload: action.inverseCommand.payload,
+      peerId: this.collabGateway.peerId ?? undefined,
     };
 
     this.state.setSaving(true);
@@ -176,6 +179,7 @@ export class EditorCommandService {
       expectedVersion: this.state.version(),
       type: action.forwardCommand.type as any,
       payload: action.forwardCommand.payload,
+      peerId: this.collabGateway.peerId ?? undefined,
     };
 
     this.state.setSaving(true);
@@ -308,7 +312,6 @@ export class EditorCommandService {
   }
 
   moveElement(classId: string, x: number, y: number): void {
-    console.log('[DIAG-MOVE-COUNT] moveElement() called', Date.now(), { classId, x, y });
     const currentLayout = this.state.layout();
     const oldNode = currentLayout.nodes[classId];
     const oldX = oldNode ? oldNode.x : x;

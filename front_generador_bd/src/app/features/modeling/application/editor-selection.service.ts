@@ -6,6 +6,7 @@ import {
 } from '../domain/models/uml-editor.models';
 import { EditorStateService } from './editor-state.service';
 import { UmlGraphService } from '../infrastructure/x6/uml-graph.service';
+import { visibleAttributeRowCount } from '../infrastructure/x6/uml-class-node-visual';
 
 @Injectable({
   providedIn: 'root',
@@ -59,18 +60,24 @@ export class EditorSelectionService {
 
     if (sub.type === 'attribute') {
       const idx = cls.attributes.findIndex((a) => a.id === sub.elementId);
-      if (idx !== -1) {
-        const itemRelY = UML_NODE_DIMENSIONS.ATTR_START_Y - 4 + idx * UML_NODE_DIMENSIONS.LINE_HEIGHT;
-        this.graphService.setRowHighlight(sub.classId, itemRelY);
+      const scrollRow = this.graphService.getAttributeScrollRow(sub.classId);
+      const visibleRows = visibleAttributeRowCount(cls.attributes.length);
+      if (idx !== -1 && idx >= scrollRow && idx < scrollRow + visibleRows) {
+        const itemRelY =
+          UML_NODE_DIMENSIONS.HEADER_HEIGHT +
+          UML_NODE_DIMENSIONS.SEP_PADDING +
+          (idx - scrollRow) * UML_NODE_DIMENSIONS.ATTR_ROW_HEIGHT;
+        this.graphService.setRowHighlight(sub.classId, itemRelY, UML_NODE_DIMENSIONS.ATTR_ROW_HEIGHT);
       } else {
+        // Sin índice válido, o la fila está scrolleada fuera de la ventana visible
+        // del compartimento — no hay nada que resaltar en pantalla.
         this.graphService.clearRowHighlight(sub.classId);
       }
     } else if (sub.type === 'operation') {
       const idx = cls.operations.findIndex((o) => o.id === sub.elementId);
       if (idx !== -1) {
-        const attrCount = Math.max(1, cls.attributes.length);
-        const attrHeight = attrCount * UML_NODE_DIMENSIONS.LINE_HEIGHT;
-        const sep2Y = UML_NODE_DIMENSIONS.HEADER_HEIGHT + UML_NODE_DIMENSIONS.SEP_PADDING + attrHeight + 6;
+        const attrBlockHeight = visibleAttributeRowCount(cls.attributes.length) * UML_NODE_DIMENSIONS.ATTR_ROW_HEIGHT;
+        const sep2Y = UML_NODE_DIMENSIONS.HEADER_HEIGHT + UML_NODE_DIMENSIONS.SEP_PADDING + attrBlockHeight + 6;
         const opStartY = sep2Y + UML_NODE_DIMENSIONS.SEP_PADDING;
         const itemRelY = opStartY - 4 + idx * UML_NODE_DIMENSIONS.LINE_HEIGHT;
         this.graphService.setRowHighlight(sub.classId, itemRelY);

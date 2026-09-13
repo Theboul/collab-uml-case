@@ -57,6 +57,9 @@ Criterio rector: **¿Tengo hoy, o preveo con certeza razonable, una segunda impl
 
 Regla general para equipo de 1–2 personas: **si una función o una clase de servicio resuelve el problema, no se crean interfaces, mappers ni DTOs intermedios "por si acaso".** Se refactoriza a puerto el día que aparezca la segunda implementación real.
 
+Convenciones de naming/TTL de keys de Redis para cuando `LockStore` se implemente, y la
+convención de capas preparada para Spring Boot (`back_generator_uml`): `.agents/rules/tooling_and_quality_gates.md` §3-4.
+
 ---
 
 ## 3. Arquitectura de carpetas — Backend (FastAPI)
@@ -249,9 +252,11 @@ Las vistas **fuera de un proyecto** (Login, Dashboard/onboarding) usan `AppShell
 ## 5. Estándares de codificación — Python / FastAPI
 
 - **Versión:** Python 3.12+
-- **Formato y lint:** Ruff (reemplaza black + isort + flake8)
-- **Tipos:** Mypy en modo estricto para `core/uml_domain` y `app/*/application`; type hints obligatorios en toda API pública.
+- **Formato y lint:** Ruff (reemplaza black + isort + flake8). Config en `pyproject.toml` (raíz).
+  `python -m ruff check backend_case/app backend_case/tests core` / `python -m ruff format ...`
+- **Tipos:** Mypy en modo estricto para `core/uml_domain` y `app/*/application`; type hints obligatorios en toda API pública. Config en `pyproject.toml` (raíz). `python -m mypy backend_case/app core/uml_domain`
 - **Tests:** pytest
+- Detalle completo de reglas activas y convenciones de Redis/Spring Boot: `.agents/rules/tooling_and_quality_gates.md`.
 
 ### Reglas de código:
 - Prohibido `from x import *`.
@@ -305,10 +310,13 @@ Reglas duras:
 ## 6. Estándares de codificación — TypeScript / Angular
 
 - TypeScript en modo `strict`.
-- ESLint + Prettier.
-- Angular Style Guide oficial como base.
-- Prohibido `any` salvo caso documentado con comentario `// any justificado: ...`; usar `unknown` cuando el tipo es real pero desconocido.
-- Prohibido `HttpClient` inyectado directo en componentes — pasa siempre por facade/gateway.
+- ESLint + Prettier. Config en `front_generador_bd/eslint.config.js` y `.prettierrc.json`.
+  `pnpm run lint` / `pnpm run lint:fix` / `pnpm run format:check` / `pnpm run format`.
+- Angular Style Guide oficial como base. Convenciones de nombres por tipo (componente/servicio/
+  facade/guard/directiva/pipe) y aislamiento del motor de canvas (X6/JointJS) forzado por ESLint:
+  ver `.agents/rules/tooling_and_quality_gates.md`.
+- Prohibido `any` salvo caso documentado con comentario `// any justificado: ...`; usar `unknown` cuando el tipo es real pero desconocido. Forzado por `@typescript-eslint/no-explicit-any`.
+- Prohibido `HttpClient` inyectado directo en componentes — pasa siempre por facade/gateway. Forzado por `no-restricted-imports` en el linter.
 
 ---
 
@@ -363,12 +371,15 @@ Ubicación: `docs/architecture/adr/`. Formato: Context / Decision / Alternatives
 - [ ] Implementación respeta la regla de dependencias (sección 1)
 - [ ] RULE-CODE-QUALITY: ningún archivo fuente supera 1000 líneas (`python scripts/check-file-size.py`) y archivos >= 800 líneas revisados/refactorizados
 - [ ] Tipos completos (Python/TS)
-- [ ] Lint limpio (Ruff / ESLint)
-- [ ] Type check limpio (Mypy / tsc strict)
+- [ ] Lint limpio: `python -m ruff check backend_case/app backend_case/tests core` / `pnpm run lint` (front)
+- [ ] Formato limpio: `python -m ruff format --check ...` / `pnpm run format:check` (front)
+- [ ] Type check limpio: `python -m mypy backend_case/app core/uml_domain` / `tsc strict` (ya forzado por `ng build`)
 - [ ] Unit tests de la regla crítica
 - [ ] Integration tests si toca un adaptador nuevo
 - [ ] Documentado (docstring / comentario de decisión no obvia)
 - [ ] Entrada agregada en la matriz de trazabilidad
+
+Detalle de qué regla forza cada herramienta y comandos completos: `.agents/rules/tooling_and_quality_gates.md`. `.pre-commit-config.yaml` (raíz) ejecuta esta misma cadena automáticamente — `pip install pre-commit && pre-commit install`.
 
 ---
 

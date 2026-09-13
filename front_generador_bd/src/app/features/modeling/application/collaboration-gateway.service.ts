@@ -18,6 +18,7 @@ export interface CollaborationGateway {
   sendCursorPosition(x: number, y: number): void;
   sendNodeDragPosition(nodeId: string, x: number, y: number): void;
   sendNodeDragEnd(nodeId: string): void;
+  readonly peerId: string | null;
   remoteCommands$: Observable<EditorCommand>;
   presence$: Observable<any>;
   remoteCursor$: Observable<IncomingCursorEvent>;
@@ -27,6 +28,7 @@ export interface CollaborationGateway {
 }
 
 export class NoOpCollaborationGateway implements CollaborationGateway {
+  readonly peerId: string | null = null;
   readonly remoteCommands$: Observable<EditorCommand> = of();
   readonly presence$: Observable<any> = of();
   readonly remoteCursor$: Observable<IncomingCursorEvent> = of();
@@ -70,6 +72,11 @@ export class WebSocketCollaborationGateway implements CollaborationGateway {
 
   private socket: WebSocket | null = null;
   private connectedCanvasId: string | null = null;
+  private _peerId: string | null = null;
+
+  get peerId(): string | null {
+    return this._peerId;
+  }
 
   private readonly remoteCursorSubject = new Subject<IncomingCursorEvent>();
   readonly remoteCursor$: Observable<IncomingCursorEvent> = this.remoteCursorSubject.asObservable();
@@ -94,9 +101,14 @@ export class WebSocketCollaborationGateway implements CollaborationGateway {
 
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
     const displayName = this.authService.currentUser()?.fullName ?? '';
+    const token = this.authService.accessToken();
+    const params = new URLSearchParams();
+    if (displayName) params.set('display_name', displayName);
+    if (token) params.set('token', token);
+    const queryString = params.toString();
     const url =
       `${protocol}://${window.location.host}/ws/canvas/${encodeURIComponent(canvasId)}/collaboration` +
-      (displayName ? `?display_name=${encodeURIComponent(displayName)}` : '');
+      (queryString ? `?${queryString}` : '');
 
     this.connectedCanvasId = canvasId;
     this.socket = new WebSocket(url);
@@ -112,6 +124,7 @@ export class WebSocketCollaborationGateway implements CollaborationGateway {
     this.socket?.close();
     this.socket = null;
     this.connectedCanvasId = null;
+    this._peerId = null;
   }
 
   broadcastCommand(_command: EditorCommand): void {
@@ -125,15 +138,8 @@ export class WebSocketCollaborationGateway implements CollaborationGateway {
   }
 
   sendNodeDragPosition(nodeId: string, x: number, y: number): void {
-    console.log('[DIAG] gateway.sendNodeDragPosition() called', {
-      nodeId,
-      x,
-      y,
-      socketState: this.socket?.readyState,
-    });
     if (this.socket?.readyState !== WebSocket.OPEN) return;
     const message: NodeDragMessage = { type: 'node_drag', nodeId, x, y };
-    console.log('[DIAG] gateway about to socket.send node_drag', message);
     this.socket.send(JSON.stringify(message));
   }
 
@@ -144,12 +150,27 @@ export class WebSocketCollaborationGateway implements CollaborationGateway {
   }
 
   private handleMessage(event: MessageEvent<string>): void {
-    let envelope: { from: string; fromDisplayName: string | null; payload: CollaborationMessage };
+    let parsed: unknown;
     try {
-      envelope = JSON.parse(event.data);
+      parsed = JSON.parse(event.data);
     } catch {
       return;
     }
+
+    if (
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      (parsed as { type?: string }).type === 'connected'
+    ) {
+      this._peerId = (parsed as { peerId?: string }).peerId ?? null;
+      return;
+    }
+
+    const envelope = parsed as {
+      from: string;
+      fromDisplayName: string | null;
+      payload: CollaborationMessage;
+    };
 
     if (envelope.payload?.type === 'cursor') {
       this.remoteCursorSubject.next({
@@ -161,7 +182,6 @@ export class WebSocketCollaborationGateway implements CollaborationGateway {
     } else if (envelope.payload?.type === 'canvas_update') {
       this.remoteCanvasUpdateSubject.next(envelope.payload.canvas);
     } else if (envelope.payload?.type === 'node_drag') {
-      console.log('[DIAG] handleMessage received node_drag', envelope.payload);
       this.remoteNodeDragSubject.next({
         nodeId: envelope.payload.nodeId,
         x: envelope.payload.x,
