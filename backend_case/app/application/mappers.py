@@ -25,6 +25,7 @@ from core.uml_domain.model import (
     ViewportLayout,
     VisibilityKind,
 )
+from core.uml_domain.validation import ValidationResult
 
 from ..schemas.uml import (
     AssociationSchema,
@@ -37,6 +38,8 @@ from ..schemas.uml import (
     ParameterSchema,
     RealizationSchema,
     UmlModelSchema,
+    ValidationIssueSchema,
+    ValidationResponseSchema,
 )
 
 
@@ -317,3 +320,28 @@ class DomainToPydanticMapper:
             dependencies=dependencies_dto,
             visualLayout=visual_layout_dict,
         )
+
+
+class ValidationResultMapper:
+    """
+    Convierte un ValidationResult (dominio, core.uml_domain.validation) al DTO
+    HTTP ValidationResponseSchema. Único punto de conversión — reutilizado por
+    UmlApplicationService (/api/v2/uml/validate) y por el endpoint CU9 por
+    canvas_id (/api/v2/canvases/{id}/validate) para no duplicar el mapeo.
+    """
+
+    @classmethod
+    def to_schema(cls, result: ValidationResult) -> ValidationResponseSchema:
+        errors = [
+            ValidationIssueSchema(
+                code=i.code, message=i.message, severity="ERROR", elementId=i.element_id
+            )
+            for i in result.errors
+        ]
+        warnings = [
+            ValidationIssueSchema(
+                code=i.code, message=i.message, severity="WARNING", elementId=i.element_id
+            )
+            for i in result.warnings
+        ]
+        return ValidationResponseSchema(valid=result.is_valid, errors=errors, warnings=warnings)

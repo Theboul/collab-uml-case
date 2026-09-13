@@ -156,4 +156,18 @@ export interface UmlNodeSubElementEvent {
   clientY: number;
 }
 
+/** CU9: resultado de validar el modelo persistido de un lienzo (UMLValidator real, no IA). */
+export interface ValidationIssueDto {
+  code: string;
+  message: string;
+  severity: 'ERROR' | 'WARNING';
+  elementId: string | null;
+}
+
+export interface ValidationResponseDto {
+  valid: boolean;
+  errors: ValidationIssueDto[];
+  warnings: ValidationIssueDto[];
+}
+
 

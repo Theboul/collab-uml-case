@@ -160,6 +160,28 @@
 
     <div class="h-4 w-px bg-neutral-200"></div>
 
+    <!-- Validación CU9 -->
+    <sc-button
+      variant="outline"
+      size="xs"
+      customClass="gap-1.5"
+      [disabled]="facade.isValidating()"
+      (onClick)="facade.validateModel()"
+      ariaLabel="Validar modelo UML"
+    >
+      <sc-icon name="fact_check" [size]="16" />
+      <span>Validar</span>
+      @if (facade.validationResult(); as result) {
+        @if (result.errors.length > 0) {
+          <span class="ml-0.5 px-1.5 rounded-full bg-danger text-white text-[10px] font-bold leading-4">
+            {{ result.errors.length }}
+          </span>
+        }
+      }
+    </sc-button>
+
+    <div class="h-4 w-px bg-neutral-200"></div>
+
     <!-- Estado de Guardado -->
     <div class="flex items-center gap-1.5 text-[11px] text-neutral-500 min-w-[80px]">
       @if (facade.isSaving()) {

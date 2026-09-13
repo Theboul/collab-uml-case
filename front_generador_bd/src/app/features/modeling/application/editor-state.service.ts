@@ -7,6 +7,7 @@ import {
   UmlClassDto,
   UmlRelationDto,
   UmlRelationType,
+  ValidationResponseDto,
 } from '../domain/models/uml-editor.models';
 
 export interface ContextMenuState {
@@ -43,6 +44,11 @@ export class EditorStateService {
 
   readonly contextMenu = signal<ContextMenuState | null>(null);
 
+  /** CU9: resultado de la última validación del modelo persistido (UMLValidator real). */
+  readonly validationResult = signal<ValidationResponseDto | null>(null);
+  readonly isValidating = signal<boolean>(false);
+  readonly isValidationPanelOpen = signal<boolean>(false);
+
   setCanvasMetadata(dto: LienzoDetailDto): void {
     this.canvasId.set(dto.id);
     this.canvasName.set(dto.name);
@@ -62,6 +68,19 @@ export class EditorStateService {
 
   setDefaultRelationType(type: UmlRelationType): void {
     this.defaultRelationType.set(type);
+  }
+
+  setValidating(validating: boolean): void {
+    this.isValidating.set(validating);
+  }
+
+  setValidationResult(result: ValidationResponseDto): void {
+    this.validationResult.set(result);
+    this.isValidationPanelOpen.set(true);
+  }
+
+  toggleValidationPanel(): void {
+    this.isValidationPanelOpen.set(!this.isValidationPanelOpen());
   }
 
   setSaving(saving: boolean): void {

@@ -4,16 +4,16 @@ Rutas API v2 para el módulo de modelado UML (CU1 - CU4).
 import uuid
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, ConfigDict, Field
-
-from backend_case.app.application.mappers import DomainToPydanticMapper
+from backend_case.app.application.mappers import DomainToPydanticMapper, ValidationResultMapper
 from backend_case.app.collaboration.room_registry import collaboration_room_registry
 from backend_case.app.modeling.application.canvas_service import CanvasService
-from backend_case.app.schemas.uml import UmlModelSchema
+from backend_case.app.schemas.uml import UmlModelSchema, ValidationResponseSchema
 from backend_case.app.shared.deps import get_canvas_service
 from backend_case.app.shared.security.dependencies import get_current_user_optional
 from backend_case.app.shared.security.models import UserORM
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, ConfigDict, Field
+
 from core.uml_domain.model import Lienzo
 
 router = APIRouter(prefix="/canvases", tags=["modeling"])
@@ -242,6 +242,33 @@ async def get_canvas(
             },
         )
     return _to_detail_schema(res.lienzo, res.version, res.owner_id, res.room_name, res.role)
+
+
+@router.post("/{canvas_id}/validate", response_model=ValidationResponseSchema)
+async def validate_canvas(
+    canvas_id: str,
+    service: CanvasServiceDep,
+    current_user: CurrentUserOptionalDep = None,
+) -> ValidationResponseSchema:
+    """
+    CU9: valida semánticamente el modelo persistido del lienzo (UMLValidator).
+    Solo lectura — no incrementa la versión del canvas. Mismo control de acceso
+    que GET /{canvas_id}.
+    """
+    user_id = current_user.id if current_user else None
+    resultado, role = await service.validar_lienzo(canvas_id, user_id=user_id)
+    if role == "INVITADO":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "CANVAS_ACCESS_FORBIDDEN",
+                "message": (
+                    "No tenés acceso a este lienzo. Unite con el código de acceso "
+                    "o el enlace de invitación."
+                ),
+            },
+        )
+    return ValidationResultMapper.to_schema(resultado)
 
 
 @router.post("/{canvas_id}/commands", response_model=CommandResponse)

@@ -6,6 +6,7 @@ import { UmlPaletteComponent } from './uml-palette/uml-palette.component';
 import { UmlCanvasComponent } from './uml-canvas/uml-canvas.component';
 import { RelationContextMenuComponent } from './relation-context-menu/relation-context-menu.component';
 import { PropertiesPanelComponent } from './properties-panel/properties-panel.component';
+import { UmlValidationPanelComponent } from './uml-validation-panel/uml-validation-panel.component';
 import { UmlShareModalComponent } from './uml-share-modal/uml-share-modal.component';
 import { UmlEditorFacade } from '../application/uml-editor.facade';
 import { ScButtonComponent, ScIconComponent } from '../../../shared/ui';
@@ -21,6 +22,7 @@ import { ScButtonComponent, ScIconComponent } from '../../../shared/ui';
     UmlCanvasComponent,
     RelationContextMenuComponent,
     PropertiesPanelComponent,
+    UmlValidationPanelComponent,
     UmlShareModalComponent,
     ScButtonComponent,
     ScIconComponent,

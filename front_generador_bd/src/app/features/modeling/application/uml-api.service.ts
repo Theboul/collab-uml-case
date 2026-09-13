@@ -9,6 +9,7 @@ import {
   ModeloUML,
   UmlRelationDto,
   UmlRelationType,
+  ValidationResponseDto,
 } from '../domain/models/uml-editor.models';
 import { EditorCommand } from '../domain/commands/editor-commands';
 
@@ -76,6 +77,11 @@ export class UmlApiService {
 
   listCanvases(): Observable<any[]> {
     return this.http.get<any[]>(this.baseUrl);
+  }
+
+  /** CU9: valida el modelo persistido del lienzo contra el motor real (UMLValidator), no IA. */
+  validateCanvas(canvasId: string): Observable<ValidationResponseDto> {
+    return this.http.post<ValidationResponseDto>(`${this.baseUrl}/${canvasId}/validate`, {});
   }
 
   /**

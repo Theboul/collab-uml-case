@@ -654,6 +654,21 @@ export class UmlGraphService {
     }
   }
 
+  /**
+   * CU9: selecciona y centra en el viewport la celda (clase o relación) señalada
+   * por un issue de validación — reutiliza selección/zoom nativos de X6, sin
+   * mecanismo de resaltado nuevo (fuera de alcance de esta fase).
+   */
+  focusCell(cellId: string): void {
+    if (!this.graph) return;
+    const cell = this.graph.getCellById(cellId);
+    if (!cell) return;
+    this.graph.resetSelection(cell);
+    if (cell.isNode()) {
+      this.graph.centerCell(cell);
+    }
+  }
+
   deleteCell(cellId: string): void {
     if (!this.graph) return;
     const cell = this.graph.getCellById(cellId);

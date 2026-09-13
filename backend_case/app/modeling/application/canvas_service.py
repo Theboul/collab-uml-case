@@ -1,7 +1,5 @@
 from typing import Any
 
-from fastapi import HTTPException, status
-
 from backend_case.app.modeling.application.commands.dispatcher import (
     CommandDispatcher,
 )
@@ -9,6 +7,8 @@ from backend_case.app.modeling.infrastructure.canvas_repository import (
     CanvasRepository,
     CanvasResult,
 )
+from fastapi import HTTPException, status
+
 from core.uml_domain.adapters.multiplicity_parser import LegacyMultiplicityParser
 from core.uml_domain.events import DomainEvent
 from core.uml_domain.model import (
@@ -18,6 +18,7 @@ from core.uml_domain.model import (
     UmlAssociation,
     UmlClass,
 )
+from core.uml_domain.validation import UMLValidator, ValidationResult
 
 
 class CanvasService:
@@ -84,6 +85,20 @@ class CanvasService:
             room_name=res.room_name,
             role=role,
         )
+
+    async def validar_lienzo(
+        self, canvas_id: str, user_id: str | None = None
+    ) -> tuple[ValidationResult, str]:
+        """
+        CU9: ejecuta UMLValidator sobre el modelo YA persistido del lienzo.
+        Operación de solo lectura: reutiliza obtener_lienzo (mismo repository.obtener()
+        que ya usa PydanticToDomainMapper), nunca llama a guardar()/guardar_atomico(),
+        y UMLValidator.validate() no muta su argumento. El modelo persistido queda
+        idéntico antes y después de esta llamada.
+        """
+        res = await self.obtener_lienzo(canvas_id, user_id=user_id)
+        resultado = UMLValidator().validate(res.lienzo.modelo)
+        return resultado, res.role
 
     async def obtener_por_room_name(self, room_name: str, user_id: str | None = None) -> CanvasResult:
         """

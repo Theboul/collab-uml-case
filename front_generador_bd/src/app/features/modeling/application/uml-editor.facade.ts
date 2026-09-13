@@ -80,6 +80,10 @@ export class UmlEditorFacade {
   readonly contextMenu = this.state.contextMenu;
   readonly remoteCursors = this.remoteCursorsService.cursors;
 
+  readonly validationResult = this.state.validationResult;
+  readonly isValidating = this.state.isValidating;
+  readonly isValidationPanelOpen = this.state.isValidationPanelOpen;
+
   constructor() {
     this.setupGraphSubscriptions();
   }
@@ -255,6 +259,36 @@ export class UmlEditorFacade {
       const cells = this.adapter.modelToCells(this.model(), this.layout());
       this.graphService.renderCells(cells.nodes, cells.edges);
     }
+  }
+
+  /**
+   * CU9: valida el modelo YA persistido del lienzo contra el motor real
+   * (UMLValidator, vía POST /canvases/{id}/validate) — reemplaza el panel
+   * legacy que en realidad consultaba a Gemini por WebSocket.
+   */
+  validateModel(): void {
+    const id = this.canvasId();
+    if (!id) return;
+    this.state.setValidating(true);
+    this.api.validateCanvas(id).subscribe({
+      next: (result) => {
+        this.state.setValidating(false);
+        this.state.setValidationResult(result);
+      },
+      error: () => {
+        this.state.setValidating(false);
+      },
+    });
+  }
+
+  toggleValidationPanel(): void {
+    this.state.toggleValidationPanel();
+  }
+
+  /** Selecciona y centra en el canvas el elemento señalado por un issue de validación. */
+  focusIssue(elementId: string | null): void {
+    if (!elementId) return;
+    this.graphService.focusCell(elementId);
   }
 
   setMode(newMode: EditorMode): void {

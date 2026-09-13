@@ -75,3 +75,29 @@ descuido.
   fuera de la caja ni un dato incorrecto — se resuelve solo en el próximo cambio de datos de ese
   atributo. Se puede cerrar más adelante enganchando el mismo recálculo al listener de
   `node:resized`, si en la práctica llega a notarse.
+
+## Bug real encontrado y corregido: scroll sin affordance visual (sesión CU9)
+
+El límite de `ATTR_MAX_VISIBLE_ROWS = 7` (`uml-class-node-visual.ts`) — el nodo deja de crecer y
+el compartimento pasa a scroll interno con la rueda del mouse — **es una decisión correcta y
+sigue vigente sin cambios**. El bug real, encontrado y confirmado con evidencia en vivo (clase con
+9 atributos persistidos, `data-total-rows="9"` vs. 7 filas en el DOM, reproducido igual en carga
+fría y en actualización remota vía WS — descartando que fuera un problema de reconciliación de
+Fase 1), era que **no existía ninguna señal visual** de que había más contenido: la caja terminaba
+prolija en la fila 7, sin scrollbar, sin indicador, indistinguible de una clase "completa". Los
+atributos 8 y 9 solo eran alcanzables si el usuario adivinaba que podía scrollear ahí adentro.
+
+**Corrección**: `paintRows()` ahora pinta, cuando `scrollRow + visibleRows < attributes.length`,
+un fundido blanco (`<linearGradient>` real de 2 stops, definido una sola vez por `<svg>` raíz y
+reutilizado por ID — no un rect semi-transparente plano, que se ve como una barra rota en vez de
+un fundido) sobre las últimas `SCROLL_FADE_HEIGHT` (16px) del compartimento, más un badge `+N`
+con el conteo de atributos ocultos debajo. Ambos con `pointer-events: none`. El badge usa el mismo
+`fill: #334155` que ya usan `nameText`/`typeText` en `buildRow()` — se evaluó `#64748b` primero
+(el tono "apagado" típico de un badge secundario) pero el contraste sobre el fade blanco da
+~4.76:1, apenas por encima del mínimo AA (4.5:1) y con margen insuficiente para un texto de 9px;
+`#334155` da ~10.4:1, reutilizando un token que el archivo ya aplica sobre el mismo fondo claro en
+vez de introducir uno nuevo solo para esto.
+
+No se tocó el límite de 7 filas, ni `uml-class-node.registration.ts`, ni la firma de ningún método
+público de `UmlAttributeRowsService` — el fix vive entero dentro del cuerpo de `paintRows()` más
+dos métodos privados nuevos (`paintScrollFade`, `ensureFadeGradientDef`).

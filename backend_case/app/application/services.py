@@ -13,10 +13,9 @@ from core.uml_domain.validation import (
 
 from ..schemas.uml import (
     UmlModelSchema,
-    ValidationIssueSchema,
     ValidationResponseSchema,
 )
-from .mappers import PydanticToDomainMapper
+from .mappers import PydanticToDomainMapper, ValidationResultMapper
 
 
 class UmlApplicationService:
@@ -56,26 +55,4 @@ class UmlApplicationService:
         return self._build_response(combined_result)
 
     def _build_response(self, result: ValidationResult) -> ValidationResponseSchema:
-        errors = [
-            ValidationIssueSchema(
-                code=i.code,
-                message=i.message,
-                severity="ERROR",
-                elementId=i.element_id,
-            )
-            for i in result.errors
-        ]
-        warnings = [
-            ValidationIssueSchema(
-                code=i.code,
-                message=i.message,
-                severity="WARNING",
-                elementId=i.element_id,
-            )
-            for i in result.warnings
-        ]
-        return ValidationResponseSchema(
-            valid=result.is_valid,
-            errors=errors,
-            warnings=warnings,
-        )
+        return ValidationResultMapper.to_schema(result)

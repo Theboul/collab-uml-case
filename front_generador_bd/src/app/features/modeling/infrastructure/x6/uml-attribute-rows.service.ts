@@ -17,6 +17,11 @@ const ICON_SIZE = 13;
 const ICON_GAP = 4;
 const NAME_TYPE_GAP = 8;
 const ROWS_SELECTOR_NAME = 'attributeRows';
+/** Affordance de "hay más atributos abajo" cuando el compartimento está scrolleado — ver docs/analysis/decision-render-atributos-svg-vs-foreignobject.md. */
+const SCROLL_FADE_HEIGHT = 16;
+const FADE_GRADIENT_ID = 'uml-attr-fade-bottom';
+/** Mismo tono que `nameText`/`typeText` en `buildRow()` — contraste ~10:1 sobre el fade blanco, no `#64748b` (~4.76:1, insuficiente para 9px). */
+const BADGE_FILL = '#334155';
 
 /**
  * Dueño de las filas reales del compartimento de atributos (Fase 2): construye y
@@ -169,6 +174,86 @@ export class UmlAttributeRowsService {
     slice.forEach((attr, i) => {
       container.appendChild(this.buildRow(node, attr, i, nodeWidth));
     });
+
+    const hiddenBelow = attributes.length - (scrollRow + visibleRows);
+    if (hiddenBelow > 0) {
+      this.paintScrollFade(container, nodeWidth, visibleRows, hiddenBelow);
+    }
+  }
+
+  /**
+   * Affordance visual de "hay más atributos abajo" (bug encontrado en sesión de
+   * CU9: el límite de `ATTR_MAX_VISIBLE_ROWS` de `uml-class-node-visual.ts` es
+   * correcto, pero no tenía ninguna señal de que el compartimento es scrolleable
+   * — ver docs/analysis/decision-render-atributos-svg-vs-foreignobject.md).
+   * Fundido real vía `<linearGradient>` (no un rect semi-transparente plano, que
+   * se ve como una barra rota) + badge "+N" con el conteo restante. Ambos con
+   * `pointer-events: none` — decorativos, no interfieren con el click de fila ni
+   * con el listener de `wheel` de `wireContainer()`.
+   */
+  private paintScrollFade(
+    container: SVGGElement,
+    nodeWidth: number,
+    visibleRows: number,
+    hiddenBelow: number,
+  ): void {
+    const svgRoot = container.ownerSVGElement;
+    if (svgRoot) this.ensureFadeGradientDef(svgRoot);
+
+    const blockHeight = visibleRows * UML_NODE_DIMENSIONS.ATTR_ROW_HEIGHT;
+
+    const fade = document.createElementNS(SVG_NS, 'rect');
+    fade.setAttribute('x', '0');
+    fade.setAttribute('y', String(blockHeight - SCROLL_FADE_HEIGHT));
+    fade.setAttribute('width', String(nodeWidth));
+    fade.setAttribute('height', String(SCROLL_FADE_HEIGHT));
+    fade.setAttribute('fill', `url(#${FADE_GRADIENT_ID})`);
+    fade.setAttribute('pointer-events', 'none');
+    container.appendChild(fade);
+
+    const badge = document.createElementNS(SVG_NS, 'text');
+    badge.setAttribute('x', String(nodeWidth - 6));
+    badge.setAttribute('y', String(blockHeight - 4));
+    badge.setAttribute('text-anchor', 'end');
+    badge.setAttribute('font-family', 'JetBrains Mono, monospace');
+    badge.setAttribute('font-size', '9');
+    badge.setAttribute('font-weight', '600');
+    badge.setAttribute('fill', BADGE_FILL);
+    badge.setAttribute('pointer-events', 'none');
+    badge.textContent = `+${hiddenBelow}`;
+    container.appendChild(badge);
+  }
+
+  /** Crea el `<linearGradient>` compartido una sola vez por `<svg>` raíz del canvas (reutilizado por ID en todos los nodos). */
+  private ensureFadeGradientDef(svgRoot: SVGSVGElement): void {
+    if (svgRoot.querySelector(`#${FADE_GRADIENT_ID}`)) return;
+
+    let defs = svgRoot.querySelector('defs');
+    if (!defs) {
+      defs = document.createElementNS(SVG_NS, 'defs');
+      svgRoot.insertBefore(defs, svgRoot.firstChild);
+    }
+
+    const gradient = document.createElementNS(SVG_NS, 'linearGradient');
+    gradient.setAttribute('id', FADE_GRADIENT_ID);
+    gradient.setAttribute('x1', '0');
+    gradient.setAttribute('y1', '0');
+    gradient.setAttribute('x2', '0');
+    gradient.setAttribute('y2', '1');
+
+    const stopTransparent = document.createElementNS(SVG_NS, 'stop');
+    stopTransparent.setAttribute('offset', '0%');
+    stopTransparent.setAttribute('stop-color', '#ffffff');
+    stopTransparent.setAttribute('stop-opacity', '0');
+
+    const stopOpaque = document.createElementNS(SVG_NS, 'stop');
+    stopOpaque.setAttribute('offset', '100%');
+    stopOpaque.setAttribute('stop-color', '#ffffff');
+    stopOpaque.setAttribute('stop-opacity', '0.95');
+
+    gradient.appendChild(stopTransparent);
+    gradient.appendChild(stopOpaque);
+    defs.appendChild(gradient);
   }
 
   private buildRow(
