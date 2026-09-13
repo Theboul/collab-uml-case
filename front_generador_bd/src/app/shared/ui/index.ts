@@ -7,3 +7,4 @@ export * from './avatar-stack/avatar-stack.component';
 export * from './search-input/search-input.component';
 export * from './empty-state/empty-state.component';
 export * from './table-card/table-card.component';
+export * from './modal-shell/modal-shell.component';

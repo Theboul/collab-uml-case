@@ -10,6 +10,7 @@ import { UmlValidationPanelComponent } from './uml-validation-panel/uml-validati
 import { UmlShareModalComponent } from './uml-share-modal/uml-share-modal.component';
 import { UmlEditorFacade } from '../application/uml-editor.facade';
 import { ScButtonComponent, ScIconComponent } from '../../../shared/ui';
+import { ProjectShellComponent } from '../../../layout/project-shell/project-shell.component';
 
 
 @Component({
@@ -17,6 +18,7 @@ import { ScButtonComponent, ScIconComponent } from '../../../shared/ui';
   standalone: true,
   imports: [
     CommonModule,
+    ProjectShellComponent,
     UmlToolbarComponent,
     UmlPaletteComponent,
     UmlCanvasComponent,

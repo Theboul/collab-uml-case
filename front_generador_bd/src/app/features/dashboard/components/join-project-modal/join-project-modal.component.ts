@@ -1,12 +1,12 @@
 import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ScIconComponent, ScButtonComponent, ScInputComponent } from '../../../../shared/ui';
+import { ScIconComponent, ScButtonComponent, ScInputComponent, ScModalShellComponent } from '../../../../shared/ui';
 
 @Component({
   selector: 'sc-join-project-modal',
   standalone: true,
-  imports: [CommonModule, FormsModule, ScIconComponent, ScButtonComponent, ScInputComponent],
+  imports: [CommonModule, FormsModule, ScIconComponent, ScButtonComponent, ScInputComponent, ScModalShellComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './join-project-modal.component.html',
   styleUrl: './join-project-modal.component.css',

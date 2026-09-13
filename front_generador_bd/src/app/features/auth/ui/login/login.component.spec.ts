@@ -1,6 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideZonelessChangeDetection } from '@angular/core';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { of, throwError } from 'rxjs';
 import { ScLoginComponent } from './login.component';
 import { AuthService } from '../../../../core/auth';
@@ -12,7 +12,7 @@ describe('ScLoginComponent', () => {
   let authServiceSpy: jasmine.SpyObj<AuthService>;
 
   beforeEach(async () => {
-    routerSpy = jasmine.createSpyObj('Router', ['navigate']);
+    routerSpy = jasmine.createSpyObj('Router', ['navigate', 'navigateByUrl']);
     authServiceSpy = jasmine.createSpyObj('AuthService', [
       'login',
       'register',
@@ -29,6 +29,7 @@ describe('ScLoginComponent', () => {
         provideZonelessChangeDetection(),
         { provide: Router, useValue: routerSpy },
         { provide: AuthService, useValue: authServiceSpy },
+        { provide: ActivatedRoute, useValue: { snapshot: { queryParams: {} } } },
       ],
     }).compileComponents();
 
@@ -93,7 +94,7 @@ describe('ScLoginComponent', () => {
         password: 'secreto123',
       });
       expect(component.loading).toBeFalse();
-      expect(routerSpy.navigate).toHaveBeenCalledWith(['/dashboard']);
+      expect(routerSpy.navigateByUrl).toHaveBeenCalledWith('/dashboard');
     });
 
     it('should display error message upon login failure', () => {
@@ -137,7 +138,7 @@ describe('ScLoginComponent', () => {
         password: 'secreto123',
       });
       expect(component.loading).toBeFalse();
-      expect(routerSpy.navigate).toHaveBeenCalledWith(['/dashboard']);
+      expect(routerSpy.navigateByUrl).toHaveBeenCalledWith('/dashboard');
     });
 
     it('should authenticate with google credential and navigate to dashboard', () => {
@@ -154,7 +155,7 @@ describe('ScLoginComponent', () => {
 
       expect(authServiceSpy.loginWithGoogle).toHaveBeenCalledWith('mock-google-credential');
       expect(component.loading).toBeFalse();
-      expect(routerSpy.navigate).toHaveBeenCalledWith(['/dashboard']);
+      expect(routerSpy.navigateByUrl).toHaveBeenCalledWith('/dashboard');
     });
   });
 });

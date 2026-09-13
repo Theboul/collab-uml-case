@@ -84,6 +84,7 @@ back_generador_bd/
 backend_old/
 legacy_backend/
 legacy/
+!backend_case/app/legacy/
 *.old
 *.bak
 *.tmp
