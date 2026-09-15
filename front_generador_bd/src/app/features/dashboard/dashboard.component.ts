@@ -24,6 +24,7 @@ import { ScJoinProjectModalComponent } from './components/join-project-modal/joi
 import { ScNewProjectModalComponent } from './components/new-project-modal/new-project-modal.component';
 
 import { AuthService } from '../../core/auth';
+import { UmlApiService } from '../modeling/application/uml-api.service';
 
 @Component({
   selector: 'sc-dashboard',
@@ -67,12 +68,14 @@ export class DashboardComponent implements OnInit, OnDestroy {
   isNewModalOpen: boolean = false;
 
   isCreating: boolean = false;
+  isImportingXmi: boolean = false;
 
   private navSub?: Subscription;
 
   constructor(
     private dashboardService: DashboardService,
     private authService: AuthService,
+    private umlApi: UmlApiService,
     private router: Router
   ) {}
 
@@ -266,6 +269,29 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   importSql(): void {
     alert('Función de importación SQL: Selecciona un archivo .sql o pega tu esquema DDL.');
+  }
+
+  importXmiFile(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+
+    this.isImportingXmi = true;
+    this.umlApi.importXmi(file).subscribe({
+      next: (res) => {
+        this.isImportingXmi = false;
+        input.value = '';
+        if (res.canvas.roomName) {
+          this.router.navigate(['/diagram', res.canvas.roomName]);
+        }
+      },
+      error: (err) => {
+        this.isImportingXmi = false;
+        input.value = '';
+        const msg = err?.error?.message || 'Error al importar el archivo XMI.';
+        alert(`Error de importación: ${msg}`);
+      },
+    });
   }
 
   scrollToSection(sectionId: string): void {

@@ -209,3 +209,153 @@ def test_export_forbidden_for_user_without_access(client: TestClient):
         f"/api/v2/canvases/{canvas_id}/export/xmi", headers=_auth_headers(owner_token)
     )
     assert owner_res.status_code == 200
+
+
+def test_import_with_unverified_generalization_propagates_warning(client: TestClient):
+    """Verifica que las advertencias del parser (ej. generalización) se incluyan en la respuesta."""
+    xml_with_gen = b"""<?xml version="1.0" encoding="utf-8"?>
+<XMI xmi.version="1.1" xmlns:UML="omg.org/UML1.3">
+  <XMI.content>
+    <UML:Model name="ModelGen" xmi.id="m1">
+      <UML:Namespace.ownedElement>
+        <UML:Class name="ClaseBase" xmi.id="c1" isRoot="false" />
+        <UML:Generalization xmi.id="g1" subtype="c1" supertype="c1" />
+      </UML:Namespace.ownedElement>
+    </UML:Model>
+  </XMI.content>
+</XMI>"""
+    res = client.post(
+        "/api/v2/canvases/import",
+        files={"file": ("generalizacion.xml", xml_with_gen, "application/xml")},
+    )
+    assert res.status_code == 201
+    data = res.json()
+    warnings = data["validation"]["warnings"]
+    assert any(w["code"] == "XMI_GENERALIZATION_NOT_VERIFIED" for w in warnings)
+
+
+def test_export_rejects_invalid_model_with_422_and_no_file(client: TestClient):
+    """
+    Fuerza el camino de rechazo de export_xmi inyectando un modelo inválido
+    directo en el repositorio (bypaseando canvas_service/comandos, que nunca
+    dejarían persistir una referencia rota). Confirma que UMLValidator corta el
+    export antes de build_xmi_document: 422 XMI_EXPORT_INVALID_MODEL, sin XMI
+    parcial en la respuesta.
+    """
+    import asyncio
+
+    from backend_case.app.modeling.infrastructure.db_models import CanvasORM
+    from backend_case.app.shared.db.base import async_session_factory
+
+    canvas_id = f"invalid-export-{uuid.uuid4().hex[:8]}"
+
+    invalid_model = {
+        "schemaVersion": "2.0.0",
+        "modelId": "invalid-m1",
+        "name": "Lienzo Invalido",
+        "classes": [
+            {
+                "id": "c1",
+                "name": "Cliente",
+                "visibility": "+",
+                "isAbstract": False,
+                "isInterface": False,
+                "attributes": [],
+                "operations": [],
+            }
+        ],
+        "associations": [
+            {
+                "id": "a1",
+                "name": None,
+                "memberEnds": [
+                    {
+                        "classId": "c1",
+                        "roleName": None,
+                        "isNavigable": True,
+                        "aggregationKind": "none",
+                        "multiplicity": {"lowerBound": 1, "upperBound": 1},
+                    },
+                    {
+                        # Referencia a una clase que no existe -> VUML-11 (error bloqueante)
+                        "classId": "c-fantasma",
+                        "roleName": None,
+                        "isNavigable": True,
+                        "aggregationKind": "none",
+                        "multiplicity": {"lowerBound": 0, "upperBound": None},
+                    },
+                ],
+            }
+        ],
+        "generalizations": [],
+    }
+
+    async def insert_invalid():
+        async with async_session_factory() as session:
+            canvas_orm = CanvasORM(
+                id=canvas_id,
+                name="Lienzo Invalido",
+                version=1,
+                room_name=f"room-{canvas_id}",
+                semantic_model=invalid_model,
+                visual_layout={},
+            )
+            session.add(canvas_orm)
+            await session.commit()
+
+    asyncio.run(insert_invalid())
+
+    export_res = client.get(f"/api/v2/canvases/{canvas_id}/export/xmi")
+
+    assert export_res.status_code == 422
+    body = export_res.json()
+    assert body["code"] == "XMI_EXPORT_INVALID_MODEL"
+    assert any(d["code"] == "VUML-11" for d in body["details"])
+
+    # No se generó ningún archivo: la respuesta es el error JSON, no un XMI.
+    assert export_res.headers["content-type"].startswith("application/json")
+    assert "Content-Disposition" not in export_res.headers
+    assert not export_res.content.startswith(b"<?xml")
+
+
+def test_import_ea_aggregation_maps_to_shared_and_exports_as_aggregate(client: TestClient):
+    """Verifica que aggregation='aggregate' de EA se mapee a 'shared' y al exportar retorne 'aggregate'."""
+    import xml.etree.ElementTree as ET
+
+    xml_with_agg = b"""<?xml version="1.0" encoding="utf-8"?>
+<XMI xmi.version="1.1" xmlns:UML="omg.org/UML1.3">
+  <XMI.content>
+    <UML:Model name="ModelAgg" xmi.id="m1">
+      <UML:Namespace.ownedElement>
+        <UML:Class name="Padre" xmi.id="c1" isRoot="false" />
+        <UML:Class name="Parte" xmi.id="c2" isRoot="false" />
+        <UML:Association name="Asoc" xmi.id="a1">
+          <UML:Association.connection>
+            <UML:AssociationEnd type="c1" aggregation="none" multiplicity="1" />
+            <UML:AssociationEnd type="c2" aggregation="aggregate" multiplicity="0..*" />
+          </UML:Association.connection>
+        </UML:Association>
+      </UML:Namespace.ownedElement>
+    </UML:Model>
+  </XMI.content>
+</XMI>"""
+    res = client.post(
+        "/api/v2/canvases/import",
+        files={"file": ("agregacion.xml", xml_with_agg, "application/xml")},
+    )
+    assert res.status_code == 201
+    data = res.json()
+    canvas_id = data["canvas"]["id"]
+    assocs = data["canvas"]["model"]["associations"]
+    assert len(assocs) == 1
+    assert assocs[0]["memberEnds"][1]["aggregationKind"] == "shared"
+
+    # Exportar y verificar que EA recibe "aggregate"
+    exp_res = client.get(f"/api/v2/canvases/{canvas_id}/export/xmi")
+    assert exp_res.status_code == 200
+    root = ET.fromstring(exp_res.content)
+    ns = "{omg.org/UML1.3}"
+    ends = list(root.iter(f"{ns}AssociationEnd"))
+    assert len(ends) == 2
+    assert ends[1].get("aggregation") == "aggregate"
+

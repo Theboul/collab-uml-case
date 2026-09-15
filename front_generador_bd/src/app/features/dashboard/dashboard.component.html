@@ -108,6 +108,25 @@
 
         <!-- Create & Join Action Buttons -->
         <div class="flex items-center gap-3">
+          <input
+            #dashboardFileInput
+            type="file"
+            accept=".xml,.xmi"
+            class="hidden"
+            (change)="importXmiFile($event)"
+          />
+
+          <sc-button
+            variant="secondary"
+            size="md"
+            icon="upload_file"
+            [disabled]="isImportingXmi"
+            (onClick)="dashboardFileInput.click()"
+            title="Importar archivo XMI 1.1 / UML 1.3 de Enterprise Architect"
+          >
+            {{ isImportingXmi ? 'Importando...' : 'Importar XMI' }}
+          </sc-button>
+
           <sc-button
             variant="secondary"
             size="md"

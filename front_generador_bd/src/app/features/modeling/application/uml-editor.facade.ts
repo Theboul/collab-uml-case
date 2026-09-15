@@ -13,6 +13,7 @@ import {
   UmlParameter,
   UmlRelationDto,
   UmlRelationType,
+  ValidationResponseDto,
 } from '../domain/models/uml-editor.models';
 import { UmlApiService } from './uml-api.service';
 import { UmlDiagramAdapterService } from '../infrastructure/x6/uml-diagram-adapter.service';
@@ -283,6 +284,31 @@ export class UmlEditorFacade {
         this.state.setValidating(false);
       },
     });
+  }
+
+  /** CU8: exporta el lienzo actual a un archivo XMI 1.1/UML 1.3 compatible con Enterprise Architect. */
+  exportXmi(): void {
+    const id = this.canvasId();
+    if (!id) return;
+    this.api.exportXmi(id).subscribe({
+      next: (blob) => {
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const name = this.canvasName() || 'modelo';
+        a.download = `${name}.xmi`;
+        a.click();
+        window.URL.revokeObjectURL(url);
+      },
+      error: (err) => {
+        console.error('[UmlEditorFacade] Error al exportar XMI:', err);
+      },
+    });
+  }
+
+  /** CU8: importa un archivo XMI delegando al ApiService. */
+  importXmi(file: File): Observable<{ canvas: LienzoDetailDto; validation: ValidationResponseDto }> {
+    return this.api.importXmi(file);
   }
 
   toggleValidationPanel(): void {

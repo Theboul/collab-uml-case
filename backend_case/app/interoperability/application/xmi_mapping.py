@@ -155,6 +155,20 @@ def _parse_class(class_element: ET.Element, datatype_table: dict[str, str]) -> U
     )
 
 
+_EA_TO_DOMAIN_AGGREGATION = {
+    "none": AggregationKind.NONE,
+    "aggregate": AggregationKind.SHARED,
+    "shared": AggregationKind.SHARED,
+    "composite": AggregationKind.COMPOSITE,
+}
+
+_DOMAIN_TO_EA_AGGREGATION = {
+    AggregationKind.NONE: "none",
+    AggregationKind.SHARED: "aggregate",
+    AggregationKind.COMPOSITE: "composite",
+}
+
+
 def _parse_association(assoc_element: ET.Element) -> UmlAssociation | None:
     connection = assoc_element.find(_q("Association.connection"))
     if connection is None:
@@ -164,10 +178,12 @@ def _parse_association(assoc_element: ET.Element) -> UmlAssociation | None:
         return None
 
     def _to_domain_end(end_el: ET.Element) -> AssociationEnd:
+        raw_agg = (end_el.get("aggregation") or "none").lower()
+        agg_kind = _EA_TO_DOMAIN_AGGREGATION.get(raw_agg, AggregationKind.NONE)
         return AssociationEnd(
             class_id=end_el.get("type", ""),
             role_name=end_el.get("name") or None,
-            aggregation_kind=AggregationKind(end_el.get("aggregation", "none")),
+            aggregation_kind=agg_kind,
             multiplicity=LegacyMultiplicityParser.parse(end_el.get("multiplicity", "1")),
         )
 
@@ -343,7 +359,7 @@ def build_xmi_document(lienzo: Lienzo) -> bytes:
                 {
                     "type": end.class_id,
                     "name": end.role_name or "",
-                    "aggregation": end.aggregation_kind.value,
+                    "aggregation": _DOMAIN_TO_EA_AGGREGATION.get(end.aggregation_kind, "none"),
                     "multiplicity": end.multiplicity.to_uml_str(),
                     "isNavigable": str(end.is_navigable).lower(),
                 },

@@ -13,7 +13,6 @@ import { ScBadgeComponent } from '../../../../shared/ui/badge/badge.component';
   templateUrl: './uml-toolbar.component.html',
   styleUrl: './uml-toolbar.component.css',
 })
-
 export class UmlToolbarComponent {
   readonly facade = inject(UmlEditorFacade);
 

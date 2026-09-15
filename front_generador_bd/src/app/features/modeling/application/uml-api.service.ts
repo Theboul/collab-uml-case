@@ -90,6 +90,27 @@ export class UmlApiService {
     return this.http.post<ValidationResponseDto>(`${this.baseUrl}/${canvasId}/validate`, {});
   }
 
+  /** CU8: importa un archivo XMI 1.1/UML 1.3 de Enterprise Architect creando un nuevo lienzo persistido. */
+  importXmi(file: File): Observable<{ canvas: LienzoDetailDto; validation: ValidationResponseDto }> {
+    const formData = new FormData();
+    formData.append('file', file, file.name);
+    return this.http
+      .post<{ canvas: any; validation: ValidationResponseDto }>(`${this.baseUrl}/import`, formData)
+      .pipe(
+        map((res) => ({
+          canvas: this.normalizeCanvas(res.canvas),
+          validation: res.validation,
+        }))
+      );
+  }
+
+  /** CU8: descarga el modelo persistido en formato XMI 1.1/UML 1.3 de Enterprise Architect. */
+  exportXmi(canvasId: string): Observable<Blob> {
+    return this.http.get(`${this.baseUrl}/${canvasId}/export/xmi`, {
+      responseType: 'blob',
+    });
+  }
+
   /**
    * El backend expone el modelo con `associations`/`generalizations`/`dependencies`
    * separados (contrato `UmlModelSchema`), pero el dominio canónico del frontend
