@@ -359,3 +359,140 @@ def test_import_ea_aggregation_maps_to_shared_and_exports_as_aggregate(client: T
     assert len(ends) == 2
     assert ends[1].get("aggregation") == "aggregate"
 
+
+def test_import_unsupported_types_emit_explicit_warnings_not_silent_loss(client: TestClient):
+    """
+    Hallazgo #5 de la pasada de verificación 2026-09-15: Interface/Enumeration/
+    Dependency/Realization se descartaban en silencio al importar (a diferencia
+    de Generalization, que ya tenía warning). Confirma que ahora cada uno emite
+    su propio XmiImportWarning explícito en vez de desaparecer mudo.
+    """
+    xml_with_unsupported = b"""<?xml version="1.0" encoding="utf-8"?>
+<XMI xmi.version="1.1" xmlns:UML="omg.org/UML1.3">
+  <XMI.content>
+    <UML:Model name="ModelUnsupported" xmi.id="m1">
+      <UML:Namespace.ownedElement>
+        <UML:Class name="Cliente" xmi.id="c1" isRoot="false" />
+        <UML:Interface name="Comparable" xmi.id="i1" />
+        <UML:DataType name="EstadoPedido" xmi.id="e1" stereotype="enumeration" />
+        <UML:Dependency name="UsaServicio" xmi.id="d1" client="c1" supplier="c1" />
+        <UML:Realization xmi.id="r1" client="c1" supplier="i1" />
+      </UML:Namespace.ownedElement>
+    </UML:Model>
+  </XMI.content>
+</XMI>"""
+    res = client.post(
+        "/api/v2/canvases/import",
+        files={"file": ("no_soportados.xml", xml_with_unsupported, "application/xml")},
+    )
+    assert res.status_code == 201, res.text
+    data = res.json()
+
+    # La clase sí se importa con normalidad; los 4 tipos no soportados no.
+    assert [c["name"] for c in data["canvas"]["model"]["classes"]] == ["Cliente"]
+
+    warning_codes = {w["code"] for w in data["validation"]["warnings"]}
+    assert warning_codes == {
+        "XMI_INTERFACE_NOT_SUPPORTED",
+        "XMI_ENUMERATION_NOT_SUPPORTED",
+        "XMI_DEPENDENCY_NOT_SUPPORTED",
+        "XMI_REALIZATION_NOT_SUPPORTED",
+    }
+
+
+def test_export_finds_unsupported_type_warnings_without_serializing_them():
+    """
+    Unit test a nivel de dominio (sin HTTP): confirma que
+    find_unsupported_export_warnings detecta interfaces/enumeraciones/
+    dependencias/realizaciones que build_xmi_document no serializa. No pasa por
+    la capa HTTP porque schemas/uml.py (UmlModelSchema) hoy no tiene campos
+    para Interface/Enumeration en absoluto -- ese es un gap más profundo que
+    "el export los olvida", documentado aparte, no algo a resolver en este fix.
+    """
+    from backend_case.app.interoperability.application.xmi_mapping import (
+        build_xmi_document,
+        find_unsupported_export_warnings,
+    )
+    from core.uml_domain.model import (
+        UmlDependency,
+        UmlDomainModel,
+        UmlEnumeration,
+        UmlInterface,
+        UmlRealization,
+    )
+
+    model = UmlDomainModel(
+        name="ModeloConTiposNoExportables",
+        interfaces=[UmlInterface(id="i1", name="Comparable")],
+        enumerations=[UmlEnumeration(id="e1", name="EstadoPedido")],
+        dependencies=[UmlDependency(id="d1", client_class_id="c1", supplier_class_id="c2")],
+        realizations=[UmlRealization(id="r1", client_class_id="c1", supplier_interface_id="i1")],
+    )
+
+    warnings = find_unsupported_export_warnings(model)
+    codes = {w.code for w in warnings}
+    assert codes == {
+        "XMI_INTERFACE_NOT_SUPPORTED",
+        "XMI_ENUMERATION_NOT_SUPPORTED",
+        "XMI_DEPENDENCY_NOT_SUPPORTED",
+        "XMI_REALIZATION_NOT_SUPPORTED",
+    }
+
+    from core.uml_domain.model import Lienzo
+
+    xmi_bytes = build_xmi_document(Lienzo(modelo=model))
+    assert b"Comparable" not in xmi_bytes
+    assert b"EstadoPedido" not in xmi_bytes
+
+
+def test_export_with_real_dependency_includes_warning_header(client: TestClient):
+    """
+    Confirma el camino real end-to-end (vía comandos, no inyección directa):
+    una UmlDependency creada por CREATE_RELATION sí se persiste (CU4), pero
+    build_xmi_document no la serializa -- el header X-Xmi-Warnings debe avisarlo
+    en el export sin bloquearlo (a diferencia de un error VUML, esto no es
+    invalidez semántica, es alcance no soportado del formato de intercambio).
+    """
+    create_res = client.post("/api/v2/canvases", json={"name": "Lienzo Dependencia"})
+    canvas_id = create_res.json()["id"]
+
+    c1 = client.post(
+        f"/api/v2/canvases/{canvas_id}/commands",
+        json={
+            "expectedVersion": 1,
+            "type": "CREATE_CLASS",
+            "payload": {"name": "ServicioA", "x": 10, "y": 20},
+        },
+    )
+    servicio_a_id = c1.json()["canvas"]["model"]["classes"][0]["id"]
+
+    c2 = client.post(
+        f"/api/v2/canvases/{canvas_id}/commands",
+        json={
+            "expectedVersion": 2,
+            "type": "CREATE_CLASS",
+            "payload": {"name": "ServicioB", "x": 300, "y": 20},
+        },
+    )
+    servicio_b_id = next(
+        c["id"] for c in c2.json()["canvas"]["model"]["classes"] if c["name"] == "ServicioB"
+    )
+
+    dep_res = client.post(
+        f"/api/v2/canvases/{canvas_id}/commands",
+        json={
+            "expectedVersion": 3,
+            "type": "CREATE_RELATION",
+            "payload": {
+                "sourceClassId": servicio_a_id,
+                "targetClassId": servicio_b_id,
+                "type": "DEPENDENCY",
+            },
+        },
+    )
+    assert dep_res.status_code == 200, dep_res.text
+
+    export_res = client.get(f"/api/v2/canvases/{canvas_id}/export/xmi")
+    assert export_res.status_code == 200
+    assert export_res.headers["X-Xmi-Warnings"] == "XMI_DEPENDENCY_NOT_SUPPORTED"
+

@@ -17,6 +17,19 @@ from core.uml_domain.model import (
 )
 
 
+def _parse_multiplicidad(label: str, default_if_empty: bool = False) -> MultiplicityRange:
+    """
+    Traduce el ValueError de LegacyMultiplicityParser (formato no reconocido, o
+    cota superior menor a la inferior, ej. "5..2") a UmlValidationError -- mismo
+    código canónico (422 UML_INVALID_MODEL) que el resto de rechazos de este
+    archivo, en vez de dejarlo propagar como 500 sin control.
+    """
+    try:
+        return LegacyMultiplicityParser.parse(label, default_if_empty=default_if_empty)
+    except ValueError as err:
+        raise UmlValidationError(str(err)) from err
+
+
 def _tipo_de_relacion(modelo: UmlDomainModel, relacion_id: str) -> str | None:
     """
     Identifica en qué de las 4 colecciones de relaciones vive un id, sin acoplarse
@@ -87,8 +100,9 @@ class RelationCommandHandler(CommandHandler):
                 elif rel_type == "COMPOSITION":
                     agg_source = AggregationKind.COMPOSITE
 
-                m_orig = LegacyMultiplicityParser.parse(source_mult) if source_mult else MultiplicityRange(1, 1)
-                m_dest = LegacyMultiplicityParser.parse(target_mult) if target_mult else MultiplicityRange(1, 1)
+                default_mult = MultiplicityRange(1, 1)
+                m_orig = _parse_multiplicidad(source_mult) if source_mult else default_mult
+                m_dest = _parse_multiplicidad(target_mult) if target_mult else default_mult
 
                 asoc, evento = lienzo.modelo.agregar_asociacion(
                     origen_id=source_id,
@@ -156,12 +170,12 @@ class RelationCommandHandler(CommandHandler):
                         rol_origen=payload.get("sourceRole"),
                         rol_destino=payload.get("targetRole"),
                         multiplicidad_origen=(
-                            LegacyMultiplicityParser.parse(source_mult)
+                            _parse_multiplicidad(source_mult)
                             if source_mult is not None
                             else None
                         ),
                         multiplicidad_destino=(
-                            LegacyMultiplicityParser.parse(target_mult)
+                            _parse_multiplicidad(target_mult)
                             if target_mult is not None
                             else None
                         ),
@@ -176,10 +190,10 @@ class RelationCommandHandler(CommandHandler):
                         rol_origen=payload.get("sourceRole"),
                         rol_destino=payload.get("targetRole"),
                         multiplicidad_origen=(
-                            LegacyMultiplicityParser.parse(source_mult) if source_mult else None
+                            _parse_multiplicidad(source_mult) if source_mult else None
                         ),
                         multiplicidad_destino=(
-                            LegacyMultiplicityParser.parse(target_mult) if target_mult else None
+                            _parse_multiplicidad(target_mult) if target_mult else None
                         ),
                     )
             elif tipo_actual == "UmlAssociation" and (
@@ -197,12 +211,12 @@ class RelationCommandHandler(CommandHandler):
                     rol_origen=payload.get("sourceRole"),
                     rol_destino=payload.get("targetRole"),
                     multiplicidad_origen=(
-                        LegacyMultiplicityParser.parse(source_mult)
+                        _parse_multiplicidad(source_mult)
                         if source_mult is not None
                         else None
                     ),
                     multiplicidad_destino=(
-                        LegacyMultiplicityParser.parse(target_mult)
+                        _parse_multiplicidad(target_mult)
                         if target_mult is not None
                         else None
                     ),
@@ -220,8 +234,8 @@ class RelationCommandHandler(CommandHandler):
             tgt_m = payload.get("targetMultiplicity")
             _, evento = lienzo.modelo.editar_asociacion(
                 rel_id,
-                multiplicidad_origen=LegacyMultiplicityParser.parse(src_m) if src_m else None,
-                multiplicidad_destino=LegacyMultiplicityParser.parse(tgt_m) if tgt_m else None,
+                multiplicidad_origen=_parse_multiplicidad(src_m) if src_m else None,
+                multiplicidad_destino=_parse_multiplicidad(tgt_m) if tgt_m else None,
             )
             return evento, None
 

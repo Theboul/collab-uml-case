@@ -75,7 +75,13 @@ def _iter_namespace_children(namespace_element: ET.Element) -> Iterator[ET.Eleme
             if child.get("isRoot") == "true":
                 continue
             yield child
-        elif child.tag in (_q("Association"), _q("Generalization")):
+        elif child.tag in (
+            _q("Association"),
+            _q("Generalization"),
+            _q("Interface"),
+            _q("Dependency"),
+            _q("Realization"),
+        ):
             yield child
 
 
@@ -87,6 +93,29 @@ def _build_datatype_table(model_element: ET.Element) -> dict[str, str]:
         if xid:
             table[xid] = dt.get("name", "String")
     return table
+
+
+def _find_enumeration_warnings(model_element: ET.Element) -> list[XmiImportWarning]:
+    """
+    UML 1.3 no tiene un tag propio para enumeraciones: EA las representa como
+    UML:DataType con stereotype="enumeration". Se detectan aparte de
+    _build_datatype_table (que indexa TODOS los DataType, incluidos tipos
+    primitivos como "int"/"void") para no generar warnings sobre tipos soportados.
+    """
+    warnings: list[XmiImportWarning] = []
+    for dt in model_element.iter(_q("DataType")):
+        if (dt.get("stereotype") or "").strip().lower() == "enumeration":
+            warnings.append(
+                XmiImportWarning(
+                    code="XMI_ENUMERATION_NOT_SUPPORTED",
+                    message=(
+                        f"Enumeración '{dt.get('name')}' encontrada en el archivo, pero "
+                        "este dialecto no soporta enumeraciones todavía — omitida."
+                    ),
+                    element_id=dt.get("xmi.id"),
+                )
+            )
+    return warnings
 
 
 def _resolve_type_idref(type_container: ET.Element | None, datatype_table: dict[str, str]) -> str:
@@ -274,6 +303,41 @@ def parse_xmi_document(
                         element_id=element.get("xmi.id"),
                     )
                 )
+            elif element.tag == _q("Interface"):
+                warnings.append(
+                    XmiImportWarning(
+                        code="XMI_INTERFACE_NOT_SUPPORTED",
+                        message=(
+                            f"Interfaz '{element.get('name')}' encontrada en el archivo, pero "
+                            "este dialecto no soporta interfaces todavía — omitida."
+                        ),
+                        element_id=element.get("xmi.id"),
+                    )
+                )
+            elif element.tag == _q("Dependency"):
+                warnings.append(
+                    XmiImportWarning(
+                        code="XMI_DEPENDENCY_NOT_SUPPORTED",
+                        message=(
+                            f"Dependencia '{element.get('name')}' encontrada en el archivo, "
+                            "pero este dialecto no importa dependencias todavía — omitida."
+                        ),
+                        element_id=element.get("xmi.id"),
+                    )
+                )
+            elif element.tag == _q("Realization"):
+                warnings.append(
+                    XmiImportWarning(
+                        code="XMI_REALIZATION_NOT_SUPPORTED",
+                        message=(
+                            "Realización encontrada en el archivo, pero este dialecto no "
+                            "importa realizaciones todavía — omitida."
+                        ),
+                        element_id=element.get("xmi.id"),
+                    )
+                )
+
+    warnings.extend(_find_enumeration_warnings(model_element))
 
     model = UmlDomainModel(
         name=model_element.get("name") or "Modelo Importado",
@@ -393,3 +457,47 @@ def build_xmi_document(lienzo: Lienzo) -> bytes:
 
     result: bytes = ET.tostring(xmi_root, encoding="utf-8", xml_declaration=True)
     return result
+
+
+def find_unsupported_export_warnings(model: UmlDomainModel) -> list[XmiImportWarning]:
+    """
+    CU8: advierte (sin bloquear el export) sobre elementos del dominio que
+    build_xmi_document no serializa todavía — interfaces, enumeraciones,
+    dependencias y realizaciones. No implementa soporte real, solo hace
+    explícita la pérdida de semántica antes de generar el archivo (mismo
+    espíritu que las advertencias de import, código por tipo).
+    """
+    warnings: list[XmiImportWarning] = []
+    for interface in model.interfaces:
+        warnings.append(
+            XmiImportWarning(
+                code="XMI_INTERFACE_NOT_SUPPORTED",
+                message=f"Interfaz '{interface.name}' no se exporta a XMI todavía.",
+                element_id=interface.id,
+            )
+        )
+    for enumeration in model.enumerations:
+        warnings.append(
+            XmiImportWarning(
+                code="XMI_ENUMERATION_NOT_SUPPORTED",
+                message=f"Enumeración '{enumeration.name}' no se exporta a XMI todavía.",
+                element_id=enumeration.id,
+            )
+        )
+    for dependency in model.dependencies:
+        warnings.append(
+            XmiImportWarning(
+                code="XMI_DEPENDENCY_NOT_SUPPORTED",
+                message="Dependencia no se exporta a XMI todavía.",
+                element_id=dependency.id,
+            )
+        )
+    for realization in model.realizations:
+        warnings.append(
+            XmiImportWarning(
+                code="XMI_REALIZATION_NOT_SUPPORTED",
+                message="Realización no se exporta a XMI todavía.",
+                element_id=realization.id,
+            )
+        )
+    return warnings

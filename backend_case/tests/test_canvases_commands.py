@@ -775,3 +775,71 @@ def test_delete_dependency_relation_actually_removes_it(client: TestClient):
     get_res = client.get(f"/api/v2/canvases/{canvas_id}")
     assert get_res.json()["model"]["dependencies"] == []
 
+
+def test_create_relation_with_inverted_multiplicity_returns_422_not_500(client: TestClient):
+    """
+    Hallazgo #11 de la auditoría (auditoria-CU1-CU5.md): una multiplicidad
+    inversa ("5..2", cota superior menor a la inferior) hacía que
+    MultiplicityRange.__post_init__ lanzara un ValueError sin capturar, que
+    FastAPI traducía en 500. Ahora debe rechazarse como cualquier otro dato
+    de entrada inválido: 422 UML_INVALID_MODEL.
+    """
+    res = client.post("/api/v2/canvases", json={"name": "Lienzo Multiplicidad Invalida"})
+    canvas_id = res.json()["id"]
+
+    origen_id = _create_class_id(client, canvas_id, 1, "Origen")
+    destino_id = _create_class_id(client, canvas_id, 2, "Destino", x=200)
+
+    create_cmd = client.post(
+        f"/api/v2/canvases/{canvas_id}/commands",
+        json={
+            "expectedVersion": 3,
+            "type": "CREATE_RELATION",
+            "payload": {
+                "sourceClassId": origen_id,
+                "targetClassId": destino_id,
+                "type": "ASSOCIATION",
+                "sourceMultiplicity": "1",
+                "targetMultiplicity": "5..2",
+            },
+        },
+    )
+    assert create_cmd.status_code == 422
+    assert create_cmd.json()["code"] == "UML_INVALID_MODEL"
+
+
+def test_update_relation_with_inverted_multiplicity_returns_422_not_500(client: TestClient):
+    """Mismo hallazgo #11, pero en el camino de edición (UPDATE_RELATION), no solo creación."""
+    res = client.post("/api/v2/canvases", json={"name": "Lienzo Editar Multiplicidad Invalida"})
+    canvas_id = res.json()["id"]
+
+    origen_id = _create_class_id(client, canvas_id, 1, "Origen")
+    destino_id = _create_class_id(client, canvas_id, 2, "Destino", x=200)
+
+    create_cmd = client.post(
+        f"/api/v2/canvases/{canvas_id}/commands",
+        json={
+            "expectedVersion": 3,
+            "type": "CREATE_RELATION",
+            "payload": {
+                "sourceClassId": origen_id,
+                "targetClassId": destino_id,
+                "type": "ASSOCIATION",
+                "sourceMultiplicity": "1",
+                "targetMultiplicity": "0..*",
+            },
+        },
+    )
+    rel_id = create_cmd.json()["canvas"]["model"]["associations"][0]["id"]
+
+    update_cmd = client.post(
+        f"/api/v2/canvases/{canvas_id}/commands",
+        json={
+            "expectedVersion": 4,
+            "type": "UPDATE_RELATION",
+            "payload": {"relationId": rel_id, "targetMultiplicity": "5..2"},
+        },
+    )
+    assert update_cmd.status_code == 422
+    assert update_cmd.json()["code"] == "UML_INVALID_MODEL"
+

@@ -14,6 +14,7 @@ from backend_case.app.interoperability.application.xmi_import_service import (
 from backend_case.app.interoperability.application.xmi_mapping import (
     XmiParseError,
     build_xmi_document,
+    find_unsupported_export_warnings,
 )
 from backend_case.app.modeling.api.routes import CanvasDetailSchema, _to_detail_schema
 from backend_case.app.modeling.application.canvas_service import CanvasService
@@ -123,10 +124,17 @@ async def export_xmi(
             },
         )
 
+    export_warnings = find_unsupported_export_warnings(res.lienzo.modelo)
+
     xmi_bytes = build_xmi_document(res.lienzo)
     filename = f"{res.lienzo.modelo.name or 'modelo'}.xmi"
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+    if export_warnings:
+        # Sin cambiar el contrato (sigue siendo un archivo, no JSON): se hace
+        # explícita la pérdida de semántica en un header, no en el cuerpo.
+        headers["X-Xmi-Warnings"] = ",".join(w.code for w in export_warnings)
     return Response(
         content=xmi_bytes,
         media_type="application/xml",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers=headers,
     )
