@@ -1,0 +1,106 @@
+"""
+Rutas API v2 para CU8: Importar/Exportar modelos UML (XMI 1.1 / UML 1.3, Enterprise Architect).
+"""
+
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
+from pydantic import BaseModel, ConfigDict
+
+from backend_case.app.application.mappers import ValidationResultMapper
+from backend_case.app.interoperability.application.xmi_import_service import (
+    importar_xmi_a_lienzo_nuevo,
+)
+from backend_case.app.interoperability.application.xmi_mapping import (
+    XmiParseError,
+    build_xmi_document,
+)
+from backend_case.app.modeling.api.routes import CanvasDetailSchema, _to_detail_schema
+from backend_case.app.modeling.application.canvas_service import CanvasService
+from backend_case.app.schemas.uml import ValidationResponseSchema
+from backend_case.app.shared.deps import get_canvas_service
+from backend_case.app.shared.security.dependencies import get_current_user_optional
+from backend_case.app.shared.security.models import UserORM
+
+router = APIRouter(prefix="/canvases", tags=["interoperability"])
+
+CanvasServiceDep = Annotated[CanvasService, Depends(get_canvas_service)]
+CurrentUserOptionalDep = Annotated[UserORM | None, Depends(get_current_user_optional)]
+
+_ACCESS_FORBIDDEN_DETAIL = {
+    "code": "CANVAS_ACCESS_FORBIDDEN",
+    "message": (
+        "No tenés acceso a este lienzo. Unite con el código de acceso o el enlace de invitación."
+    ),
+}
+
+
+class ImportXmiResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    canvas: CanvasDetailSchema
+    validation: ValidationResponseSchema
+
+
+@router.post("/import", response_model=ImportXmiResponse, status_code=status.HTTP_201_CREATED)
+async def import_xmi(
+    service: CanvasServiceDep,
+    file: UploadFile = File(...),
+    current_user: CurrentUserOptionalDep = None,
+):
+    """
+    CU8: Importa un archivo XMI 1.1/UML 1.3 (Enterprise Architect) y crea un lienzo
+    nuevo a partir de él. Acepta anónimos igual que POST /canvases (CU1). Valida con
+    UMLValidator (CU9) antes de persistir — si hay errores de dominio, no persiste nada.
+    """
+    xmi_bytes = await file.read()
+    try:
+        saved, resultado, _warnings = await importar_xmi_a_lienzo_nuevo(
+            service, xmi_bytes, owner_id=current_user.id if current_user else None
+        )
+    except XmiParseError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": "XMI_PARSE_ERROR", "message": str(exc), "details": []},
+        ) from exc
+
+    validation_schema = ValidationResultMapper.to_schema(resultado)
+    if saved is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": "XMI_INVALID_MODEL",
+                "message": "El modelo importado no pasa la validación semántica UML.",
+                "details": [e.model_dump() for e in validation_schema.errors],
+            },
+        )
+
+    return ImportXmiResponse(
+        canvas=_to_detail_schema(saved.lienzo, saved.version, saved.owner_id, saved.room_name),
+        validation=validation_schema,
+    )
+
+
+@router.get("/{canvas_id}/export/xmi")
+async def export_xmi(
+    canvas_id: str,
+    service: CanvasServiceDep,
+    current_user: CurrentUserOptionalDep = None,
+):
+    """
+    CU8: Exporta el modelo persistido del lienzo a XMI 1.1/UML 1.3 (Enterprise
+    Architect). Solo lectura (no incrementa version), mismo control de acceso que
+    GET /{canvas_id}.
+    """
+    user_id = current_user.id if current_user else None
+    res = await service.obtener_lienzo(canvas_id, user_id=user_id)
+    if res.role == "INVITADO":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=_ACCESS_FORBIDDEN_DETAIL)
+
+    xmi_bytes = build_xmi_document(res.lienzo)
+    filename = f"{res.lienzo.modelo.name or 'modelo'}.xmi"
+    return Response(
+        content=xmi_bytes,
+        media_type="application/xml",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

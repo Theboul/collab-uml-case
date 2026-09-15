@@ -110,7 +110,11 @@ export class UmlEditorFacade {
       this.createRelation(sourceId, targetId, this.defaultRelationType(), edgeId, sourcePort, targetPort);
     });
 
-    this.graphService.edgeReconnected$.subscribe(({ edgeId, sourcePort, targetPort }) => {
+    this.graphService.edgeReconnected$.subscribe(({ edgeId, sourceId, targetId, sourcePort, targetPort }) => {
+      const currentRel = this.state.model().relations.find((r) => r.id === edgeId);
+      if (currentRel && (currentRel.sourceClassId !== sourceId || currentRel.targetClassId !== targetId)) {
+        this.updateRelation(edgeId, { sourceClassId: sourceId, targetClassId: targetId });
+      }
       this.updateRelationLayout(edgeId, sourcePort, targetPort);
     });
 

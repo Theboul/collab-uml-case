@@ -555,3 +555,223 @@ def test_anonymous_canvas_without_owner_remains_open_for_edits(client: TestClien
     get_res = client.get(f"/api/v2/canvases/{canvas_id}")
     assert get_res.status_code == 200
 
+
+def _create_class_id(
+    client: TestClient, canvas_id: str, expected_version: int, name: str, x: int = 0, y: int = 0
+) -> str:
+    """Helper compartido por los tests de reconexión/cambio de tipo/dependencias: crea una
+    clase y devuelve su id, para no repetir el mismo payload largo en cada test."""
+    res = client.post(
+        f"/api/v2/canvases/{canvas_id}/commands",
+        json={
+            "expectedVersion": expected_version,
+            "type": "CREATE_CLASS",
+            "payload": {"name": name, "x": x, "y": y},
+        },
+    )
+    return res.json()["canvas"]["model"]["classes"][-1]["id"]
+
+
+def test_reconnect_relation_persists_after_reload(client: TestClient):
+    """
+    Hallazgo #2 de la auditoría: reconectar una relación (arrastrar un extremo a otra
+    clase) debe persistir el nuevo source/target en el dominio, no solo en el layout
+    visual — de lo contrario, releer el lienzo la revierte sola.
+    """
+    res = client.post("/api/v2/canvases", json={"name": "Lienzo Reconexion"})
+    canvas_id = res.json()["id"]
+
+    a_id = _create_class_id(client, canvas_id, 1, "A")
+    b_id = _create_class_id(client, canvas_id, 2, "B", x=200)
+    c_id = _create_class_id(client, canvas_id, 3, "C", x=400)
+
+    rel_cmd = client.post(
+        f"/api/v2/canvases/{canvas_id}/commands",
+        json={
+            "expectedVersion": 4,
+            "type": "CREATE_RELATION",
+            "payload": {"sourceClassId": a_id, "targetClassId": b_id, "type": "ASSOCIATION"},
+        },
+    )
+    rel_id = rel_cmd.json()["canvas"]["model"]["associations"][0]["id"]
+
+    reconnect_cmd = client.post(
+        f"/api/v2/canvases/{canvas_id}/commands",
+        json={
+            "expectedVersion": 5,
+            "type": "UPDATE_RELATION",
+            "payload": {"relationId": rel_id, "targetClassId": c_id},
+        },
+    )
+    assert reconnect_cmd.status_code == 200
+    assoc = reconnect_cmd.json()["canvas"]["model"]["associations"][0]
+    assert assoc["memberEnds"][0]["classId"] == a_id
+    assert assoc["memberEnds"][1]["classId"] == c_id
+
+    # Releer el lienzo desde cero (simula salir y volver a entrar): debe seguir
+    # apuntando a C, no haber vuelto sola a B.
+    get_res = client.get(f"/api/v2/canvases/{canvas_id}")
+    assert get_res.status_code == 200
+    reloaded_assoc = get_res.json()["model"]["associations"][0]
+    assert reloaded_assoc["memberEnds"][0]["classId"] == a_id
+    assert reloaded_assoc["memberEnds"][1]["classId"] == c_id
+
+
+def test_change_relation_type_association_to_generalization_and_back(client: TestClient):
+    """
+    Hallazgo #10 de la auditoría: cambiar el tipo de una relación a Generalization (y
+    de vuelta a Association) debe mutar realmente su forma en el modelo, no ser un
+    no-op silencioso. También cubre que la vuelta reconstruya nombre/multiplicidad si
+    se proveen explícitamente (así es como el undo del frontend los restaura).
+    """
+    res = client.post("/api/v2/canvases", json={"name": "Lienzo Cambio Tipo"})
+    canvas_id = res.json()["id"]
+
+    empleado_id = _create_class_id(client, canvas_id, 1, "Empleado")
+    persona_id = _create_class_id(client, canvas_id, 2, "Persona", x=200)
+
+    rel_cmd = client.post(
+        f"/api/v2/canvases/{canvas_id}/commands",
+        json={
+            "expectedVersion": 3,
+            "type": "CREATE_RELATION",
+            "payload": {
+                "sourceClassId": empleado_id,
+                "targetClassId": persona_id,
+                "type": "ASSOCIATION",
+                "name": "trabaja_para",
+                "sourceMultiplicity": "1",
+                "targetMultiplicity": "1",
+            },
+        },
+    )
+    rel_id = rel_cmd.json()["canvas"]["model"]["associations"][0]["id"]
+
+    # Association -> Generalization
+    to_gen_cmd = client.post(
+        f"/api/v2/canvases/{canvas_id}/commands",
+        json={
+            "expectedVersion": 4,
+            "type": "UPDATE_RELATION",
+            "payload": {"relationId": rel_id, "type": "GENERALIZATION"},
+        },
+    )
+    assert to_gen_cmd.status_code == 200
+    model_after = to_gen_cmd.json()["canvas"]["model"]
+    assert model_after["associations"] == []
+    assert len(model_after["generalizations"]) == 1
+    gen = model_after["generalizations"][0]
+    assert gen["id"] == rel_id
+    assert gen["specificClassId"] == empleado_id
+    assert gen["generalClassId"] == persona_id
+
+    # Confirmar persistencia real (releer desde cero, no solo la respuesta del comando)
+    get_res = client.get(f"/api/v2/canvases/{canvas_id}")
+    reloaded = get_res.json()["model"]
+    assert reloaded["associations"] == []
+    assert len(reloaded["generalizations"]) == 1
+    assert reloaded["generalizations"][0]["id"] == rel_id
+
+    # Generalization -> Association (vuelta), con nombre/multiplicidad explícitos
+    # (simula el undo del frontend, que ahora captura la relación vieja completa)
+    back_cmd = client.post(
+        f"/api/v2/canvases/{canvas_id}/commands",
+        json={
+            "expectedVersion": 5,
+            "type": "UPDATE_RELATION",
+            "payload": {
+                "relationId": rel_id,
+                "type": "ASSOCIATION",
+                "name": "trabaja_para",
+                "sourceMultiplicity": "1",
+                "targetMultiplicity": "1",
+            },
+        },
+    )
+    assert back_cmd.status_code == 200
+    model_back = back_cmd.json()["canvas"]["model"]
+    assert model_back["generalizations"] == []
+    assert len(model_back["associations"]) == 1
+    restored = model_back["associations"][0]
+    assert restored["id"] == rel_id
+    assert restored["name"] == "trabaja_para"
+    assert restored["memberEnds"][0]["classId"] == empleado_id
+    assert restored["memberEnds"][1]["classId"] == persona_id
+
+
+def test_create_dependency_relation_appears_as_real_dependency(client: TestClient):
+    """
+    Hallazgo #4 de la auditoría: CREATE_RELATION con type DEPENDENCY debe persistir un
+    UmlDependency real (colección `dependencies`), no una UmlAssociation genérica con
+    la etiqueta perdida.
+    """
+    res = client.post("/api/v2/canvases", json={"name": "Lienzo Dependencia"})
+    canvas_id = res.json()["id"]
+
+    controlador_id = _create_class_id(client, canvas_id, 1, "Controlador")
+    servicio_id = _create_class_id(client, canvas_id, 2, "Servicio", x=200)
+
+    dep_cmd = client.post(
+        f"/api/v2/canvases/{canvas_id}/commands",
+        json={
+            "expectedVersion": 3,
+            "type": "CREATE_RELATION",
+            "payload": {
+                "sourceClassId": controlador_id,
+                "targetClassId": servicio_id,
+                "type": "DEPENDENCY",
+            },
+        },
+    )
+    assert dep_cmd.status_code == 200
+    model = dep_cmd.json()["canvas"]["model"]
+    assert model["associations"] == []
+    assert len(model["dependencies"]) == 1
+    dep = model["dependencies"][0]
+    assert dep["clientClassId"] == controlador_id
+    assert dep["supplierClassId"] == servicio_id
+
+    # Confirmar persistencia real: antes del fix esto vivía como UmlAssociation
+    # genérica, y el frontend ni siquiera la mapeaba de vuelta a `relations`.
+    get_res = client.get(f"/api/v2/canvases/{canvas_id}")
+    reloaded = get_res.json()["model"]
+    assert reloaded["associations"] == []
+    assert len(reloaded["dependencies"]) == 1
+    assert reloaded["dependencies"][0]["id"] == dep["id"]
+
+
+def test_delete_dependency_relation_actually_removes_it(client: TestClient):
+    """
+    Antes del fix, DELETE_RELATION no buscaba en `dependencies` — borrar una Dependency
+    real era un no-op silencioso. Verifica que ahora desaparece de verdad.
+    """
+    res = client.post("/api/v2/canvases", json={"name": "Lienzo Borrar Dependencia"})
+    canvas_id = res.json()["id"]
+
+    vista_id = _create_class_id(client, canvas_id, 1, "Vista")
+    modelo_id = _create_class_id(client, canvas_id, 2, "Modelo", x=200)
+
+    dep_cmd = client.post(
+        f"/api/v2/canvases/{canvas_id}/commands",
+        json={
+            "expectedVersion": 3,
+            "type": "CREATE_RELATION",
+            "payload": {
+                "sourceClassId": vista_id,
+                "targetClassId": modelo_id,
+                "type": "DEPENDENCY",
+            },
+        },
+    )
+    dep_id = dep_cmd.json()["canvas"]["model"]["dependencies"][0]["id"]
+
+    del_cmd = client.post(
+        f"/api/v2/canvases/{canvas_id}/commands",
+        json={"expectedVersion": 4, "type": "DELETE_RELATION", "payload": {"relationId": dep_id}},
+    )
+    assert del_cmd.status_code == 200
+    assert del_cmd.json()["canvas"]["model"]["dependencies"] == []
+
+    get_res = client.get(f"/api/v2/canvases/{canvas_id}")
+    assert get_res.json()["model"]["dependencies"] == []
+

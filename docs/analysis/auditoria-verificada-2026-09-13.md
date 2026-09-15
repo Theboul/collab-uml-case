@@ -157,6 +157,7 @@ return FileResponse(path=str(zip_path), ...)
 | CU3/CU4 | Implementado, con una brecha de cobertura (`UPDATE_OPERATION`) | Ver punto C |
 | CU9 | Implementado y conectado como compuerta | Endpoint real probado en vivo con ciclo de herencia A→B→C→A → `VUML-07` detectado; 14 tests (9+5) pasando |
 | CU5 (backend) | Solo transporte WS, en memoria, sin Redis/locks | `room_registry.py` completo: `self.rooms: dict[...] = {}`; docstring propio admite *"Sin Redis, sin locks, sin presencia todavía"* — paso 1 de 4 de ADR-0003, brecha conocida, no oculta |
+| Autorización CU2/CU5 (403/4403) | **Corrección post-auditoría (2026-09-14):** ya estaba resuelto antes de esta sesión, esta auditoría no lo detectó. `CANVAS_ACCESS_FORBIDDEN` + `WS_FORBIDDEN_CLOSE_CODE=4403` presentes en código, 5 tests de acceso denegado PASSED (`test_get_canvas_forbidden_for_user_without_access`, `test_ws_rejects_connection_without_valid_role`, entre otros) | Ver `auditoria-CU1-CU5.md`, hallazgo #1 |
 | CU8 (interoperabilidad) | Sin código real | `backend_case/app/interoperability/` contiene solo `__init__.py` |
 | CU6/CU7 (`app/assistant/`) | **Módulo vacío** — solo docstring de intención | Archivo completo citado abajo |
 | CU10/CU11 (`app/generation/`) | **Módulo vacío** — solo docstring de intención | Archivo completo citado abajo |

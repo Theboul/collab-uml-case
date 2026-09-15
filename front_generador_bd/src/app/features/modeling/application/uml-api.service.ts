@@ -37,6 +37,12 @@ interface RawGeneralization {
   generalClassId: string;
 }
 
+interface RawDependency {
+  id: string;
+  clientClassId: string;
+  supplierClassId: string;
+}
+
 @Injectable({
   providedIn: 'root',
 })
@@ -85,11 +91,11 @@ export class UmlApiService {
   }
 
   /**
-   * El backend expone el modelo con `associations`/`generalizations` separados
-   * (contrato `UmlModelSchema`), pero el dominio canónico del frontend (`ModeloUML`)
-   * usa un único arreglo `relations`. Sin esta normalización en la frontera HTTP,
-   * `model.relations` siempre llega `undefined` y las relaciones se pierden al
-   * recargar el lienzo (aunque sí están persistidas en el backend).
+   * El backend expone el modelo con `associations`/`generalizations`/`dependencies`
+   * separados (contrato `UmlModelSchema`), pero el dominio canónico del frontend
+   * (`ModeloUML`) usa un único arreglo `relations`. Sin esta normalización en la
+   * frontera HTTP, `model.relations` siempre llega `undefined` y las relaciones se
+   * pierden al recargar el lienzo (aunque sí están persistidas en el backend).
    */
   /** Público: también lo usa RemoteCanvasSyncService para normalizar snapshots recibidos por WS. */
   normalizeCanvas(raw: any): LienzoDetailDto {
@@ -100,6 +106,7 @@ export class UmlApiService {
     const relations: UmlRelationDto[] = [
       ...(rawModel?.associations || []).map((a: RawAssociation) => this.associationToRelation(a)),
       ...(rawModel?.generalizations || []).map((g: RawGeneralization) => this.generalizationToRelation(g)),
+      ...(rawModel?.dependencies || []).map((d: RawDependency) => this.dependencyToRelation(d)),
     ];
     return { classes: rawModel?.classes || [], relations };
   }
@@ -132,6 +139,17 @@ export class UmlApiService {
       type: 'GENERALIZATION',
       sourceClassId: g.specificClassId,
       targetClassId: g.generalClassId,
+      sourceMultiplicity: '',
+      targetMultiplicity: '',
+    };
+  }
+
+  private dependencyToRelation(d: RawDependency): UmlRelationDto {
+    return {
+      id: d.id,
+      type: 'DEPENDENCY',
+      sourceClassId: d.clientClassId,
+      targetClassId: d.supplierClassId,
       sourceMultiplicity: '',
       targetMultiplicity: '',
     };

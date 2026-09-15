@@ -72,6 +72,8 @@ export interface CreateRelationPayload {
 export interface UpdateRelationPayload {
   relationId: string;
   type?: UmlRelationType;
+  sourceClassId?: string;
+  targetClassId?: string;
   sourceMultiplicity?: UmlMultiplicity | string;
   targetMultiplicity?: UmlMultiplicity | string;
   sourceRole?: string | null;

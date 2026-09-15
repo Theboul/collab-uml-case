@@ -424,6 +424,192 @@ class UmlDomainModel:
         self.generalizations.remove(generalizacion)
         return RelacionEliminada(relacion_id=relacion_id, tipo="UmlGeneralization")
 
+    def agregar_dependencia(
+        self, origen_id: str, destino_id: str
+    ) -> Tuple[UmlDependency, DomainEvent]:
+        """CU4: Gestionar relaciones del diagrama de clases (creación de dependencia)."""
+        if self.find_classifier_by_id(origen_id) is None:
+            raise ElementoNoEncontrado(f"El elemento origen '{origen_id}' no existe en el modelo.")
+        if self.find_classifier_by_id(destino_id) is None:
+            raise ElementoNoEncontrado(f"El elemento destino '{destino_id}' no existe en el modelo.")
+
+        dependencia = UmlDependency(
+            id=str(uuid.uuid4()),
+            client_class_id=origen_id,
+            supplier_class_id=destino_id,
+        )
+        self.dependencies.append(dependencia)
+        return dependencia, RelacionAgregada(relacion_id=dependencia.id, tipo="UmlDependency")
+
+    def eliminar_dependencia(self, relacion_id: str) -> DomainEvent:
+        """CU4: Gestionar relaciones del diagrama de clases (eliminación de dependencia)."""
+        dependencia = next((d for d in self.dependencies if d.id == relacion_id), None)
+        if dependencia is None:
+            raise ElementoNoEncontrado(f"La relación '{relacion_id}' no existe en el modelo.")
+        self.dependencies.remove(dependencia)
+        return RelacionEliminada(relacion_id=relacion_id, tipo="UmlDependency")
+
+    def _localizar_relacion(
+        self, relacion_id: str
+    ) -> Tuple[List[Any], Any, str, str, str]:
+        """
+        Ubica una relación por id en cualquiera de las 4 colecciones de relaciones y
+        devuelve (lista_contenedora, objeto, tipo, origen_id, destino_id) de forma
+        uniforme, sin importar la forma real del dataclass. Helper privado compartido
+        por reconectar_extremos y cambiar_tipo_relacion para no duplicar la búsqueda.
+        """
+        for asociacion in self.associations:
+            if asociacion.id == relacion_id:
+                origen = asociacion.member_ends[0].class_id
+                destino = asociacion.member_ends[1].class_id
+                return self.associations, asociacion, "UmlAssociation", origen, destino
+        for generalizacion in self.generalizations:
+            if generalizacion.id == relacion_id:
+                return (
+                    self.generalizations,
+                    generalizacion,
+                    "UmlGeneralization",
+                    generalizacion.specific_class_id,
+                    generalizacion.general_class_id,
+                )
+        for dependencia in self.dependencies:
+            if dependencia.id == relacion_id:
+                return (
+                    self.dependencies,
+                    dependencia,
+                    "UmlDependency",
+                    dependencia.client_class_id,
+                    dependencia.supplier_class_id,
+                )
+        for realizacion in self.realizations:
+            if realizacion.id == relacion_id:
+                return (
+                    self.realizations,
+                    realizacion,
+                    "UmlRealization",
+                    realizacion.client_class_id,
+                    realizacion.supplier_interface_id,
+                )
+        raise ElementoNoEncontrado(f"La relación '{relacion_id}' no existe en el modelo.")
+
+    def reconectar_extremos(
+        self,
+        relacion_id: str,
+        nuevo_origen_id: Optional[str] = None,
+        nuevo_destino_id: Optional[str] = None,
+    ) -> Tuple[Any, DomainEvent]:
+        """
+        CU4: Reconecta una relación existente (de cualquier tipo) a otra(s) clase(s)
+        arrastrando uno de sus extremos, preservando su id y tipo. Solo muta el/los
+        extremo(s) provisto(s) (no-None), igual criterio que editar_asociacion.
+        """
+        _, relacion, tipo, origen_actual, destino_actual = self._localizar_relacion(relacion_id)
+
+        if nuevo_origen_id is not None and self.find_classifier_by_id(nuevo_origen_id) is None:
+            raise ElementoNoEncontrado(
+                f"El elemento origen '{nuevo_origen_id}' no existe en el modelo."
+            )
+        if nuevo_destino_id is not None and self.find_classifier_by_id(nuevo_destino_id) is None:
+            raise ElementoNoEncontrado(
+                f"El elemento destino '{nuevo_destino_id}' no existe en el modelo."
+            )
+
+        origen_final = nuevo_origen_id if nuevo_origen_id is not None else origen_actual
+        destino_final = nuevo_destino_id if nuevo_destino_id is not None else destino_actual
+
+        if tipo == "UmlAssociation":
+            relacion.member_ends[0].class_id = origen_final
+            relacion.member_ends[1].class_id = destino_final
+        elif tipo == "UmlGeneralization":
+            relacion.specific_class_id = origen_final
+            relacion.general_class_id = destino_final
+        elif tipo == "UmlDependency":
+            relacion.client_class_id = origen_final
+            relacion.supplier_class_id = destino_final
+        else:  # UmlRealization
+            relacion.client_class_id = origen_final
+            relacion.supplier_interface_id = destino_final
+
+        return relacion, RelacionModificada(relacion_id=relacion_id, tipo=tipo)
+
+    def cambiar_tipo_relacion(
+        self,
+        relacion_id: str,
+        nuevo_tipo: str,
+        nombre: Optional[str] = None,
+        rol_origen: Optional[str] = None,
+        rol_destino: Optional[str] = None,
+        multiplicidad_origen: Optional[MultiplicityRange] = None,
+        multiplicidad_destino: Optional[MultiplicityRange] = None,
+    ) -> Tuple[Any, DomainEvent]:
+        """
+        CU4: Cambia el tipo semántico de una relación existente conservando su id
+        (identidad estable para el canvas) y sus extremos actuales. Al convertir
+        hacia Generalization/Dependency se pierden nombre/roles/multiplicidad (no
+        aplican a esa semántica, ver docstrings de esas dataclasses). Al convertir
+        de vuelta hacia Association/Aggregation/Composition esos campos se
+        restauran solo si se proveen explícitamente (permite que el undo del
+        frontend los reconstruya con los valores previos exactos); si no se proveen,
+        caen a multiplicidad 1..1 sin nombre/roles, igual default que agregar_asociacion.
+        """
+        nuevo_tipo = nuevo_tipo.upper()
+        tipo_destino_map = {
+            "ASSOCIATION": "UmlAssociation",
+            "AGGREGATION": "UmlAssociation",
+            "COMPOSITION": "UmlAssociation",
+            "GENERALIZATION": "UmlGeneralization",
+            "DEPENDENCY": "UmlDependency",
+        }
+        if nuevo_tipo not in tipo_destino_map:
+            raise UmlValidationError(f"Tipo de relación no soportado: {nuevo_tipo}")
+
+        lista_actual, relacion_actual, _tipo_actual, origen_id, destino_id = (
+            self._localizar_relacion(relacion_id)
+        )
+        tipo_destino = tipo_destino_map[nuevo_tipo]
+
+        if tipo_destino == "UmlGeneralization":
+            relacion_nueva: Any = UmlGeneralization(
+                id=relacion_id, specific_class_id=origen_id, general_class_id=destino_id
+            )
+            destino_lista: List[Any] = self.generalizations
+        elif tipo_destino == "UmlDependency":
+            relacion_nueva = UmlDependency(
+                id=relacion_id, client_class_id=origen_id, supplier_class_id=destino_id
+            )
+            destino_lista = self.dependencies
+        else:
+            agregacion_origen = AggregationKind.NONE
+            agregacion_destino = AggregationKind.NONE
+            if nuevo_tipo == "AGGREGATION":
+                agregacion_origen = AggregationKind.SHARED
+            elif nuevo_tipo == "COMPOSITION":
+                agregacion_origen = AggregationKind.COMPOSITE
+
+            relacion_nueva = UmlAssociation(
+                id=relacion_id,
+                name=nombre,
+                member_ends=(
+                    AssociationEnd(
+                        class_id=origen_id,
+                        role_name=rol_origen,
+                        multiplicity=multiplicidad_origen or MultiplicityRange(1, 1),
+                        aggregation_kind=agregacion_origen,
+                    ),
+                    AssociationEnd(
+                        class_id=destino_id,
+                        role_name=rol_destino,
+                        multiplicity=multiplicidad_destino or MultiplicityRange(1, 1),
+                        aggregation_kind=agregacion_destino,
+                    ),
+                ),
+            )
+            destino_lista = self.associations
+
+        lista_actual.remove(relacion_actual)
+        destino_lista.append(relacion_nueva)
+        return relacion_nueva, RelacionModificada(relacion_id=relacion_id, tipo=tipo_destino)
+
 
 # ==============================================================================
 # LIENZO DE TRABAJO (Canvas)

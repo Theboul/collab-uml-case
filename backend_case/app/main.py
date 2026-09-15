@@ -26,6 +26,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .api import api_router
 from .collaboration import collaboration_ws_router
+from .interoperability.api.routes import router as interoperability_router
 from .legacy.api_router import legacy_api_router
 from .legacy.database import init_legacy_db
 from .legacy.signaling_manager import signaling_manager
@@ -78,6 +79,7 @@ register_exception_handlers(app)
 # Registrar rutas experimentales V2
 app.include_router(api_router)
 app.include_router(modeling_router, prefix="/api/v2")
+app.include_router(interoperability_router, prefix="/api/v2")
 app.include_router(auth_router, prefix="/api/v2")
 
 # Canal de colaboración del stack activo (ADR-0003, paso 1: solo transporte)
