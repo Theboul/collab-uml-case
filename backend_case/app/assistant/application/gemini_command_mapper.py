@@ -1,12 +1,22 @@
 """
-Traduce la respuesta de Gemini (CU6, forma de creación) a la lista de comandos
-reales que ya usa el editor visual (CREATE_CLASS, ADD_ATTRIBUTE, ADD_OPERATION,
-CREATE_RELATION), para que pasen por el mismo CommandDispatcher que ya valida
+Traduce la respuesta de Gemini (CU6) a la lista de comandos reales que ya usa
+el editor visual, para que pasen por el mismo CommandDispatcher que ya valida
 contra core/uml_domain. Este módulo no es un validador nuevo: es un traductor
 de forma. Si la respuesta viene en una forma que no se puede traducir con
-certeza (edición, eliminación, JSON roto, referencias rotas), levanta
+certeza (JSON roto, referencias rotas, acción no soportada), levanta
 UmlValidationError con un mensaje que el usuario entienda como limitación
 conocida, no como error críptico.
+
+Dos formas de respuesta soportadas:
+- Creación desde cero: {"classes": [...], "relationships": [...]} -- sin
+  cambios respecto de la versión anterior, mapeado por
+  `map_gemini_response_to_commands`.
+- Operaciones sobre un modelo existente (rename/add/update/delete de clases,
+  miembros y relaciones, identificadas por NOMBRE): {"operations": [...]},
+  resuelto operación por operación por `resolve_operation` contra el modelo
+  actual (los nombres se resuelven de a uno, en orden, para que una operación
+  pueda referenciar el resultado de una anterior -- ej. renombrar una clase y
+  agregarle un atributo en la misma instrucción).
 """
 
 import re
@@ -14,37 +24,58 @@ import uuid
 from typing import Any
 
 from core.uml_domain.exceptions import UmlValidationError
-
-EDIT_OR_DELETE_MESSAGE = (
-    "Todavía no se soportan ediciones ni eliminaciones por texto/voz, "
-    "solo creación de elementos nuevos."
+from core.uml_domain.model import (
+    AggregationKind,
+    UmlAttribute,
+    UmlClass,
+    UmlDomainModel,
+    UmlOperation,
 )
+
 UNRECOGNIZED_FORMAT_MESSAGE = "La respuesta de la IA no tiene un formato reconocible."
 
 _PARAM_RE = re.compile(r"^\s*([^:]+?)\s*:\s*(.+?)\s*$")
 _RELATION_TYPES = {"association", "generalization", "aggregation", "composition", "dependency"}
+_RELATION_TYPES_UPPER = {t.upper() for t in _RELATION_TYPES}
 
 _GRID_COLS = 4
 _GRID_STEP_X = 240.0
 _GRID_STEP_Y = 180.0
 _GRID_ORIGIN = 120.0
 
+_SUPPORTED_ACTIONS = {
+    "rename_class",
+    "add_attribute",
+    "update_attribute",
+    "delete_attribute",
+    "add_operation",
+    "delete_operation",
+    "delete_class",
+    "add_relationship",
+    "delete_relationship",
+    "update_relationship_type",
+    "update_multiplicity",
+}
+
+
+# ---------------------------------------------------------------------------
+# Forma de creación (sin cambios de comportamiento respecto de la versión
+# anterior a esta iteración -- ver CU6 fase 1).
+# ---------------------------------------------------------------------------
+
 
 def map_gemini_response_to_commands(parsed: Any) -> list[tuple[str, dict[str, Any]]]:
     """
-    Recibe el JSON ya parseado de la respuesta de Gemini y devuelve la lista
-    ordenada de comandos semánticos a despachar. Procesa TODAS las clases
-    (CREATE_CLASS/ADD_ATTRIBUTE/ADD_OPERATION) antes de procesar cualquier
-    relación (CREATE_RELATION), sin importar el orden en que 'classes' y
-    'relationships' aparezcan en el JSON de entrada -- son dos bucles
-    secuenciales independientes, así que una relación siempre puede resolver
-    sus extremos contra el conjunto completo de clases ya recorridas.
+    Recibe el JSON ya parseado de la respuesta de Gemini (forma de creación) y
+    devuelve la lista ordenada de comandos semánticos a despachar. Procesa
+    TODAS las clases (CREATE_CLASS/ADD_ATTRIBUTE/ADD_OPERATION) antes de
+    procesar cualquier relación (CREATE_RELATION), sin importar el orden en
+    que 'classes' y 'relationships' aparezcan en el JSON de entrada -- son dos
+    bucles secuenciales independientes, así que una relación siempre puede
+    resolver sus extremos contra el conjunto completo de clases ya recorridas.
     """
     if not isinstance(parsed, dict):
         raise UmlValidationError(UNRECOGNIZED_FORMAT_MESSAGE)
-
-    if "original" in parsed or "editado" in parsed or _tiene_marca_eliminar(parsed):
-        raise UmlValidationError(EDIT_OR_DELETE_MESSAGE)
 
     classes = parsed.get("classes", [])
     relationships = parsed.get("relationships", [])
@@ -150,24 +181,6 @@ def map_gemini_response_to_commands(parsed: Any) -> list[tuple[str, dict[str, An
     return commands
 
 
-def _tiene_marca_eliminar(parsed: dict[str, Any]) -> bool:
-    for clase in parsed.get("classes") or []:
-        if not isinstance(clase, dict):
-            continue
-        if clase.get("eliminar"):
-            return True
-        for attr in clase.get("attributes") or []:
-            if isinstance(attr, dict) and attr.get("eliminar"):
-                return True
-        for metodo in clase.get("methods") or []:
-            if isinstance(metodo, dict) and metodo.get("eliminar"):
-                return True
-    for rel in parsed.get("relationships") or []:
-        if isinstance(rel, dict) and rel.get("eliminar"):
-            return True
-    return False
-
-
 def _parse_parameters(raw: Any, class_name: str, method_name: str) -> list[dict[str, str]]:
     if not raw:
         return []
@@ -189,3 +202,283 @@ def _parse_parameters(raw: Any, class_name: str, method_name: str) -> list[dict[
             )
         result.append({"name": match.group(1).strip(), "type": match.group(2).strip()})
     return result
+
+
+# ---------------------------------------------------------------------------
+# Forma de operaciones (CU6 fase 2): edición/eliminación sobre un modelo
+# existente, identificado por nombre. Se resuelve una operación a la vez
+# contra el modelo actual -- el llamador (CanvasService) es responsable de
+# despachar cada comando inmediatamente después de resolverlo, para que las
+# operaciones siguientes vean el efecto de las anteriores (ej. renombrar una
+# clase y luego referenciarla por su nombre nuevo).
+# ---------------------------------------------------------------------------
+
+
+def validate_operations_shape(parsed: dict[str, Any]) -> list[dict[str, Any]]:
+    """Extrae y valida la forma mínima de `parsed["operations"]`."""
+    operations = parsed.get("operations")
+    if not isinstance(operations, list) or not operations:
+        raise UmlValidationError(
+            "No se reconoció ninguna operación para aplicar a partir de la instrucción."
+        )
+    return operations
+
+
+def build_model_context(modelo: UmlDomainModel) -> dict[str, Any]:
+    """
+    Resumen del lienzo actual por NOMBRE (nunca por id) para darle contexto a
+    Gemini al pedirle operaciones sobre el modelo existente -- sin esto, Gemini
+    no tiene forma de saber qué clases/atributos/relaciones existen hoy.
+    """
+    classes = [
+        {
+            "name": c.name,
+            "attributes": [{"name": a.name, "type": a.type} for a in c.attributes],
+            "methods": [{"name": o.name, "returnType": o.return_type} for o in c.operations],
+        }
+        for c in modelo.classes
+    ]
+
+    relationships: list[dict[str, Any]] = []
+    for assoc in modelo.associations:
+        end1, end2 = assoc.member_ends
+        src = modelo.find_classifier_by_id(end1.class_id)
+        tgt = modelo.find_classifier_by_id(end2.class_id)
+        rel_type = "ASSOCIATION"
+        if (
+            end1.aggregation_kind == AggregationKind.SHARED
+            or end2.aggregation_kind == AggregationKind.SHARED
+        ):
+            rel_type = "AGGREGATION"
+        elif (
+            end1.aggregation_kind == AggregationKind.COMPOSITE
+            or end2.aggregation_kind == AggregationKind.COMPOSITE
+        ):
+            rel_type = "COMPOSITION"
+        relationships.append(
+            {
+                "type": rel_type,
+                "sourceClass": src.name if src else None,
+                "targetClass": tgt.name if tgt else None,
+            }
+        )
+    for gen in modelo.generalizations:
+        specific = modelo.find_classifier_by_id(gen.specific_class_id)
+        general = modelo.find_classifier_by_id(gen.general_class_id)
+        relationships.append(
+            {
+                "type": "GENERALIZATION",
+                "sourceClass": specific.name if specific else None,
+                "targetClass": general.name if general else None,
+            }
+        )
+    for dep in modelo.dependencies:
+        client = modelo.find_classifier_by_id(dep.client_class_id)
+        supplier = modelo.find_classifier_by_id(dep.supplier_class_id)
+        relationships.append(
+            {
+                "type": "DEPENDENCY",
+                "sourceClass": client.name if client else None,
+                "targetClass": supplier.name if supplier else None,
+            }
+        )
+
+    return {"classes": classes, "relationships": relationships}
+
+
+def resolve_operation(raw_op: Any, modelo: UmlDomainModel) -> tuple[str, dict[str, Any]]:
+    """
+    Resuelve UNA operación contra el modelo actual y devuelve el comando real
+    (mismo tipo/payload que ya usa el editor visual) a despachar. Levanta
+    UmlValidationError si el target/acción no se puede resolver con certeza
+    -- nunca adivina entre varias coincidencias posibles.
+    """
+    if not isinstance(raw_op, dict):
+        raise UmlValidationError(UNRECOGNIZED_FORMAT_MESSAGE)
+
+    action = raw_op.get("action")
+    # isinstance ANTES del "in": _SUPPORTED_ACTIONS es un set, y probar
+    # pertenencia con un valor no hasheable (ej. "action": [...] o {...},
+    # que Gemini podría devolver ante una instrucción ambigua) levanta
+    # TypeError, no UmlValidationError -- sin esta guarda esa TypeError se
+    # propagaría sin control en vez de sumarse como operación fallida.
+    if not isinstance(action, str) or action not in _SUPPORTED_ACTIONS:
+        raise UmlValidationError(f"Acción no soportada: '{action}'.")
+
+    if action == "rename_class":
+        clase = _resolve_class(modelo, raw_op.get("target"))
+        new_name = raw_op.get("newName")
+        if not new_name or not str(new_name).strip():
+            raise UmlValidationError("rename_class requiere 'newName'.")
+        return "UPDATE_CLASS_NAME", {"classId": clase.id, "name": str(new_name).strip()}
+
+    if action == "add_attribute":
+        clase = _resolve_class(modelo, raw_op.get("target"))
+        name, type_ = raw_op.get("name"), raw_op.get("type")
+        if not name or not type_:
+            raise UmlValidationError("add_attribute requiere 'name' y 'type'.")
+        return "ADD_ATTRIBUTE", {
+            "classId": clase.id,
+            "name": str(name).strip(),
+            "type": str(type_).strip(),
+        }
+
+    if action == "update_attribute":
+        clase = _resolve_class(modelo, raw_op.get("target"))
+        attr = _resolve_attribute(clase, raw_op.get("attribute"))
+        payload: dict[str, Any] = {"classId": clase.id, "attributeId": attr.id}
+        if raw_op.get("newName"):
+            payload["name"] = str(raw_op["newName"]).strip()
+        if raw_op.get("newType"):
+            payload["type"] = str(raw_op["newType"]).strip()
+        if "name" not in payload and "type" not in payload:
+            raise UmlValidationError("update_attribute requiere 'newName' y/o 'newType'.")
+        return "UPDATE_ATTRIBUTE", payload
+
+    if action == "delete_attribute":
+        clase = _resolve_class(modelo, raw_op.get("target"))
+        attr = _resolve_attribute(clase, raw_op.get("attribute"))
+        return "DELETE_ATTRIBUTE", {"classId": clase.id, "attributeId": attr.id}
+
+    if action == "add_operation":
+        clase = _resolve_class(modelo, raw_op.get("target"))
+        name = raw_op.get("name")
+        if not name:
+            raise UmlValidationError("add_operation requiere 'name'.")
+        return "ADD_OPERATION", {
+            "classId": clase.id,
+            "name": str(name).strip(),
+            "returnType": str(raw_op.get("returnType") or "void").strip(),
+        }
+
+    if action == "delete_operation":
+        clase = _resolve_class(modelo, raw_op.get("target"))
+        op_member = _resolve_operation_member(clase, raw_op.get("operation"))
+        return "DELETE_OPERATION", {"classId": clase.id, "operationId": op_member.id}
+
+    if action == "delete_class":
+        clase = _resolve_class(modelo, raw_op.get("target"))
+        return "DELETE_ELEMENTS", {"classIds": [clase.id]}
+
+    if action == "add_relationship":
+        source = _resolve_class(modelo, raw_op.get("sourceClass"))
+        target = _resolve_class(modelo, raw_op.get("targetClass"))
+        rel_type = _resolve_relation_type(raw_op.get("type"))
+        return "CREATE_RELATION", {
+            "type": rel_type,
+            "sourceClassId": source.id,
+            "targetClassId": target.id,
+        }
+
+    if action == "delete_relationship":
+        source = _resolve_class(modelo, raw_op.get("sourceClass"))
+        target = _resolve_class(modelo, raw_op.get("targetClass"))
+        relation_id = _resolve_relation_id(modelo, source, target)
+        return "DELETE_RELATION", {"relationId": relation_id}
+
+    if action == "update_relationship_type":
+        source = _resolve_class(modelo, raw_op.get("sourceClass"))
+        target = _resolve_class(modelo, raw_op.get("targetClass"))
+        relation_id = _resolve_relation_id(modelo, source, target)
+        rel_type = _resolve_relation_type(raw_op.get("newType"))
+        return "UPDATE_RELATION", {"relationId": relation_id, "type": rel_type}
+
+    # update_multiplicity
+    source = _resolve_class(modelo, raw_op.get("sourceClass"))
+    target = _resolve_class(modelo, raw_op.get("targetClass"))
+    relation_id = _resolve_relation_id(modelo, source, target)
+    new_mult = raw_op.get("newMultiplicity")
+    if not new_mult or not isinstance(new_mult, (str, int)):
+        raise UmlValidationError("update_multiplicity requiere 'newMultiplicity'.")
+    # Convención: la multiplicidad nueva describe el extremo destino (cuántos
+    # 'targetClass' participan por cada 'sourceClass'), que es como se lee en
+    # UML una instrucción del tipo "un Cliente tiene 0..* Pedidos".
+    return "UPDATE_MULTIPLICITY", {
+        "relationId": relation_id,
+        "targetMultiplicity": str(new_mult).strip(),
+    }
+
+
+def _resolve_relation_type(raw_type: Any) -> str:
+    rel_type = str(raw_type or "").strip().upper()
+    if rel_type not in _RELATION_TYPES_UPPER:
+        raise UmlValidationError(f"Tipo de relación no soportado: '{raw_type}'.")
+    return rel_type
+
+
+def _resolve_class(modelo: UmlDomainModel, name: Any) -> UmlClass:
+    if not name or not isinstance(name, str):
+        raise UmlValidationError("La operación no especifica una clase válida.")
+    clase = modelo.find_classifier_by_name(name)
+    if clase is None or not isinstance(clase, UmlClass):
+        raise UmlValidationError(f"No existe una clase llamada '{name}'.")
+    return clase
+
+
+def _resolve_attribute(clase: UmlClass, name: Any) -> UmlAttribute:
+    if not name or not isinstance(name, str):
+        raise UmlValidationError(
+            f"La operación no especifica un atributo válido para '{clase.name}'."
+        )
+    name_lower = name.strip().lower()
+    matches = [a for a in clase.attributes if a.name.strip().lower() == name_lower]
+    if not matches:
+        raise UmlValidationError(f"La clase '{clase.name}' no tiene un atributo llamado '{name}'.")
+    if len(matches) > 1:
+        raise UmlValidationError(
+            f"La clase '{clase.name}' tiene más de un atributo llamado '{name}'; "
+            "no se puede determinar cuál."
+        )
+    return matches[0]
+
+
+def _resolve_operation_member(clase: UmlClass, name: Any) -> UmlOperation:
+    if not name or not isinstance(name, str):
+        raise UmlValidationError(
+            f"La operación no especifica un método válido para '{clase.name}'."
+        )
+    name_lower = name.strip().lower()
+    matches = [o for o in clase.operations if o.name.strip().lower() == name_lower]
+    if not matches:
+        raise UmlValidationError(f"La clase '{clase.name}' no tiene un método llamado '{name}'.")
+    if len(matches) > 1:
+        raise UmlValidationError(
+            f"La clase '{clase.name}' tiene {len(matches)} métodos llamados '{name}' "
+            "(sobrecargados); no se puede determinar cuál."
+        )
+    return matches[0]
+
+
+def _find_relation_ids_between(
+    modelo: UmlDomainModel, class_id_a: str, class_id_b: str
+) -> list[str]:
+    pair = {class_id_a, class_id_b}
+    matches: list[str] = []
+    for assoc in modelo.associations:
+        end1, end2 = assoc.member_ends
+        if {end1.class_id, end2.class_id} == pair:
+            matches.append(assoc.id)
+    for gen in modelo.generalizations:
+        if {gen.specific_class_id, gen.general_class_id} == pair:
+            matches.append(gen.id)
+    for dep in modelo.dependencies:
+        if {dep.client_class_id, dep.supplier_class_id} == pair:
+            matches.append(dep.id)
+    for real in modelo.realizations:
+        if {real.client_class_id, real.supplier_interface_id} == pair:
+            matches.append(real.id)
+    return matches
+
+
+def _resolve_relation_id(modelo: UmlDomainModel, source: UmlClass, target: UmlClass) -> str:
+    matches = _find_relation_ids_between(modelo, source.id, target.id)
+    if not matches:
+        raise UmlValidationError(
+            f"No existe ninguna relación entre '{source.name}' y '{target.name}'."
+        )
+    if len(matches) > 1:
+        raise UmlValidationError(
+            f"Hay {len(matches)} relaciones entre '{source.name}' y '{target.name}'; "
+            "no se puede determinar cuál modificar."
+        )
+    return matches[0]

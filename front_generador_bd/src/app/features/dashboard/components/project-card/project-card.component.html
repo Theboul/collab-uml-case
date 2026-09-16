@@ -46,7 +46,7 @@
   <!-- Card Meta Details -->
   <div class="p-4 flex flex-col justify-between flex-1 gap-3">
     <div class="flex items-start justify-between gap-2">
-      <div class="truncate">
+      <div class="truncate min-w-0">
         <h4 class="text-sm font-semibold text-white tracking-tight group-hover:text-primary-300 transition-colors truncate">
           {{ project.name }}
         </h4>
@@ -118,8 +118,8 @@
 >
   <div>
     <div class="flex items-start justify-between gap-2 mb-2">
-      <div class="flex items-center gap-2.5">
-        <div class="h-9 w-9 rounded-xl bg-surface-container flex items-center justify-center text-primary-400 border border-neutral-700/60 group-hover:scale-105 transition-transform">
+      <div class="flex items-center gap-2.5 min-w-0">
+        <div class="h-9 w-9 rounded-xl bg-surface-container flex items-center justify-center text-primary-400 border border-neutral-700/60 group-hover:scale-105 transition-transform shrink-0">
           <sc-icon name="schema" [size]="18"></sc-icon>
         </div>
         <div class="truncate">

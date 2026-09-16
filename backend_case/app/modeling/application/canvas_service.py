@@ -1,4 +1,7 @@
+from collections.abc import Callable
 from typing import Any
+
+from fastapi import HTTPException, status
 
 from backend_case.app.modeling.application.commands.dispatcher import (
     CommandDispatcher,
@@ -7,16 +10,16 @@ from backend_case.app.modeling.infrastructure.canvas_repository import (
     CanvasRepository,
     CanvasResult,
 )
-from fastapi import HTTPException, status
-
 from core.uml_domain.adapters.multiplicity_parser import LegacyMultiplicityParser
 from core.uml_domain.events import DomainEvent
+from core.uml_domain.exceptions import UmlDomainError, UmlValidationError
 from core.uml_domain.model import (
     AggregationKind,
     Lienzo,
     MultiplicityRange,
     UmlAssociation,
     UmlClass,
+    UmlDomainModel,
 )
 from core.uml_domain.validation import UMLValidator, ValidationResult
 
@@ -100,7 +103,9 @@ class CanvasService:
         resultado = UMLValidator().validate(res.lienzo.modelo)
         return resultado, res.role
 
-    async def obtener_por_room_name(self, room_name: str, user_id: str | None = None) -> CanvasResult:
+    async def obtener_por_room_name(
+        self, room_name: str, user_id: str | None = None
+    ) -> CanvasResult:
         """
         Recuperar el lienzo a través del código o mecanismo de acceso de sala y resolver rol.
         """
@@ -159,7 +164,6 @@ class CanvasService:
             "joined": True,
         }
 
-
     async def agregar_clase(
         self,
         canvas_id: str,
@@ -209,8 +213,16 @@ class CanvasService:
             else MultiplicityRange(1, 1)
         )
 
-        agg_orig = AggregationKind(agregacion_origen.lower()) if agregacion_origen else AggregationKind.NONE
-        agg_dest = AggregationKind(agregacion_destino.lower()) if agregacion_destino else AggregationKind.NONE
+        agg_orig = (
+            AggregationKind(agregacion_origen.lower())
+            if agregacion_origen
+            else AggregationKind.NONE
+        )
+        agg_dest = (
+            AggregationKind(agregacion_destino.lower())
+            if agregacion_destino
+            else AggregationKind.NONE
+        )
 
         asociacion, evento = lienzo.modelo.agregar_asociacion(
             origen_id=origen_id,
@@ -293,9 +305,69 @@ class CanvasService:
             lienzo=res.lienzo,
         )
 
+    async def ejecutar_resolviendo_secuencial(
+        self,
+        canvas_id: str,
+        expected_version: int,
+        raw_items: list[Any],
+        resolver: Callable[[Any, UmlDomainModel], tuple[str, dict[str, Any]]],
+        user_id: str | None = None,
+    ) -> CanvasResult:
+        """
+        CU6: resuelve y despacha cada item de `raw_items` uno a la vez, contra
+        el mismo lienzo en memoria, usando `resolver` para traducir cada item
+        crudo a (cmd_type, payload) en base al estado ACTUAL del modelo -- así
+        una resolución puede ver el efecto de los items ya despachados (ej.
+        renombrar una clase y referenciarla por su nombre nuevo en el
+        siguiente item de la misma instrucción). Genérico a propósito: no
+        conoce Gemini ni ningún formato de IA, solo recibe un callback de
+        resolución -- lo provee la capa de aplicación de `assistant`.
+
+        Todo o nada: si CUALQUIER item no resuelve o no despacha, se junta el
+        mensaje de cada falla (no solo la primera) y se levanta antes de
+        `guardar_atomico`, así que nada de lo ya despachado en memoria llega
+        a persistirse.
+        """
+        res = await self.repository.obtener(canvas_id)
+        await self._verificar_acceso_edicion(canvas_id, res.owner_id, user_id)
+        if not isinstance(res.lienzo.visual_layout, dict):
+            res.lienzo.visual_layout = {
+                "viewport": {"zoom": 1.0, "panX": 0.0, "panY": 0.0},
+                "nodes": {},
+                "links": {},
+            }
+
+        failures: list[str] = []
+        for index, raw_item in enumerate(raw_items):
+            try:
+                cmd_type, payload = resolver(raw_item, res.lienzo.modelo)
+                self.command_dispatcher.dispatch(res.lienzo, cmd_type, payload)
+            except UmlDomainError as err:
+                failures.append(f"Operación #{index + 1}: {err}")
+            except (KeyError, TypeError, ValueError, AttributeError, IndexError) as err:
+                # `resolver` procesa un dict crudo de la IA, no confiable: un campo
+                # con un tipo inesperado (ej. una lista donde se espera un string)
+                # puede levantar un error de Python nativo en vez de UmlDomainError.
+                # Se trata igual que cualquier otra operación fallida -- nunca se
+                # propaga sin control como 500.
+                failures.append(
+                    f"Operación #{index + 1}: no se pudo interpretar "
+                    f"({type(err).__name__}: {err})"
+                )
+
+        if failures:
+            raise UmlValidationError(
+                "No se pudieron aplicar las siguientes operaciones:\n- " + "\n- ".join(failures)
+            )
+
+        return await self.repository.guardar_atomico(
+            canvas_id=canvas_id,
+            expected_version=expected_version,
+            lienzo=res.lienzo,
+        )
+
     async def listar_lienzos(self, user_id: str | None = None) -> list[dict[str, Any]]:
         """
         Lista los lienzos visibles para el usuario (propios o donde colabora).
         """
         return await self.repository.listar(user_id=user_id)
-

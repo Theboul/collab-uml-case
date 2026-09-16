@@ -90,25 +90,25 @@ describe('DashboardComponent', () => {
     expect(dashboardServiceSpy.getMetrics).toHaveBeenCalled();
     expect(dashboardServiceSpy.getRecentProjects).toHaveBeenCalledWith(3);
     expect(dashboardServiceSpy.getAllProjects).toHaveBeenCalled();
-    expect(component.metrics.totalEntities).toBe(22);
-    expect(component.allProjects.length).toBe(2);
-    expect(component.filteredProjects.length).toBe(2);
+    expect(component.metrics().totalEntities).toBe(22);
+    expect(component.allProjects().length).toBe(2);
+    expect(component.filteredProjects().length).toBe(2);
   });
 
   it('should filter projects by text search query', () => {
-    component.allProjects = mockProjects;
+    component.allProjects.set(mockProjects);
     component.onSearchChange('telemetry');
 
-    expect(component.filteredProjects.length).toBe(1);
-    expect(component.filteredProjects[0].name).toBe('Mobile Telemetry');
+    expect(component.filteredProjects().length).toBe(1);
+    expect(component.filteredProjects()[0].name).toBe('Mobile Telemetry');
   });
 
   it('should filter projects by database engine', () => {
-    component.allProjects = mockProjects;
+    component.allProjects.set(mockProjects);
     component.setEngineFilter('postgresql');
 
-    expect(component.filteredProjects.length).toBe(1);
-    expect(component.filteredProjects[0].engine).toBe('postgresql');
+    expect(component.filteredProjects().length).toBe(1);
+    expect(component.filteredProjects()[0].engine).toBe('postgresql');
   });
 
   it('should navigate to diagram when opening a project', () => {

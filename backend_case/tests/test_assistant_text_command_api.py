@@ -2,8 +2,9 @@
 Pruebas de integración de CU6: POST /api/v2/canvases/{id}/assistant/text-command.
 Verifica que una respuesta de Gemini con forma de creación termina como
 clases/relaciones reales y validadas en el lienzo, y que una respuesta con
-forma de edición se rechaza con 422 y el mensaje de limitación claro --
-sin mutar el modelo persistido.
+forma de operaciones (edición/eliminación por nombre sobre un modelo
+existente) se aplica de forma atómica -- o se rechaza entera, sin mutar nada,
+si alguna operación no resuelve.
 """
 
 import json
@@ -12,9 +13,6 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
-from backend_case.app.assistant.application.gemini_command_mapper import (
-    EDIT_OR_DELETE_MESSAGE,
-)
 from backend_case.app.main import app
 
 CREATION_RESPONSE = json.dumps(
@@ -47,8 +45,6 @@ CREATION_RESPONSE = json.dumps(
     }
 )
 
-EDIT_RESPONSE = json.dumps({"original": {"classes": []}, "editado": {"editado": True}})
-
 
 @pytest.fixture
 def client():
@@ -61,6 +57,40 @@ def _create_canvas(client: TestClient) -> tuple[str, int]:
     assert res.status_code == 201
     data = res.json()
     return data["id"], data["version"]
+
+
+def _seed_class_with_attribute(
+    client: TestClient,
+    canvas_id: str,
+    version: int,
+    class_name: str,
+    attr_name: str,
+    attr_type: str,
+) -> int:
+    """Crea una clase con un atributo vía el pipeline real de comandos (CU3), para
+    tener un modelo existente real contra el cual resolver operaciones de IA."""
+    res = client.post(
+        f"/api/v2/canvases/{canvas_id}/commands",
+        json={
+            "expectedVersion": version,
+            "type": "CREATE_CLASS",
+            "payload": {"name": class_name, "x": 100, "y": 100},
+        },
+    )
+    assert res.status_code == 200
+    version = res.json()["version"]
+    class_id = res.json()["canvas"]["model"]["classes"][0]["id"]
+
+    res = client.post(
+        f"/api/v2/canvases/{canvas_id}/commands",
+        json={
+            "expectedVersion": version,
+            "type": "ADD_ATTRIBUTE",
+            "payload": {"classId": class_id, "name": attr_name, "type": attr_type},
+        },
+    )
+    assert res.status_code == 200
+    return res.json()["version"]
 
 
 def test_text_command_creation_maps_to_validated_model(client: TestClient):
@@ -105,24 +135,243 @@ def test_text_command_creation_maps_to_validated_model(client: TestClient):
     assert persisted["version"] == version + 1
 
 
-def test_text_command_edit_shape_rejected_with_clear_message_and_no_mutation(client: TestClient):
+def test_text_command_operations_rename_and_add_attribute_chained(client: TestClient):
+    """
+    Escenario real de la ficha: "cambia el nombre de Usuario a Cliente y
+    agregale un atributo telefono de tipo String" -- la segunda operación
+    referencia el nombre NUEVO ('Cliente'), que solo existe después de que la
+    primera ya se despachó. Confirma resolución secuencial real, no solo
+    contra una foto fija del modelo previa al lote.
+    """
     canvas_id, version = _create_canvas(client)
+    version = _seed_class_with_attribute(client, canvas_id, version, "Usuario", "email", "String")
+
+    operations_response = json.dumps(
+        {
+            "operations": [
+                {"action": "rename_class", "target": "Usuario", "newName": "Cliente"},
+                {
+                    "action": "add_attribute",
+                    "target": "Cliente",
+                    "name": "telefono",
+                    "type": "String",
+                },
+            ]
+        }
+    )
 
     with patch(
         "backend_case.app.assistant.api.routes.call_gemini",
-        return_value=f"```json\n{EDIT_RESPONSE}\n```",
+        return_value=f"```json\n{operations_response}\n```",
+    ) as mock_call:
+        res = client.post(
+            f"/api/v2/canvases/{canvas_id}/assistant/text-command",
+            json={
+                "prompt": (
+                    "cambia el nombre de la clase Usuario a Cliente y agregale un "
+                    "atributo telefono de tipo String"
+                ),
+                "expectedVersion": version,
+            },
+        )
+
+    assert res.status_code == 200
+    data = res.json()
+    # Un solo guardado atómico para las dos operaciones del lote, no dos.
+    assert data["version"] == version + 1
+
+    classes = data["canvas"]["model"]["classes"]
+    assert len(classes) == 1
+    cliente = classes[0]
+    assert cliente["name"] == "Cliente"
+    attr_names = {a["name"] for a in cliente["attributes"]}
+    assert attr_names == {"email", "telefono"}
+
+    # El contexto del modelo actual (antes del rename) se le pasó a Gemini.
+    _, kwargs = mock_call.call_args
+    assert kwargs["model_context"]["classes"][0]["name"] == "Usuario"
+
+
+def test_text_command_operations_batch_is_all_or_nothing(client: TestClient):
+    """
+    Una operación inválida en el medio de un lote (referencia un atributo que
+    no existe) no debe dejar aplicada ninguna de las otras, ni siquiera las
+    que resolvían correctamente antes de ella.
+    """
+    canvas_id, version = _create_canvas(client)
+    version = _seed_class_with_attribute(client, canvas_id, version, "Usuario", "email", "String")
+
+    operations_response = json.dumps(
+        {
+            "operations": [
+                {"action": "rename_class", "target": "Usuario", "newName": "Cliente"},
+                {"action": "delete_attribute", "target": "Cliente", "attribute": "no_existe"},
+            ]
+        }
+    )
+
+    with patch(
+        "backend_case.app.assistant.api.routes.call_gemini",
+        return_value=f"```json\n{operations_response}\n```",
     ):
         res = client.post(
             f"/api/v2/canvases/{canvas_id}/assistant/text-command",
-            json={"prompt": "Cambiale el nombre a la clase Usuario", "expectedVersion": version},
+            json={
+                "prompt": "cambia el nombre de Usuario a Cliente y elimina el atributo no_existe",
+                "expectedVersion": version,
+            },
         )
 
     assert res.status_code == 422
     body = res.json()
     assert body["code"] == "UML_INVALID_MODEL"
-    assert body["message"] == EDIT_OR_DELETE_MESSAGE
+    assert "Operación #2" in body["message"]
 
-    # El modelo persistido no cambió: ni clases nuevas ni avance de versión.
+    # Ni el rename (operación #1, válida) ni nada más quedó aplicado.
     persisted = client.get(f"/api/v2/canvases/{canvas_id}").json()
-    assert persisted["model"]["classes"] == []
+    assert persisted["model"]["classes"][0]["name"] == "Usuario"
+    assert persisted["version"] == version
+
+
+def test_text_command_operations_lists_all_failures_not_just_first(client: TestClient):
+    canvas_id, version = _create_canvas(client)
+    version = _seed_class_with_attribute(client, canvas_id, version, "Usuario", "email", "String")
+
+    operations_response = json.dumps(
+        {
+            "operations": [
+                {"action": "delete_attribute", "target": "Usuario", "attribute": "no_existe_1"},
+                {"action": "delete_class", "target": "Inexistente"},
+            ]
+        }
+    )
+
+    with patch(
+        "backend_case.app.assistant.api.routes.call_gemini",
+        return_value=f"```json\n{operations_response}\n```",
+    ):
+        res = client.post(
+            f"/api/v2/canvases/{canvas_id}/assistant/text-command",
+            json={
+                "prompt": (
+                    "elimina el atributo no_existe_1 de Usuario y elimina la clase Inexistente"
+                ),
+                "expectedVersion": version,
+            },
+        )
+
+    assert res.status_code == 422
+    message = res.json()["message"]
+    assert "Operación #1" in message
+    assert "Operación #2" in message
+
+    persisted = client.get(f"/api/v2/canvases/{canvas_id}").json()
+    assert persisted["version"] == version
+
+
+def _seed_bare_class(client: TestClient, canvas_id: str, version: int, class_name: str) -> int:
+    res = client.post(
+        f"/api/v2/canvases/{canvas_id}/commands",
+        json={
+            "expectedVersion": version,
+            "type": "CREATE_CLASS",
+            "payload": {"name": class_name, "x": 100, "y": 100},
+        },
+    )
+    assert res.status_code == 200
+    return res.json()["version"]
+
+
+def test_text_command_rename_class_to_its_own_name_is_a_noop_not_a_false_collision(
+    client: TestClient,
+):
+    """
+    find_classifier_by_name encuentra la propia clase al buscar su nombre
+    actual; el chequeo de colisión de UPDATE_CLASS_NAME (class_handlers.py)
+    ya excluye explícitamente ese caso (otro.id != cmd.classId), así que
+    "renombrar" una clase al mismo nombre que ya tiene no debe rechazarse
+    como si colisionara consigo misma.
+    """
+    canvas_id, version = _create_canvas(client)
+    version = _seed_bare_class(client, canvas_id, version, "Usuario")
+
+    operations_response = json.dumps(
+        {"operations": [{"action": "rename_class", "target": "Usuario", "newName": "Usuario"}]}
+    )
+
+    with patch(
+        "backend_case.app.assistant.api.routes.call_gemini",
+        return_value=f"```json\n{operations_response}\n```",
+    ):
+        res = client.post(
+            f"/api/v2/canvases/{canvas_id}/assistant/text-command",
+            json={"prompt": "no cambies nada de Usuario", "expectedVersion": version},
+        )
+
+    assert res.status_code == 200
+    assert res.json()["canvas"]["model"]["classes"][0]["name"] == "Usuario"
+
+
+def test_text_command_rename_class_colliding_with_another_existing_class_rejected(
+    client: TestClient,
+):
+    """
+    A diferencia del caso anterior, renombrar 'Usuario' a 'Rol' cuando 'Rol'
+    YA EXISTE como una clase distinta sí debe rechazarse -- acá el chequeo de
+    colisión de UPDATE_CLASS_NAME encuentra un classifier con id distinto al
+    que se está renombrando, y ese caso real de colisión no se excluye.
+    """
+    canvas_id, version = _create_canvas(client)
+    version = _seed_bare_class(client, canvas_id, version, "Usuario")
+    version = _seed_bare_class(client, canvas_id, version, "Rol")
+
+    operations_response = json.dumps(
+        {"operations": [{"action": "rename_class", "target": "Usuario", "newName": "Rol"}]}
+    )
+
+    with patch(
+        "backend_case.app.assistant.api.routes.call_gemini",
+        return_value=f"```json\n{operations_response}\n```",
+    ):
+        res = client.post(
+            f"/api/v2/canvases/{canvas_id}/assistant/text-command",
+            json={"prompt": "cambiale el nombre a Usuario por Rol", "expectedVersion": version},
+        )
+
+    assert res.status_code == 422
+    assert res.json()["code"] == "UML_INVALID_MODEL"
+
+    persisted = client.get(f"/api/v2/canvases/{canvas_id}").json()
+    persisted_names = {c["name"] for c in persisted["model"]["classes"]}
+    assert persisted_names == {"Usuario", "Rol"}
+    assert persisted["version"] == version
+
+
+def test_text_command_malformed_action_field_returns_422_not_500(client: TestClient):
+    """
+    Defensa en profundidad de extremo a extremo: aunque gemini_command_mapper
+    ya valide el tipo de 'action' antes de esta iteración, este test prueba
+    que la ruta completa (CanvasService.ejecutar_resolviendo_secuencial) nunca
+    deja escapar un error no-UmlDomainError como 500 -- lo trata igual que
+    cualquier otra operación fallida.
+    """
+    canvas_id, version = _create_canvas(client)
+    version = _seed_bare_class(client, canvas_id, version, "Usuario")
+
+    operations_response = json.dumps({"operations": [{"action": ["rename_class"]}]})
+
+    with patch(
+        "backend_case.app.assistant.api.routes.call_gemini",
+        return_value=f"```json\n{operations_response}\n```",
+    ):
+        res = client.post(
+            f"/api/v2/canvases/{canvas_id}/assistant/text-command",
+            json={"prompt": "cambiale el nombre a Usuario", "expectedVersion": version},
+        )
+
+    assert res.status_code == 422
+    assert res.json()["code"] == "UML_INVALID_MODEL"
+    assert "Operación #1" in res.json()["message"]
+
+    persisted = client.get(f"/api/v2/canvases/{canvas_id}").json()
     assert persisted["version"] == version

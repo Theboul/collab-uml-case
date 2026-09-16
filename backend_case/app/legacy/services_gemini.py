@@ -12,162 +12,110 @@ def get_gemini_api_key() -> str:
     return os.getenv("GEMINI_API_KEY", "")
 
 
-def call_gemini(prompt: str):
+def call_gemini(prompt: str, model_context: dict | None = None):
     GEMINI_API_KEY = get_gemini_api_key()
 
     headers = {"Content-Type": "application/json"}
     params = {"key": GEMINI_API_KEY}
 
-    # Detectar si es una solicitud de eliminación
-    delete_keywords = ["eliminar", "elimina", "borra", "borrar",
-                       "quitar", "quita", "remover", "remueve",
-                       "sacar", "saca", "delete", "remove"]
-    is_delete_request = any(keyword in prompt.lower()
-                            for keyword in delete_keywords)
+    # Detectar si la instrucción pide algo distinto de crear un modelo nuevo desde cero
+    # (renombrar, agregar/editar/eliminar miembros o relaciones sobre clases YA existentes).
+    operation_keywords = [
+        "cambies",
+        "cambiar",
+        "cambia",
+        "renombra",
+        "renombrar",
+        "edites",
+        "edita",
+        "editar",
+        "modifiques",
+        "modifica",
+        "modificar",
+        "actualices",
+        "actualizar",
+        "actualiza",
+        "agrega",
+        "agregar",
+        "agregale",
+        "agrégale",
+        "añadir",
+        "añade",
+        "sumale",
+        "súmale",
+        "suma",
+        "eliminar",
+        "elimina",
+        "borra",
+        "borrar",
+        "quitar",
+        "quita",
+        "remover",
+        "remueve",
+        "sacar",
+        "saca",
+        "delete",
+        "remove",
+    ]
+    is_operations_request = any(keyword in prompt.lower() for keyword in operation_keywords)
 
-    # Detectar si es una solicitud de edición
-    edit_keywords = ["cambies", "cambiar", "cambia",
-                     "edites", "edita", "editar",
-                     "modifiques", "modifica", "modificar",
-                     "actualices", "actualizar", "actualiza",
-                     "añadir", "añade"
-                     ]
-    is_edit_request = any(keyword in prompt.lower()
-                          for keyword in edit_keywords)
-
-    if is_delete_request:
-        # Prompt para eliminación - devolver un solo JSON con marcadores de eliminación
+    if is_operations_request:
+        # Prompt unificado (CU6): cualquier instrucción sobre un modelo YA existente
+        # (renombrar, agregar/editar/eliminar miembros, agregar/editar/eliminar relaciones)
+        # devuelve una lista de operaciones atómicas identificadas por NOMBRE, nunca por id
+        # -- Gemini no conoce los ids reales del lienzo persistido.
+        context_json = json.dumps(
+            model_context or {"classes": [], "relationships": []}, indent=2, ensure_ascii=False
+        )
         prompt_text = f"""
-Analiza el siguiente prompt de eliminación y devuelve UN SOLO JSON con los elementos marcados para eliminar.
+Analiza la siguiente instrucción sobre un modelo UML QUE YA EXISTE (ver más abajo) y devolvé
+UN SOLO JSON con la lista de operaciones necesarias para aplicarla, en el orden en que deben
+ejecutarse.
 
-IMPORTANTE: El usuario quiere ELIMINAR elementos (clases, atributos, métodos o relaciones). Debes:
-
-1. Identificar QUÉ se debe eliminar según el prompt
-2. Marcar esos elementos con "eliminar": true
-3. Devolver SOLO los elementos que se deben eliminar
+IMPORTANTE: Todas las clases, atributos, métodos y relaciones que edites o elimines YA EXISTEN
+en el modelo actual. Identificalos por su NOMBRE EXACTO tal como aparece ahí -- nunca inventes
+ni uses ids, la aplicación los resuelve por nombre contra el modelo real.
 
 Formato de respuesta:
 ```json
 {{
-  "classes": [
-    {{
-      "id": "uuid_o_nombre_clase",
-      "name": "NombreClase",
-      "eliminar": true,
-      "attributes": [
-        {{"name": "atributo_a_eliminar", "type": "tipo", "eliminar": true}}
-      ],
-      "methods": [
-        {{"name": "metodo_a_eliminar", "parameters": "", "returnType": "", "eliminar": true}}
-      ]
-    }}
-  ],
-  "relationships": [
-    {{
-      "id": "uuid_relacion",
-      "type": "association | generalization | aggregation | composition | dependency",
-      "sourceId": "nombre_clase_origen",
-      "targetId": "nombre_clase_destino",
-      "eliminar": true
-    }}
+  "operations": [
+    {{"action": "rename_class", "target": "NombreActual", "newName": "NombreNuevo"}},
+    {{"action": "add_attribute", "target": "NombreClase", "name": "atributo", "type": "tipo"}},
+    {{"action": "update_attribute", "target": "NombreClase", "attribute": "atributoActual",
+     "newName": "nuevoNombre", "newType": "nuevoTipo"}},
+    {{"action": "delete_attribute", "target": "NombreClase", "attribute": "atributoAEliminar"}},
+    {{"action": "add_operation", "target": "NombreClase", "name": "metodo",
+     "returnType": "tipoRetorno"}},
+    {{"action": "delete_operation", "target": "NombreClase", "operation": "metodoAEliminar"}},
+    {{"action": "delete_class", "target": "NombreClase"}},
+    {{"action": "add_relationship", "sourceClass": "ClaseA", "targetClass": "ClaseB",
+     "type": "ASSOCIATION | GENERALIZATION | AGGREGATION | COMPOSITION | DEPENDENCY"}},
+    {{"action": "delete_relationship", "sourceClass": "ClaseA", "targetClass": "ClaseB"}},
+    {{"action": "update_relationship_type", "sourceClass": "ClaseA", "targetClass": "ClaseB",
+     "newType": "ASSOCIATION | GENERALIZATION | AGGREGATION | COMPOSITION | DEPENDENCY"}},
+    {{"action": "update_multiplicity", "sourceClass": "ClaseA", "targetClass": "ClaseB",
+     "newMultiplicity": "0..* | 1 | 0..1 | 1..*"}}
   ]
 }}
 ```
 
 REGLAS IMPORTANTES:
-- Si se debe eliminar UNA CLASE COMPLETA, marca la clase con "eliminar": true y NO incluyas attributes/methods
-- Si se debe eliminar UN ATRIBUTO específico, incluye solo ese atributo con "eliminar": true dentro de la clase
-- Si se debe eliminar UN MÉTODO específico, incluye solo ese método con "eliminar": true dentro de la clase
-- Si se debe eliminar UNA RELACIÓN, márcala con "eliminar": true e identifícala por sourceId/targetId (nombres de clases)
-- Usa nombres de clases (no UUIDs) para sourceId y targetId en relaciones
-- NO incluyas elementos que NO se deben eliminar
-- NO devuelvas nada más, solo el JSON
+- Usá EXCLUSIVAMENTE los nombres de clases/atributos/métodos que aparecen en el "Modelo UML
+  actual" de abajo para "target", "attribute", "operation", "sourceClass" y "targetClass".
+- Si la instrucción cambia el nombre de una clase y LUEGO hace referencia a esa misma clase en
+  otra operación de la misma lista, usá el nombre NUEVO en las operaciones siguientes -- se
+  aplican en el orden en que las devolvés.
+- En "update_attribute" incluí solo "newName" y/o "newType", según lo que realmente cambió.
+- No uses ninguna acción fuera de las listadas arriba.
+- Si la instrucción pide crear un modelo completamente nuevo desde cero (sin referirse a ninguna
+  clase existente), NO es una operación -- no apliquen esta forma de respuesta a ese caso.
+- NO devuelvas nada más, solo el JSON.
 
-Ejemplos:
-- "elimina la clase Usuario" → {{"classes": [{{"name": "Usuario", "eliminar": true}}]}}
-- "quita el atributo edad de Persona" → {{"classes": [{{"name": "Persona", "attributes": [{{"name": "edad", "eliminar": true}}]}}]}}
-- "borra la relación entre Persona y Cliente" → {{"relationships": [{{"sourceId": "Persona", "targetId": "Cliente", "eliminar": true}}]}}
+Modelo UML actual del lienzo (nombres reales a usar como referencia):
+{context_json}
 
-Prompt del usuario:
-{prompt}
-"""
-    elif is_edit_request:
-        # Prompt para edición - devolver dos JSONs
-        prompt_text = f"""
-Analiza el siguiente prompt de edición y devuelve DOS JSONs separados:
-
-IMPORTANTE: El usuario quiere editar/modificar una tabla o relación existente. Debes devolver:
-
-1. **JSON ORIGINAL**: El modelo UML completo como está actualmente (sin cambios)
-2. **JSON EDITADO**: Solo los elementos modificados aplicando EXACTAMENTE los cambios solicitados
-
-Ejemplo de cambio de atributo:
-- Si el prompt dice "cambia fecha:Date a fecha_Hora:String"
-- En "editado" debe aparecer: {{"name": "fecha_Hora", "type": "String", "editado": true}}
-
-Formato de respuesta:
-```json
-{{
-  "original": {{
-    "classes": [
-      {{
-        "id": "uuid",
-        "name": "NombreClase",
-        "attributes": [
-          {{"name": "atributo_original", "type": "tipo_original"}}
-        ],
-        "methods": [
-          {{"name": "metodo_original", "parameters": "", "returnType": ""}}
-        ]
-      }}
-    ],
-    "relationships": [
-      {{
-        "id": "uuid",
-        "type": "association | generalization | aggregation | composition | dependency",
-        "sourceId": "uuid",
-        "targetId": "uuid",
-        "labels": ["1..*", "1"]
-      }}
-    ]
-  }},
-  "editado": {{
-    "classes": [
-      {{
-        "id": "mismo_id_del_original",
-        "name": "NombreClaseModificado",
-        "attributes": [
-          {{"name": "nuevo_nombre_atributo", "type": "nuevo_tipo", "editado": true}}
-        ],
-        "methods": [
-          {{"name": "nuevo_nombre_metodo", "parameters": "nuevos_params", "returnType": "nuevo_tipo", "editado": true}}
-        ],
-        "editado": true
-      }}
-    ],
-    "relationships": [
-      {{
-        "id": "mismo_id_del_original",
-        "type": "nuevo_tipo_relacion",
-        "sourceId": "uuid",
-        "targetId": "uuid",
-        "labels": ["nueva_etiqueta1", "nueva_etiqueta2"],
-        "editado": true
-      }}
-    ]
-  }}
-}}
-```
-
-REGLAS CRÍTICAS:
-- Aplica EXACTAMENTE los cambios solicitados en el prompt
-- Si el prompt dice "cambia X a Y", en "editado" debe aparecer Y, NO X
-- En "editado" solo incluye los elementos que REALMENTE cambiaron con sus NUEVOS valores
-- Usa los mismos UUIDs en ambos JSONs para la misma entidad
-- Marca con "editado": true SOLO los elementos que sufrieron modificaciones
-- NO devuelvas nada más, solo el JSON
-
-Prompt del usuario:
+Instrucción del usuario:
 {prompt}
 """
     else:
@@ -207,25 +155,14 @@ Prompt del usuario:
 {prompt}
 """
 
-    data = {
-        "contents": [
-            {
-                "parts": [
-                    {
-                        "text": prompt_text
-                    }
-                ]
-            }
-        ]
-    }
+    data = {"contents": [{"parts": [{"text": prompt_text}]}]}
 
-    response = requests.post(
-        GEMINI_API_URL, headers=headers, params=params, json=data)
+    response = requests.post(GEMINI_API_URL, headers=headers, params=params, json=data)
     response.raise_for_status()
     result = response.json()
 
     try:
-        text_output = result['candidates'][0]['content']['parts'][0]['text']
+        text_output = result["candidates"][0]["content"]["parts"][0]["text"]
         return text_output
     except (KeyError, IndexError):
         return '{"error": "No se pudo parsear la respuesta de Gemini"}'
@@ -272,8 +209,7 @@ Prompt:
         ]
     }
 
-    response = requests.post(
-        GEMINI_API_URL, headers=headers, params=params, json=data)
+    response = requests.post(GEMINI_API_URL, headers=headers, params=params, json=data)
     response.raise_for_status()
     result = response.json()
 
@@ -304,7 +240,9 @@ def _edge_to_relationship_type(edge):
     # Verificar rombos en TAIL (composition/aggregation)
     if tail_diamond == "black" or (tail_shape == "diamond" and tail_fill == "black"):
         return "composition", "tail"
-    if tail_diamond == "white" or (tail_shape == "diamond" and (tail_fill in ["white", "none", None])):
+    if tail_diamond == "white" or (
+        tail_shape == "diamond" and (tail_fill in ["white", "none", None])
+    ):
         return "aggregation", "tail"
 
     # Verificar rombos en HEAD (composition/aggregation)
@@ -383,21 +321,31 @@ def _map_edges_to_relationships(parsed_json):
 
         if rel_key in seen_relationships:
             if labels:
-                clean_labels = [label for label in labels if label is not None and label != "null" and label != ""]
+                clean_labels = [
+                    label
+                    for label in labels
+                    if label is not None and label != "null" and label != ""
+                ]
                 if clean_labels and rel_key in relationship_labels:
                     relationship_labels[rel_key].extend(clean_labels)
             continue
 
         if rel_key_reverse in seen_relationships:
             if labels:
-                clean_labels = [label for label in labels if label is not None and label != "null" and label != ""]
+                clean_labels = [
+                    label
+                    for label in labels
+                    if label is not None and label != "null" and label != ""
+                ]
                 if clean_labels and rel_key_reverse in relationship_labels:
                     relationship_labels[rel_key_reverse].extend(clean_labels)
             continue
 
         seen_relationships.add(rel_key)
 
-        clean_labels = [label for label in labels if label is not None and label != "null" and label != ""]
+        clean_labels = [
+            label for label in labels if label is not None and label != "null" and label != ""
+        ]
         relationship_labels[rel_key] = clean_labels
 
         relationships.append(
@@ -413,7 +361,7 @@ def _map_edges_to_relationships(parsed_json):
     for rel in relationships:
         rel_key = f"{rel['sourceId']}-{rel['targetId']}-{rel['type']}"
         if rel_key in relationship_labels:
-            rel['labels'] = list(dict.fromkeys(relationship_labels[rel_key]))
+            rel["labels"] = list(dict.fromkeys(relationship_labels[rel_key]))
 
     return {"classes": classes, "relationships": relationships}
 
@@ -534,14 +482,12 @@ NO escribas texto fuera del JSON.
     }
 
     try:
-        response = requests.post(
-            GEMINI_API_URL, headers=headers, params=params, json=data)
+        response = requests.post(GEMINI_API_URL, headers=headers, params=params, json=data)
         response.raise_for_status()
         result = response.json()
 
         text_output = result["candidates"][0]["content"]["parts"][0]["text"]
-        text_output = re.sub(r"^```json\s*|\s*```$", "",
-                             text_output.strip(), flags=re.MULTILINE)
+        text_output = re.sub(r"^```json\s*|\s*```$", "", text_output.strip(), flags=re.MULTILINE)
         parsed = json.loads(text_output)
 
         uml_json = _map_edges_to_relationships(parsed)

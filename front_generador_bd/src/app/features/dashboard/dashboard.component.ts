@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, OnDestroy, OnInit } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { NavigationEnd, Router } from '@angular/router';
 import { filter, Subscription } from 'rxjs';
@@ -47,15 +47,24 @@ import { UmlApiService } from '../modeling/application/uml-api.service';
 export class DashboardComponent implements OnInit, OnDestroy {
   userName: string = 'Desarrollador';
 
-  metrics: DashboardMetrics = {
+  /**
+   * signal() -- no propiedad plana: la app corre con provideZonelessChangeDetection()
+   * (app.config.ts), y estos valores se actualizan desde callbacks .subscribe() de
+   * HTTP, fuera de cualquier evento de plantilla. Sin signal(), Angular zoneless no
+   * tiene forma de saber que hay que re-renderizar -- el dato queda correcto en la
+   * instancia del componente pero la vista se congela hasta que algo no relacionado
+   * (un click, una navegación) fuerza un ciclo de detección de cambios. Bug real
+   * reproducido: "recientes"/"mis proyectos" quedaban en 0 tras la carga inicial.
+   */
+  readonly metrics = signal<DashboardMetrics>({
     totalEntities: 0,
     activeProjects: 0,
     referentialIntegrity: 100,
-  };
+  });
 
-  recentProjects: ProjectDto[] = [];
-  allProjects: ProjectDto[] = [];
-  filteredProjects: ProjectDto[] = [];
+  readonly recentProjects = signal<ProjectDto[]>([]);
+  readonly allProjects = signal<ProjectDto[]>([]);
+  readonly filteredProjects = signal<ProjectDto[]>([]);
 
   searchQuery: string = '';
   selectedEngine: 'all' | DbEngine = 'all';
@@ -124,25 +133,25 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   loadMetrics(): void {
     this.dashboardService.getMetrics().subscribe(m => {
-      this.metrics = m;
+      this.metrics.set(m);
     });
   }
 
   loadRecentProjects(): void {
     this.dashboardService.getRecentProjects(3).subscribe(projects => {
-      this.recentProjects = projects;
+      this.recentProjects.set(projects);
     });
   }
 
   loadAllProjects(): void {
     this.dashboardService.getAllProjects(this.currentSort, this.searchQuery).subscribe(projects => {
-      this.allProjects = projects;
+      this.allProjects.set(projects);
       this.applyLocalFilters();
     });
   }
 
   applyLocalFilters(): void {
-    let result = [...this.allProjects];
+    let result = [...this.allProjects()];
 
     if (this.selectedEngine !== 'all') {
       result = result.filter(p => p.engine === this.selectedEngine);
@@ -156,7 +165,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
       );
     }
 
-    this.filteredProjects = result;
+    this.filteredProjects.set(result);
   }
 
   onSearchChange(query: string): void {
@@ -239,8 +248,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
       case 'delete':
         if (confirm(`¿Estás seguro de eliminar el proyecto "${event.project.name}"?`)) {
           this.dashboardService.deleteProject(event.project.id).subscribe(() => {
-            this.allProjects = this.allProjects.filter(p => p.id !== event.project.id);
-            this.recentProjects = this.recentProjects.filter(p => p.id !== event.project.id);
+            this.allProjects.update(list => list.filter(p => p.id !== event.project.id));
+            this.recentProjects.update(list => list.filter(p => p.id !== event.project.id));
             this.applyLocalFilters();
           });
         }
@@ -248,12 +257,20 @@ export class DashboardComponent implements OnInit, OnDestroy {
       case 'export-sql':
         alert(`Generando exportación SQL para "${event.project.name}" (${event.project.engine})...`);
         break;
-      case 'rename':
+      case 'rename': {
         const newName = prompt('Nuevo nombre para el proyecto:', event.project.name);
         if (newName && newName.trim()) {
-          event.project.name = newName.trim();
+          const trimmed = newName.trim();
+          // Reconstruye el array (nueva referencia) en vez de mutar el objeto in-place:
+          // un signal solo notifica cambios cuando se le asigna un valor nuevo.
+          const renamed = (list: ProjectDto[]) =>
+            list.map(p => (p.id === event.project.id ? { ...p, name: trimmed } : p));
+          this.allProjects.update(renamed);
+          this.recentProjects.update(renamed);
+          this.applyLocalFilters();
         }
         break;
+      }
     }
   }
 

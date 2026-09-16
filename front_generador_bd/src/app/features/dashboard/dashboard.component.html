@@ -37,7 +37,7 @@
               <sc-icon name="table_chart" [size]="16" customClass="text-primary-400"></sc-icon>
             </div>
             <div class="flex items-baseline gap-1.5">
-              <span class="text-2xl font-bold text-white font-mono">{{ metrics.totalEntities }}</span>
+              <span class="text-2xl font-bold text-white font-mono">{{ metrics().totalEntities }}</span>
               <span class="text-[10px] font-mono text-tertiary-400 font-semibold">+2 hoy</span>
             </div>
             <div class="text-[10px] text-neutral-500 mt-1">Tablas acumuladas</div>
@@ -50,7 +50,7 @@
               <sc-icon name="layers" [size]="16" customClass="text-secondary-400"></sc-icon>
             </div>
             <div class="flex items-baseline gap-1.5">
-              <span class="text-2xl font-bold text-white font-mono">{{ metrics.activeProjects }}</span>
+              <span class="text-2xl font-bold text-white font-mono">{{ metrics().activeProjects }}</span>
               <span class="text-[10px] font-mono text-neutral-400">En curso</span>
             </div>
             <div class="text-[10px] text-neutral-500 mt-1">Esquemas activos</div>
@@ -63,7 +63,7 @@
               <sc-icon name="verified_user" [size]="16" customClass="text-tertiary-400"></sc-icon>
             </div>
             <div class="flex items-baseline gap-1.5">
-              <span class="text-2xl font-bold text-tertiary-400 font-mono">{{ metrics.referentialIntegrity }}%</span>
+              <span class="text-2xl font-bold text-tertiary-400 font-mono">{{ metrics().referentialIntegrity }}%</span>
               <span class="text-[10px] font-mono text-tertiary-300">FKs OK</span>
             </div>
             <div class="text-[10px] text-neutral-500 mt-1">Integridad referencial</div>
@@ -83,9 +83,9 @@
       </div>
 
       <!-- Recent Projects Horizontal Cards Grid (Up to 3) -->
-      <div *ngIf="recentProjects.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+      <div *ngIf="recentProjects().length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
         <sc-project-card
-          *ngFor="let p of recentProjects"
+          *ngFor="let p of recentProjects()"
           [project]="p"
           variant="recent"
           (onOpen)="openProject($event)"
@@ -102,7 +102,7 @@
           <sc-icon name="folder_open" [size]="20" customClass="text-neutral-400"></sc-icon>
           <h3 class="text-base font-bold text-white tracking-tight">
             Mis proyectos
-            <span class="text-xs text-neutral-400 font-normal font-mono">({{ allProjects.length }} en total)</span>
+            <span class="text-xs text-neutral-400 font-normal font-mono">({{ allProjects().length }} en total)</span>
           </h3>
         </div>
 
@@ -213,9 +213,9 @@
       </div>
 
       <!-- Projects Grid -->
-      <div *ngIf="filteredProjects.length > 0; else emptyState" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div *ngIf="filteredProjects().length > 0; else emptyState" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <sc-project-card
-          *ngFor="let p of filteredProjects"
+          *ngFor="let p of filteredProjects()"
           [project]="p"
           variant="grid"
           (onOpen)="openProject($event)"
