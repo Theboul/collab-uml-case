@@ -16,7 +16,7 @@ from backend_case.app.interoperability.application.xmi_mapping import (
     build_xmi_document,
     find_unsupported_export_warnings,
 )
-from backend_case.app.modeling.api.routes import CanvasDetailSchema, _to_detail_schema
+from backend_case.app.modeling.api.routes import CanvasDetailSchema, to_detail_schema
 from backend_case.app.modeling.application.canvas_service import CanvasService
 from backend_case.app.schemas.uml import ValidationIssueSchema, ValidationResponseSchema
 from backend_case.app.shared.deps import get_canvas_service
@@ -89,7 +89,7 @@ async def import_xmi(
         )
 
     return ImportXmiResponse(
-        canvas=_to_detail_schema(saved.lienzo, saved.version, saved.owner_id, saved.room_name),
+        canvas=to_detail_schema(saved.lienzo, saved.version, saved.owner_id, saved.room_name),
         validation=validation_schema,
     )
 

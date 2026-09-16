@@ -524,8 +524,17 @@ export class EditorCommandService {
     const oldRel = currentModel.relations.find((r) => r.id === relationId);
     if (!oldRel) return;
 
+    // Los llamadores de multiplicidad (menú contextual) mandan solo un lado y
+    // dejan el otro en `undefined` para "no tocarlo". Sin filtrar, el spread
+    // de más abajo aplicaría esa clave `undefined` igual y pisaría el valor
+    // local del lado que no se quiso cambiar (bug real: cambiar origen
+    // borraba destino en pantalla, y viceversa).
+    const definedUpdates = Object.fromEntries(
+      Object.entries(updates).filter(([, value]) => value !== undefined)
+    ) as Partial<UpdateRelationPayload>;
+
     this.executeCommandWithHistory<UpdateRelationPayload>(
-      { type: 'UPDATE_RELATION', payload: { relationId, ...updates } },
+      { type: 'UPDATE_RELATION', payload: { relationId, ...definedUpdates } },
       {
         type: 'UPDATE_RELATION',
         payload: {
@@ -543,7 +552,7 @@ export class EditorCommandService {
       `Actualizar relación`,
       () => {
         this.state.updateRelations((relations) =>
-          relations.map((r) => (r.id === relationId ? { ...r, ...updates } : r))
+          relations.map((r) => (r.id === relationId ? { ...r, ...definedUpdates } : r))
         );
         const updatedRel = this.state.model().relations.find((r) => r.id === relationId);
         if (updatedRel && this.graphService.isInitialized) {

@@ -20,6 +20,11 @@ export class UmlPaletteComponent {
   private readonly router = inject(Router);
 
   isImporting = false;
+  quickGuideOpen = false;
+
+  toggleQuickGuide(): void {
+    this.quickGuideOpen = !this.quickGuideOpen;
+  }
 
   startDragClass(event: MouseEvent): void {
     const target = event.currentTarget as HTMLElement;

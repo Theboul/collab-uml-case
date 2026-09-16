@@ -1,0 +1,78 @@
+@if (facade.isAssistantPanelOpen()) {
+  <aside class="w-80 border-l border-neutral-200 bg-white h-full flex flex-col select-none shadow-xs text-xs text-neutral-900 animate-in slide-in-from-right-4 duration-150">
+    <!-- Encabezado -->
+    <div class="p-3 border-b border-neutral-100 flex items-center justify-between bg-neutral-50">
+      <div class="flex items-center gap-2">
+        <div class="w-6 h-6 rounded bg-primary text-white flex items-center justify-center shadow-2xs">
+          <sc-icon name="smart_toy" [size]="14" />
+        </div>
+        <span class="font-bold text-neutral-800">Asistente IA</span>
+      </div>
+      <sc-button variant="ghost" size="xs" ariaLabel="Cerrar asistente" (onClick)="close()">
+        <sc-icon name="close" [size]="16" />
+      </sc-button>
+    </div>
+
+    <!-- Contenido -->
+    <div class="p-3 flex-1 overflow-y-auto space-y-3">
+      <p class="text-neutral-600">
+        Describí (por texto o voz) las clases, atributos y relaciones que querés crear. Por
+        ahora el asistente solo agrega elementos nuevos al lienzo -- edición y eliminación por
+        IA todavía no están soportadas.
+      </p>
+
+      <div>
+        <label for="assistantPrompt" class="block text-[11px] font-semibold text-neutral-500 uppercase tracking-wider mb-1">
+          Instrucción
+        </label>
+        <div class="flex items-start gap-2">
+          <textarea
+            id="assistantPrompt"
+            [(ngModel)]="prompt"
+            rows="4"
+            placeholder="Ej: Crea una clase Cliente con nombre y email, relacionada con Pedido"
+            class="flex-1 bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2 text-xs text-neutral-800 resize-none focus:outline-primary"
+            [disabled]="facade.isAssistantProcessing()"
+          ></textarea>
+          <sc-button
+            type="button"
+            [variant]="recognizing() ? 'danger' : 'secondary'"
+            size="icon"
+            [disabled]="!speechSupported || facade.isAssistantProcessing()"
+            (onClick)="toggleVoiceInput()"
+            [ariaLabel]="recognizing() ? 'Detener dictado' : 'Dictar por voz'"
+          >
+            <sc-icon [name]="recognizing() ? 'mic' : 'mic_none'" [size]="18" />
+          </sc-button>
+        </div>
+        @if (!speechSupported) {
+          <p class="mt-1 text-[11px] text-neutral-400">
+            Tu navegador no soporta dictado por voz (Web Speech API) -- podés seguir escribiendo la instrucción.
+          </p>
+        }
+      </div>
+
+      @if (facade.assistantError(); as error) {
+        <div class="flex items-start gap-2 bg-danger-500/10 border border-danger-500/30 rounded-lg px-3 py-2 text-danger-600">
+          <sc-icon name="info" [size]="16" />
+          <span>{{ error }}</span>
+        </div>
+      }
+    </div>
+
+    <!-- Pie -->
+    <div class="p-3 border-t border-neutral-100">
+      <sc-button
+        variant="primary"
+        size="sm"
+        customClass="w-full justify-center gap-1.5 font-medium"
+        [loading]="facade.isAssistantProcessing()"
+        [disabled]="!prompt.trim() || facade.isAssistantProcessing()"
+        (onClick)="send()"
+      >
+        <sc-icon name="auto_awesome" [size]="14" />
+        <span>{{ facade.isAssistantProcessing() ? 'Generando...' : 'Generar' }}</span>
+      </sc-button>
+    </div>
+  </aside>
+}

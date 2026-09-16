@@ -5,7 +5,7 @@ from uuid import uuid4
 
 import requests
 
-GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
+GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent"
 
 
 def get_gemini_api_key() -> str:

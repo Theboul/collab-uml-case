@@ -35,6 +35,11 @@ export class EditorStateService {
   readonly lastSaved = signal<Date | null>(null);
   readonly isShareModalOpen = signal<boolean>(false);
 
+  /** CU6: panel de asistente IA (texto/voz -> comandos reales). */
+  readonly isAssistantPanelOpen = signal<boolean>(false);
+  readonly isAssistantProcessing = signal<boolean>(false);
+  readonly assistantError = signal<string | null>(null);
+
   readonly model = signal<ModeloUML>({ classes: [], relations: [] });
   readonly layout = signal<DiagramLayout>({
     viewport: { zoom: 1, panX: 0, panY: 0 },
@@ -100,6 +105,31 @@ export class EditorStateService {
 
   closeShareModal(): void {
     this.isShareModalOpen.set(false);
+  }
+
+  openAssistantPanel(): void {
+    this.assistantError.set(null);
+    this.isAssistantPanelOpen.set(true);
+  }
+
+  closeAssistantPanel(): void {
+    this.isAssistantPanelOpen.set(false);
+  }
+
+  toggleAssistantPanel(): void {
+    if (this.isAssistantPanelOpen()) {
+      this.closeAssistantPanel();
+    } else {
+      this.openAssistantPanel();
+    }
+  }
+
+  setAssistantProcessing(processing: boolean): void {
+    this.isAssistantProcessing.set(processing);
+  }
+
+  setAssistantError(message: string | null): void {
+    this.assistantError.set(message);
   }
 
   openContextMenu(edgeId: string, x: number, y: number): void {

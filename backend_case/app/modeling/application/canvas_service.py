@@ -261,6 +261,38 @@ class CanvasService:
 
         return saved_result, undo_payload
 
+    async def ejecutar_comandos_lote(
+        self,
+        canvas_id: str,
+        expected_version: int,
+        commands: list[tuple[str, dict[str, Any]]],
+        user_id: str | None = None,
+    ) -> CanvasResult:
+        """
+        CU6: aplica una lista de comandos semánticos sobre el mismo lienzo en
+        memoria y persiste una sola vez al final. Todo o nada: si el
+        despachador rechaza cualquier comando del lote, la excepción corta el
+        bucle antes de guardar_atomico y no se persiste nada -- ninguna
+        instrucción de IA se aplica parcialmente.
+        """
+        res = await self.repository.obtener(canvas_id)
+        await self._verificar_acceso_edicion(canvas_id, res.owner_id, user_id)
+        if not isinstance(res.lienzo.visual_layout, dict):
+            res.lienzo.visual_layout = {
+                "viewport": {"zoom": 1.0, "panX": 0.0, "panY": 0.0},
+                "nodes": {},
+                "links": {},
+            }
+
+        for cmd_type, payload in commands:
+            self.command_dispatcher.dispatch(res.lienzo, cmd_type, payload)
+
+        return await self.repository.guardar_atomico(
+            canvas_id=canvas_id,
+            expected_version=expected_version,
+            lienzo=res.lienzo,
+        )
+
     async def listar_lienzos(self, user_id: str | None = None) -> list[dict[str, Any]]:
         """
         Lista los lienzos visibles para el usuario (propios o donde colabora).

@@ -8,6 +8,7 @@ import { RelationContextMenuComponent } from './relation-context-menu/relation-c
 import { PropertiesPanelComponent } from './properties-panel/properties-panel.component';
 import { UmlValidationPanelComponent } from './uml-validation-panel/uml-validation-panel.component';
 import { UmlShareModalComponent } from './uml-share-modal/uml-share-modal.component';
+import { AiAssistantPanelComponent } from './ai-assistant-panel/ai-assistant-panel.component';
 import { UmlEditorFacade } from '../application/uml-editor.facade';
 import { ScButtonComponent, ScIconComponent } from '../../../shared/ui';
 import { ProjectShellComponent } from '../../../layout/project-shell/project-shell.component';
@@ -26,6 +27,7 @@ import { ProjectShellComponent } from '../../../layout/project-shell/project-she
     PropertiesPanelComponent,
     UmlValidationPanelComponent,
     UmlShareModalComponent,
+    AiAssistantPanelComponent,
     ScButtonComponent,
     ScIconComponent,
   ],

@@ -87,35 +87,46 @@
       </div>
     </div>
 
-    <!-- Instrucciones y Atajos Rápidos -->
+    <!-- Instrucciones y Atajos Rápidos (colapsable, cerrado por defecto) -->
     <div class="pt-2 border-t border-neutral-100">
-      <span class="text-[11px] font-semibold text-neutral-600 mb-2 block">Guía Rápida</span>
-      <ul class="text-[11px] text-neutral-500 space-y-2 leading-tight font-sans">
-        <li class="flex items-start gap-1.5">
-          <sc-icon name="hub" [size]="14" customClass="text-primary mt-0.5" />
-          <span>Arrastra desde los <b>4 puertos</b> de una clase para conectar.</span>
-        </li>
-        <li class="flex items-start gap-1.5">
-          <sc-icon name="mouse" [size]="14" customClass="text-primary mt-0.5" />
-          <span><b>Clic derecho</b> en una relación para tipo y multiplicidades.</span>
-        </li>
-        <li class="flex items-start gap-1.5">
-          <sc-icon name="highlight" [size]="14" customClass="text-primary mt-0.5" />
-          <span><b>Selección rectangular</b> arrastrando sobre el fondo vacío.</span>
-        </li>
-        <li class="flex items-start gap-1.5">
-          <sc-icon name="pan_tool" [size]="14" customClass="text-primary mt-0.5" />
-          <span>Mantén pulsada la <b>barra espaciadora</b> para desplazar (pan).</span>
-        </li>
-        <li class="flex items-start gap-1.5">
-          <sc-icon name="keyboard" [size]="14" customClass="text-primary mt-0.5" />
-          <span><kbd class="px-1 rounded bg-neutral-100 border border-neutral-200 font-mono text-[10px]">Ctrl</kbd> + Clic para sumar o quitar selección.</span>
-        </li>
-        <li class="flex items-start gap-1.5">
-          <sc-icon name="delete" [size]="14" customClass="text-danger mt-0.5" />
-          <span><kbd class="px-1 rounded bg-neutral-100 border border-neutral-200 font-mono text-[10px]">Supr</kbd> para eliminar seleccionados.</span>
-        </li>
-      </ul>
+      <button
+        type="button"
+        (click)="toggleQuickGuide()"
+        class="w-full flex items-center justify-between mb-2 cursor-pointer"
+        [attr.aria-expanded]="quickGuideOpen"
+        aria-controls="quickGuideList"
+      >
+        <span class="text-[11px] font-semibold text-neutral-600">Guía Rápida</span>
+        <sc-icon [name]="quickGuideOpen ? 'expand_less' : 'expand_more'" [size]="16" customClass="text-neutral-400" />
+      </button>
+      @if (quickGuideOpen) {
+        <ul id="quickGuideList" class="text-[11px] text-neutral-500 space-y-2 leading-tight font-sans">
+          <li class="flex items-start gap-1.5">
+            <sc-icon name="hub" [size]="14" customClass="text-primary mt-0.5" />
+            <span>Arrastra desde los <b>4 puertos</b> de una clase para conectar.</span>
+          </li>
+          <li class="flex items-start gap-1.5">
+            <sc-icon name="mouse" [size]="14" customClass="text-primary mt-0.5" />
+            <span><b>Clic derecho</b> en una relación para tipo y multiplicidades.</span>
+          </li>
+          <li class="flex items-start gap-1.5">
+            <sc-icon name="highlight" [size]="14" customClass="text-primary mt-0.5" />
+            <span><b>Selección rectangular</b> arrastrando sobre el fondo vacío.</span>
+          </li>
+          <li class="flex items-start gap-1.5">
+            <sc-icon name="pan_tool" [size]="14" customClass="text-primary mt-0.5" />
+            <span>Mantén pulsada la <b>barra espaciadora</b> para desplazar (pan).</span>
+          </li>
+          <li class="flex items-start gap-1.5">
+            <sc-icon name="keyboard" [size]="14" customClass="text-primary mt-0.5" />
+            <span><kbd class="px-1 rounded bg-neutral-100 border border-neutral-200 font-mono text-[10px]">Ctrl</kbd> + Clic para sumar o quitar selección.</span>
+          </li>
+          <li class="flex items-start gap-1.5">
+            <sc-icon name="delete" [size]="14" customClass="text-danger mt-0.5" />
+            <span><kbd class="px-1 rounded bg-neutral-100 border border-neutral-200 font-mono text-[10px]">Supr</kbd> para eliminar seleccionados.</span>
+          </li>
+        </ul>
+      }
     </div>
   </div>
 </aside>

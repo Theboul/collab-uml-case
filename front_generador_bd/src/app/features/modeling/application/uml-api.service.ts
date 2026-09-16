@@ -81,6 +81,18 @@ export class UmlApiService {
     );
   }
 
+  /** CU6: interpreta una instrucción de texto/voz y la aplica como comandos reales validados. */
+  sendTextCommand(canvasId: string, prompt: string, expectedVersion: number): Observable<CommandResponseDto> {
+    return this.http
+      .post<any>(`${this.baseUrl}/${canvasId}/assistant/text-command`, { prompt, expectedVersion })
+      .pipe(
+        map((raw) => ({
+          ...raw,
+          canvas: raw.canvas ? this.normalizeCanvas(raw.canvas) : raw.canvas,
+        }))
+      );
+  }
+
   listCanvases(): Observable<any[]> {
     return this.http.get<any[]>(this.baseUrl);
   }

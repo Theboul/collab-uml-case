@@ -29,6 +29,7 @@ import { EditorHistoryService } from './editor-history.service';
 import { EditorSelectionService } from './editor-selection.service';
 import { EditorCommandService } from './editor-command.service';
 import { EditorMemberCommandService } from './editor-member-command.service';
+import { AiAssistantCommandService } from './ai-assistant-command.service';
 
 /** Cadencia de emisión del cursor propio hacia los demás peers (dentro del rango 50-100ms del ADR). */
 const CURSOR_BROADCAST_THROTTLE_MS = 80;
@@ -42,6 +43,7 @@ export class UmlEditorFacade {
   private readonly selection = inject(EditorSelectionService);
   private readonly commandService = inject(EditorCommandService);
   private readonly memberService = inject(EditorMemberCommandService);
+  private readonly assistantCommandService = inject(AiAssistantCommandService);
 
   private readonly api = inject(UmlApiService);
   private readonly adapter = inject(UmlDiagramAdapterService);
@@ -78,6 +80,9 @@ export class UmlEditorFacade {
   readonly isSaving = this.state.isSaving;
   readonly lastSaved = this.state.lastSaved;
   readonly isShareModalOpen = this.state.isShareModalOpen;
+  readonly isAssistantPanelOpen = this.state.isAssistantPanelOpen;
+  readonly isAssistantProcessing = this.state.isAssistantProcessing;
+  readonly assistantError = this.state.assistantError;
   readonly contextMenu = this.state.contextMenu;
   readonly remoteCursors = this.remoteCursorsService.cursors;
 
@@ -343,6 +348,22 @@ export class UmlEditorFacade {
 
   closeShareModal(): void {
     this.isShareModalOpen.set(false);
+  }
+
+  openAssistantPanel(): void {
+    this.state.openAssistantPanel();
+  }
+
+  closeAssistantPanel(): void {
+    this.state.closeAssistantPanel();
+  }
+
+  toggleAssistantPanel(): void {
+    this.state.toggleAssistantPanel();
+  }
+
+  sendAssistantPrompt(prompt: string): void {
+    this.assistantCommandService.sendPrompt(prompt);
   }
 
   closeContextMenu(): void {

@@ -126,7 +126,7 @@ class CommandResponse(BaseModel):
     undoPayload: dict[str, Any] | None = None
 
 
-def _to_detail_schema(
+def to_detail_schema(
     lienzo: Lienzo,
     version: int,
     owner_id: str | None = None,
@@ -182,7 +182,7 @@ async def create_canvas(
         descripcion=payload.description,
         owner_id=owner_id,
     )
-    return _to_detail_schema(res.lienzo, res.version, res.owner_id, res.room_name)
+    return to_detail_schema(res.lienzo, res.version, res.owner_id, res.room_name)
 
 
 @router.post("/join", response_model=JoinCanvasResponse)
@@ -216,7 +216,7 @@ async def get_canvas_by_room(
     """
     user_id = current_user.id if current_user else None
     res = await service.obtener_por_room_name(room_name, user_id=user_id)
-    return _to_detail_schema(res.lienzo, res.version, res.owner_id, res.room_name, res.role)
+    return to_detail_schema(res.lienzo, res.version, res.owner_id, res.room_name, res.role)
 
 
 @router.get("/{canvas_id}", response_model=CanvasDetailSchema)
@@ -241,7 +241,7 @@ async def get_canvas(
                 ),
             },
         )
-    return _to_detail_schema(res.lienzo, res.version, res.owner_id, res.room_name, res.role)
+    return to_detail_schema(res.lienzo, res.version, res.owner_id, res.room_name, res.role)
 
 
 @router.post("/{canvas_id}/validate", response_model=ValidationResponseSchema)
@@ -289,7 +289,7 @@ async def execute_editor_command(
         payload=command.payload,
         user_id=current_user.id if current_user else None,
     )
-    canvas_schema = _to_detail_schema(res.lienzo, res.version, res.owner_id, res.room_name)
+    canvas_schema = to_detail_schema(res.lienzo, res.version, res.owner_id, res.room_name)
     # command.peerId es el peer_id de la conexión WS activa del emisor (si mandó uno):
     # lo excluye del broadcast para que no compita con la actualización de versión que
     # trae esta misma respuesta HTTP (root cause del ciclo node:move/node:moved en drag,
@@ -327,7 +327,7 @@ async def add_class(
         is_abstract=payload.isAbstract,
         user_id=current_user.id if current_user else None,
     )
-    return _to_detail_schema(lienzo, version)
+    return to_detail_schema(lienzo, version)
 
 
 @router.post("/{canvas_id}/associations", response_model=CanvasDetailSchema, status_code=status.HTTP_201_CREATED)
@@ -353,5 +353,5 @@ async def add_association(
         agregacion_destino=payload.targetAggregation,
         user_id=current_user.id if current_user else None,
     )
-    return _to_detail_schema(lienzo, version)
+    return to_detail_schema(lienzo, version)
 
