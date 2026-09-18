@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpResponse } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 import {
@@ -135,6 +135,14 @@ export class UmlApiService {
   exportXmi(canvasId: string): Observable<Blob> {
     return this.http.get(`${this.baseUrl}/${canvasId}/export/xmi`, {
       responseType: 'blob',
+    });
+  }
+
+  /** CU10: genera un backend Spring Boot real a partir del modelo persistido del lienzo. */
+  generateSpringBackend(canvasId: string): Observable<HttpResponse<Blob>> {
+    return this.http.post(`${this.baseUrl}/${canvasId}/generation/spring`, null, {
+      responseType: 'blob',
+      observe: 'response',
     });
   }
 

@@ -54,6 +54,10 @@ export class EditorStateService {
   readonly isValidating = signal<boolean>(false);
   readonly isValidationPanelOpen = signal<boolean>(false);
 
+  /** CU10: generación real del backend Spring Boot a partir del modelo persistido. */
+  readonly isGeneratingSpringBackend = signal<boolean>(false);
+  readonly springGenerationError = signal<string | null>(null);
+
   setCanvasMetadata(dto: LienzoDetailDto): void {
     this.canvasId.set(dto.id);
     this.canvasName.set(dto.name);
@@ -130,6 +134,14 @@ export class EditorStateService {
 
   setAssistantError(message: string | null): void {
     this.assistantError.set(message);
+  }
+
+  setGeneratingSpringBackend(generating: boolean): void {
+    this.isGeneratingSpringBackend.set(generating);
+  }
+
+  setSpringGenerationError(message: string | null): void {
+    this.springGenerationError.set(message);
   }
 
   openContextMenu(edgeId: string, x: number, y: number): void {

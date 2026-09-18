@@ -198,6 +198,25 @@
 
     <div class="h-4 w-px bg-neutral-200"></div>
 
+    <!-- Generación de backend Spring Boot (CU10) -->
+    <sc-button
+      variant="outline"
+      size="xs"
+      customClass="gap-1.5"
+      [disabled]="facade.isGeneratingSpringBackend()"
+      (onClick)="facade.generateSpringBackend()"
+      ariaLabel="Generar backend Spring Boot a partir del modelo UML"
+      [title]="facade.springGenerationError() || 'Generar backend Spring Boot'"
+    >
+      <sc-icon name="deployed_code" [size]="16" />
+      <span>{{ facade.isGeneratingSpringBackend() ? 'Generando...' : 'Generar Backend Spring Boot' }}</span>
+      @if (facade.springGenerationError()) {
+        <span class="w-1.5 h-1.5 rounded-full bg-danger"></span>
+      }
+    </sc-button>
+
+    <div class="h-4 w-px bg-neutral-200"></div>
+
     <!-- Estado de Guardado -->
     <div class="flex items-center gap-1.5 text-[11px] text-neutral-500 min-w-[80px]">
       @if (facade.isSaving()) {

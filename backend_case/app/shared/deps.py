@@ -7,6 +7,10 @@ from typing import Annotated
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend_case.app.generation.application.generation_service import GenerationService
+from backend_case.app.generation.infrastructure.spring.http_spring_adapter import (
+    HttpSpringAdapter,
+)
 from backend_case.app.modeling.application.canvas_service import CanvasService
 from backend_case.app.modeling.infrastructure.canvas_repository import CanvasRepository
 from backend_case.app.shared.db.base import get_db_session
@@ -18,3 +22,15 @@ def get_canvas_service(session: Annotated[AsyncSession, Depends(get_db_session)]
     """
     repository = CanvasRepository(session)
     return CanvasService(repository)
+
+
+def get_generation_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> GenerationService:
+    """
+    Inyecta GenerationService (CU10) con su propia CanvasService (misma sesión)
+    y el adaptador HTTP real hacia el generador Spring Boot (back_generator_uml).
+    """
+    repository = CanvasRepository(session)
+    canvas_service = CanvasService(repository)
+    return GenerationService(canvas_service, HttpSpringAdapter())

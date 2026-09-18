@@ -90,6 +90,9 @@ export class UmlEditorFacade {
   readonly isValidating = this.state.isValidating;
   readonly isValidationPanelOpen = this.state.isValidationPanelOpen;
 
+  readonly isGeneratingSpringBackend = this.state.isGeneratingSpringBackend;
+  readonly springGenerationError = this.state.springGenerationError;
+
   constructor() {
     this.setupGraphSubscriptions();
   }
@@ -309,6 +312,70 @@ export class UmlEditorFacade {
         console.error('[UmlEditorFacade] Error al exportar XMI:', err);
       },
     });
+  }
+
+  /** CU10: genera el backend Spring Boot real del lienzo actual y descarga el .zip resultante. */
+  generateSpringBackend(): void {
+    const id = this.canvasId();
+    if (!id) return;
+    this.state.setGeneratingSpringBackend(true);
+    this.state.setSpringGenerationError(null);
+    this.api.generateSpringBackend(id).subscribe({
+      next: (response) => {
+        this.state.setGeneratingSpringBackend(false);
+        const blob = response.body;
+        if (!blob) return;
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = this.filenameFromContentDisposition(response.headers.get('Content-Disposition'))
+          ?? `${this.canvasName() || 'backend'}-spring-boot.zip`;
+        a.click();
+        window.URL.revokeObjectURL(url);
+      },
+      error: (err) => {
+        this.state.setGeneratingSpringBackend(false);
+        void this.reportSpringGenerationError(err);
+      },
+    });
+  }
+
+  /**
+   * Con `responseType: 'blob'`, Angular también entrega el cuerpo de un error
+   * HTTP como Blob (no JSON parseado) -- sin esto, los mensajes reales del
+   * backend (ej. "el modelo usa herencia múltiple, no soportada") nunca
+   * llegarían a mostrarse, y toda falla se vería como un error genérico.
+   */
+  private async reportSpringGenerationError(err: unknown): Promise<void> {
+    const fallback = 'No se pudo generar el backend Spring Boot. Intentá de nuevo.';
+    const httpErr = err as { error?: unknown };
+    if (httpErr?.error instanceof Blob) {
+      try {
+        const text = await httpErr.error.text();
+        const parsed = JSON.parse(text) as { message?: string };
+        this.state.setSpringGenerationError(parsed.message || fallback);
+        return;
+      } catch {
+        this.state.setSpringGenerationError(fallback);
+        return;
+      }
+    }
+    const message = (httpErr?.error as { message?: string } | undefined)?.message;
+    this.state.setSpringGenerationError(message || fallback);
+  }
+
+  private filenameFromContentDisposition(header: string | null): string | null {
+    if (!header) return null;
+    const utf8Match = /filename\*=UTF-8''([^;]+)/i.exec(header);
+    if (utf8Match) {
+      try {
+        return decodeURIComponent(utf8Match[1]);
+      } catch {
+        // sigue al fallback de abajo
+      }
+    }
+    const plainMatch = /filename="?([^";]+)"?/i.exec(header);
+    return plainMatch ? plainMatch[1] : null;
   }
 
   /** CU8: importa un archivo XMI delegando al ApiService. */
