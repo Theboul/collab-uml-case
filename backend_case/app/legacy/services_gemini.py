@@ -293,7 +293,7 @@ def _map_edges_to_relationships(parsed_json):
 
     relationships = []
     seen_relationships = set()
-    relationship_labels = {}
+    relationship_by_key = {}
 
     for e in edges:
         rel_type, symbol_position = _edge_to_relationship_type(e)
@@ -319,49 +319,33 @@ def _map_edges_to_relationships(parsed_json):
         rel_key = f"{src_id}-{tgt_id}-{rel_type}"
         rel_key_reverse = f"{tgt_id}-{src_id}-{rel_type}"
 
+        clean_labels = [
+            label for label in labels if label is not None and label != "null" and label != ""
+        ]
+
         if rel_key in seen_relationships:
-            if labels:
-                clean_labels = [
-                    label
-                    for label in labels
-                    if label is not None and label != "null" and label != ""
-                ]
-                if clean_labels and rel_key in relationship_labels:
-                    relationship_labels[rel_key].extend(clean_labels)
+            prev_rel = relationship_by_key.get(rel_key)
+            if prev_rel and not prev_rel["labels"] and clean_labels:
+                prev_rel["labels"] = clean_labels
             continue
 
         if rel_key_reverse in seen_relationships:
-            if labels:
-                clean_labels = [
-                    label
-                    for label in labels
-                    if label is not None and label != "null" and label != ""
-                ]
-                if clean_labels and rel_key_reverse in relationship_labels:
-                    relationship_labels[rel_key_reverse].extend(clean_labels)
+            prev_rel = relationship_by_key.get(rel_key_reverse)
+            if prev_rel and not prev_rel["labels"] and clean_labels:
+                prev_rel["labels"] = clean_labels
             continue
 
         seen_relationships.add(rel_key)
 
-        clean_labels = [
-            label for label in labels if label is not None and label != "null" and label != ""
-        ]
-        relationship_labels[rel_key] = clean_labels
-
-        relationships.append(
-            {
-                "id": e.get("id") or str(uuid4()),
-                "type": rel_type,
-                "sourceId": src_id,
-                "targetId": tgt_id,
-                "labels": clean_labels,
-            }
-        )
-
-    for rel in relationships:
-        rel_key = f"{rel['sourceId']}-{rel['targetId']}-{rel['type']}"
-        if rel_key in relationship_labels:
-            rel["labels"] = list(dict.fromkeys(relationship_labels[rel_key]))
+        new_rel = {
+            "id": e.get("id") or str(uuid4()),
+            "type": rel_type,
+            "sourceId": src_id,
+            "targetId": tgt_id,
+            "labels": clean_labels,
+        }
+        relationships.append(new_rel)
+        relationship_by_key[rel_key] = new_rel
 
     return {"classes": classes, "relationships": relationships}
 

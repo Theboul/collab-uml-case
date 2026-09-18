@@ -18,7 +18,8 @@
       <p class="text-neutral-600">
         Describí (por texto o voz) qué crear, renombrar, modificar o eliminar en el lienzo --
         por ejemplo "crea una clase Cliente con nombre y email" o "cambiale el nombre a Usuario
-        por Cliente y agregale un atributo teléfono".
+        por Cliente y agregale un atributo teléfono" -- o subí una imagen del diagrama para
+        generarlo automáticamente.
       </p>
 
       <div>
@@ -51,6 +52,33 @@
           </p>
         }
       </div>
+
+      <!-- CU7: subir una imagen del diagrama en vez de describirlo -->
+      <div class="flex items-center gap-2">
+        <div class="flex-1 h-px bg-neutral-100"></div>
+        <span class="text-[10px] uppercase tracking-wider text-neutral-400">o</span>
+        <div class="flex-1 h-px bg-neutral-100"></div>
+      </div>
+
+      <input
+        #assistantImageInput
+        type="file"
+        accept="image/*"
+        class="hidden"
+        (change)="onImageSelected($event)"
+      />
+      <sc-button
+        type="button"
+        variant="secondary"
+        size="sm"
+        customClass="w-full justify-center gap-1.5"
+        [disabled]="facade.isAssistantProcessing()"
+        (onClick)="assistantImageInput.click()"
+        ariaLabel="Subir una imagen del diagrama para generarlo automáticamente"
+      >
+        <sc-icon name="image" [size]="16" />
+        <span>Subir imagen del diagrama</span>
+      </sc-button>
 
       @if (facade.assistantError(); as error) {
         <div class="flex items-start gap-2 bg-danger-500/10 border border-danger-500/30 rounded-lg px-3 py-2 text-danger-600">

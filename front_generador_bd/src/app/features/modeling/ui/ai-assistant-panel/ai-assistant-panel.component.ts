@@ -110,6 +110,14 @@ export class AiAssistantPanelComponent {
     this.prompt = '';
   }
 
+  onImageSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file || this.facade.isAssistantProcessing()) return;
+    this.facade.sendAssistantImage(file);
+    input.value = '';
+  }
+
   close(): void {
     if (this.recognizing()) {
       this.recognition?.stop();

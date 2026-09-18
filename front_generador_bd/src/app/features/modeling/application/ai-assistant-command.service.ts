@@ -1,17 +1,19 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
+import { Observable } from 'rxjs';
+import { CommandResponseDto } from '../domain/models/uml-editor.models';
 import { UmlApiService } from './uml-api.service';
 import { EditorStateService } from './editor-state.service';
 import { EditorCommandService } from './editor-command.service';
 import { EditorHistoryService } from './editor-history.service';
 
 /**
- * CU6: envía una instrucción de texto (tipeada o dictada por voz vía Web
- * Speech API, que entra por el mismo input) al endpoint que la traduce a
- * comandos reales del editor y los valida contra core/uml_domain. No aplica
- * nada al modelo local hasta que el backend confirma -- si el backend
- * rechaza la instrucción (ambigua, edición/eliminación no soportada, o
- * choque de versión), el lienzo local queda intacto y se muestra el motivo.
+ * CU6/CU7: envía una instrucción de texto (tipeada o dictada por voz vía Web
+ * Speech API) o una imagen del diagrama al endpoint correspondiente, que la
+ * traduce a comandos reales del editor y los valida contra core/uml_domain.
+ * No aplica nada al modelo local hasta que el backend confirma -- si el
+ * backend rechaza la instrucción/imagen (ambigua, ilegible, choque de
+ * versión), el lienzo local queda intacto y se muestra el motivo.
  */
 @Injectable({
   providedIn: 'root',
@@ -26,10 +28,33 @@ export class AiAssistantCommandService {
     const canvasId = this.state.canvasId();
     if (!canvasId || !prompt.trim()) return;
 
+    this.dispatch(
+      canvasId,
+      this.api.sendTextCommand(canvasId, prompt.trim(), this.state.version()),
+      'No se pudo interpretar la instrucción. Intentá de nuevo.'
+    );
+  }
+
+  sendImage(image: File): void {
+    const canvasId = this.state.canvasId();
+    if (!canvasId) return;
+
+    this.dispatch(
+      canvasId,
+      this.api.sendImageCommand(canvasId, image, this.state.version()),
+      'No se pudo interpretar la imagen. Probá con una foto más clara del diagrama.'
+    );
+  }
+
+  private dispatch(
+    canvasId: string,
+    request$: Observable<CommandResponseDto>,
+    defaultErrorMessage: string
+  ): void {
     this.state.setAssistantError(null);
     this.state.setAssistantProcessing(true);
 
-    this.api.sendTextCommand(canvasId, prompt.trim(), this.state.version()).subscribe({
+    request$.subscribe({
       next: (res) => {
         this.state.setAssistantProcessing(false);
         if (res.canvas) {
@@ -40,8 +65,7 @@ export class AiAssistantCommandService {
       },
       error: (err: HttpErrorResponse) => {
         this.state.setAssistantProcessing(false);
-        const message =
-          err.error?.message || 'No se pudo interpretar la instrucción. Intentá de nuevo.';
+        const message = err.error?.message || defaultErrorMessage;
         this.state.setAssistantError(message);
 
         if (err.status === 409) {

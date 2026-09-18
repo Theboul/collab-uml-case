@@ -93,6 +93,21 @@ export class UmlApiService {
       );
   }
 
+  /** CU7: interpreta una imagen del diagrama y la aplica como comandos reales validados. */
+  sendImageCommand(canvasId: string, image: File, expectedVersion: number): Observable<CommandResponseDto> {
+    const formData = new FormData();
+    formData.append('image', image, image.name);
+    formData.append('expectedVersion', String(expectedVersion));
+    return this.http
+      .post<any>(`${this.baseUrl}/${canvasId}/assistant/image-command`, formData)
+      .pipe(
+        map((raw) => ({
+          ...raw,
+          canvas: raw.canvas ? this.normalizeCanvas(raw.canvas) : raw.canvas,
+        }))
+      );
+  }
+
   listCanvases(): Observable<any[]> {
     return this.http.get<any[]>(this.baseUrl);
   }

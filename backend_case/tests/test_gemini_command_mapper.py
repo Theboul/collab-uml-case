@@ -88,6 +88,268 @@ def test_processes_all_classes_before_any_relationship_regardless_of_json_order(
     assert relation_cmd["targetClassId"] == "b"
 
 
+def test_classifies_labels_by_pattern_extracting_multiplicities_and_name():
+    """
+    Caso real capturado: las etiquetas vienen mezcladas con el nombre de la
+    asociación, roles con visibilidad UML y multiplicidades. Se debe clasificar
+    por patrón, asignando la primera multiplicidad a source y la segunda a target,
+    y el texto restante como nombre.
+    """
+    parsed = {
+        "classes": [
+            {"id": "c1", "name": "ClaseA", "attributes": [], "methods": []},
+            {"id": "c2", "name": "ClaseB", "attributes": [], "methods": []},
+        ],
+        "relationships": [
+            {
+                "id": "r1",
+                "type": "association",
+                "sourceId": "c1",
+                "targetId": "c2",
+                "labels": ["Association B", "+role c", "*", "+role a", "0..1"],
+            }
+        ],
+    }
+    commands = map_gemini_response_to_commands(parsed)
+    rel_cmd = next(p for t, p in commands if t == "CREATE_RELATION")
+    assert rel_cmd["sourceMultiplicity"] == "*"
+    assert rel_cmd["targetMultiplicity"] == "0..1"
+    assert rel_cmd["name"] == "Association B"
+
+
+def test_classifies_labels_with_identical_multiplicities_many_to_many():
+    """
+    Caso real capturado (relación many-to-many *..*):
+    labels = ["+role b", "*", "Association A", "+role a", "*"].
+    Confirma que las dos multiplicidades idénticas '*' y '*' se preservan
+    y asignan correctamente a sourceMultiplicity y targetMultiplicity sin
+    ser deduplicadas ni rechazadas.
+    """
+    parsed = {
+        "classes": [
+            {"id": "c1", "name": "ClaseB", "attributes": [], "methods": []},
+            {"id": "c2", "name": "ClaseA", "attributes": [], "methods": []},
+        ],
+        "relationships": [
+            {
+                "id": "r1",
+                "type": "association",
+                "sourceId": "c1",
+                "targetId": "c2",
+                "labels": ["+role b", "*", "Association A", "+role a", "*"],
+            }
+        ],
+    }
+    commands = map_gemini_response_to_commands(parsed)
+    rel_cmd = next(p for t, p in commands if t == "CREATE_RELATION")
+    assert rel_cmd["sourceMultiplicity"] == "*"
+    assert rel_cmd["targetMultiplicity"] == "*"
+    assert rel_cmd["name"] == "Association A"
+
+
+def test_map_edges_to_relationships_preserves_identical_multiplicities():
+    """
+    Confirma que _map_edges_to_relationships no deduplica labels con dict.fromkeys(),
+    permitiendo relaciones many-to-many (*..*) o 1..1 donde las etiquetas de multiplicidad
+    son idénticas en ambos extremos.
+    """
+    from backend_case.app.legacy.services_gemini import _map_edges_to_relationships
+
+    raw_gemini = {
+        "nodes": [
+            {"id": "c1", "name": "ClaseB", "attributes": [], "methods": []},
+            {"id": "c2", "name": "ClaseA", "attributes": [], "methods": []},
+        ],
+        "edges_raw": [
+            {
+                "id": "e1",
+                "sourceName": "ClaseB",
+                "targetName": "ClaseA",
+                "head": {"shape": "none"},
+                "tail": {"shape": "none"},
+                "line": {"style": "solid"},
+                "labels": ["+role b", "*", "Association A", "+role a", "*"],
+            }
+        ],
+    }
+    result = _map_edges_to_relationships(raw_gemini)
+    assert len(result["relationships"]) == 1
+    assert result["relationships"][0]["labels"] == [
+        "+role b",
+        "*",
+        "Association A",
+        "+role a",
+        "*",
+    ]
+
+
+def test_map_edges_to_relationships_deduplicates_repeated_edges_without_doubling_labels():
+    """
+    Si Gemini reporta la misma arista dos veces en edges_raw (mismo rel_key o
+    inverso, ej. A->B y B->A con ["*", "0..1"]), no debe hacer .extend()
+    duplicando las etiquetas a 4 elementos, sino tomar una sola aparición
+    completa y permitir que map_gemini_response_to_commands la procese.
+    """
+    from backend_case.app.legacy.services_gemini import _map_edges_to_relationships
+
+    raw_gemini = {
+        "nodes": [
+            {"id": "c1", "name": "ClaseA", "attributes": [], "methods": []},
+            {"id": "c2", "name": "ClaseB", "attributes": [], "methods": []},
+        ],
+        "edges_raw": [
+            {
+                "id": "e1",
+                "sourceName": "ClaseA",
+                "targetName": "ClaseB",
+                "head": {"shape": "none"},
+                "tail": {"shape": "none"},
+                "line": {"style": "solid"},
+                "labels": ["*", "0..1"],
+            },
+            {
+                "id": "e2",
+                "sourceName": "ClaseA",
+                "targetName": "ClaseB",
+                "head": {"shape": "none"},
+                "tail": {"shape": "none"},
+                "line": {"style": "solid"},
+                "labels": ["*", "0..1"],
+            },
+        ],
+    }
+    result = _map_edges_to_relationships(raw_gemini)
+    assert len(result["relationships"]) == 1
+    assert result["relationships"][0]["labels"] == ["*", "0..1"]
+
+    commands = map_gemini_response_to_commands(result)
+    rel_cmd = next(p for t, p in commands if t == "CREATE_RELATION")
+    assert rel_cmd["sourceMultiplicity"] == "*"
+    assert rel_cmd["targetMultiplicity"] == "0..1"
+
+
+def test_rejects_association_without_exactly_two_multiplicities():
+    """
+    Si una asociación/agregación/composición no define exactamente 2 multiplicidades
+    reconocibles en sus labels (ej. 0, 1 o 3), levanta UmlValidationError controlado,
+    nunca un 500 ni IndexError.
+    """
+    # Caso 0 multiplicidades
+    parsed_zero = {
+        "classes": [
+            {"id": "c1", "name": "A", "attributes": [], "methods": []},
+            {"id": "c2", "name": "B", "attributes": [], "methods": []},
+        ],
+        "relationships": [
+            {
+                "id": "r1",
+                "type": "association",
+                "sourceId": "c1",
+                "targetId": "c2",
+                "labels": ["Association B", "+role c", "+role a"],
+            }
+        ],
+    }
+    with pytest.raises(UmlValidationError) as exc_zero:
+        map_gemini_response_to_commands(parsed_zero)
+    assert "no contiene exactamente 2 multiplicidades" in str(exc_zero.value)
+    assert "'A' y 'B'" in str(exc_zero.value)
+
+    # Caso 1 multiplicidad
+    parsed_one = {
+        "classes": [
+            {"id": "c1", "name": "A", "attributes": [], "methods": []},
+            {"id": "c2", "name": "B", "attributes": [], "methods": []},
+        ],
+        "relationships": [
+            {
+                "id": "r1",
+                "type": "association",
+                "sourceId": "c1",
+                "targetId": "c2",
+                "labels": ["1"],
+            }
+        ],
+    }
+    with pytest.raises(UmlValidationError) as exc_one:
+        map_gemini_response_to_commands(parsed_one)
+    assert "no contiene exactamente 2 multiplicidades" in str(exc_one.value)
+
+    # Caso 3 multiplicidades
+    parsed_three = {
+        "classes": [
+            {"id": "c1", "name": "A", "attributes": [], "methods": []},
+            {"id": "c2", "name": "B", "attributes": [], "methods": []},
+        ],
+        "relationships": [
+            {
+                "id": "r1",
+                "type": "association",
+                "sourceId": "c1",
+                "targetId": "c2",
+                "labels": ["1", "*", "0..1"],
+            }
+        ],
+    }
+    with pytest.raises(UmlValidationError) as exc_three:
+        map_gemini_response_to_commands(parsed_three)
+    assert "no contiene exactamente 2 multiplicidades" in str(exc_three.value)
+
+
+def test_relation_with_multiple_name_candidates_leaves_name_unassigned():
+    """
+    Si hay más de 1 candidato a nombre de asociación en labels (y no viene
+    un name explícito en el dict), se deja name como None para no adivinar.
+    """
+    parsed = {
+        "classes": [
+            {"id": "c1", "name": "A", "attributes": [], "methods": []},
+            {"id": "c2", "name": "B", "attributes": [], "methods": []},
+        ],
+        "relationships": [
+            {
+                "id": "r1",
+                "type": "association",
+                "sourceId": "c1",
+                "targetId": "c2",
+                "labels": ["Nombre Uno", "Nombre Dos", "1", "*"],
+            }
+        ],
+    }
+    commands = map_gemini_response_to_commands(parsed)
+    rel_cmd = next(p for t, p in commands if t == "CREATE_RELATION")
+    assert rel_cmd["sourceMultiplicity"] == "1"
+    assert rel_cmd["targetMultiplicity"] == "*"
+    assert rel_cmd["name"] is None
+
+
+def test_generalization_does_not_require_nor_emit_multiplicities():
+    """
+    En UML (y en UmlGeneralization), la herencia no tiene multiplicidades.
+    El mapper no exige 2 multiplicidades ni emite sourceMultiplicity / targetMultiplicity.
+    """
+    parsed = {
+        "classes": [
+            {"id": "c1", "name": "Subclase", "attributes": [], "methods": []},
+            {"id": "c2", "name": "Superclase", "attributes": [], "methods": []},
+        ],
+        "relationships": [
+            {
+                "id": "r1",
+                "type": "generalization",
+                "sourceId": "c1",
+                "targetId": "c2",
+                "labels": [],
+            }
+        ],
+    }
+    commands = map_gemini_response_to_commands(parsed)
+    rel_cmd = next(p for t, p in commands if t == "CREATE_RELATION")
+    assert rel_cmd["type"] == "GENERALIZATION"
+    assert "sourceMultiplicity" not in rel_cmd
+    assert "targetMultiplicity" not in rel_cmd
+
+
 def test_original_editado_shape_now_rejected_as_unrecognized():
     """
     El formato {"original","editado"} (edición) y el de "eliminar": true por

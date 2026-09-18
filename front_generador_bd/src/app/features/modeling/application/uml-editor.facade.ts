@@ -366,6 +366,10 @@ export class UmlEditorFacade {
     this.assistantCommandService.sendPrompt(prompt);
   }
 
+  sendAssistantImage(image: File): void {
+    this.assistantCommandService.sendImage(image);
+  }
+
   closeContextMenu(): void {
     this.contextMenu.set(null);
   }

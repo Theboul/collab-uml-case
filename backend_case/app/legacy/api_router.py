@@ -1,5 +1,6 @@
 import base64
 import json
+import logging
 import re
 import shutil
 import tempfile
@@ -24,6 +25,8 @@ from backend_case.app.legacy.flutter_generator import FlutterCRUDGenerator
 from backend_case.app.legacy.models import BackupUMLRecord
 from backend_case.app.legacy.services_gemini import call_gemini, call_gemini_from_image
 from backend_case.app.legacy.zip_utils import compress_folder_to_zip
+
+logger = logging.getLogger(__name__)
 
 legacy_api_router = APIRouter(prefix="/api", tags=["Legacy Compatibility API"])
 
@@ -243,6 +246,26 @@ async def analyze_uml_image(
     mime_type = image.content_type or "image/png"
 
     result = call_gemini_from_image(image_base64, mime_type=mime_type)
+
+    # call_gemini_from_image atrapa sus propias excepciones y devuelve
+    # {"error": ...} en vez de propagar. Para errores HTTP de `requests`, ese
+    # string incluye la URL completa de la request -- con la API key de
+    # Gemini en el query string (?key=...). Nunca se reenvía ese detalle
+    # crudo al cliente: se loguea server-side y se responde un mensaje
+    # genérico, preservando el contrato legacy (200 + {"uml_json": {...}}).
+    if isinstance(result, dict) and "error" in result:
+        logger.warning("call_gemini_from_image falló: %s", result["error"])
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={
+                "uml_json": {
+                    "error": (
+                        "No se pudo interpretar la imagen del diagrama. Probá con una "
+                        "foto más clara o de mejor resolución."
+                    )
+                }
+            },
+        )
 
     try:
         parsed = json.loads(result) if isinstance(result, str) else result

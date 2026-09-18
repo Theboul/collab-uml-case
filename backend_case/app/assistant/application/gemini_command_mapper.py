@@ -35,6 +35,8 @@ from core.uml_domain.model import (
 UNRECOGNIZED_FORMAT_MESSAGE = "La respuesta de la IA no tiene un formato reconocible."
 
 _PARAM_RE = re.compile(r"^\s*([^:]+?)\s*:\s*(.+?)\s*$")
+_MULTIPLICITY_RE = re.compile(r"^(\d+(\.\.(\d+|\*))?|\*|[nmNM])$")
+_ROLE_PREFIXES = ("+", "-", "#", "~")
 _RELATION_TYPES = {"association", "generalization", "aggregation", "composition", "dependency"}
 _RELATION_TYPES_UPPER = {t.upper() for t in _RELATION_TYPES}
 
@@ -88,6 +90,7 @@ def map_gemini_response_to_commands(parsed: Any) -> list[tuple[str, dict[str, An
 
     commands: list[tuple[str, dict[str, Any]]] = []
     created_class_ids: set[str] = set()
+    class_names_by_id: dict[str, str] = {}
 
     # 1. Todas las clases (y sus atributos/operaciones) primero.
     for index, raw_class in enumerate(classes):
@@ -99,6 +102,7 @@ def map_gemini_response_to_commands(parsed: Any) -> list[tuple[str, dict[str, An
 
         class_id = str(raw_class["id"]) if raw_class.get("id") else str(uuid.uuid4())
         created_class_ids.add(class_id)
+        class_names_by_id[class_id] = name.strip()
 
         x = _GRID_ORIGIN + (index % _GRID_COLS) * _GRID_STEP_X
         y = _GRID_ORIGIN + (index // _GRID_COLS) * _GRID_STEP_Y
@@ -160,25 +164,67 @@ def map_gemini_response_to_commands(parsed: Any) -> list[tuple[str, dict[str, An
             )
 
         labels = rel.get("labels") or []
-        source_mult = str(labels[0]) if len(labels) > 0 and labels[0] else "1"
-        target_mult = str(labels[1]) if len(labels) > 1 and labels[1] else "1"
+        multiplicities, _roles, names = _classify_relation_labels(labels)
 
-        commands.append(
-            (
-                "CREATE_RELATION",
-                {
-                    "relationId": str(rel.get("id") or uuid.uuid4()),
-                    "type": rel_type.upper(),
-                    "sourceClassId": source_id,
-                    "targetClassId": target_id,
-                    "sourceMultiplicity": source_mult,
-                    "targetMultiplicity": target_mult,
-                    "name": rel.get("name"),
-                },
-            )
-        )
+        if rel.get("name") and str(rel["name"]).strip():
+            assigned_name: str | None = str(rel["name"]).strip()
+        elif len(names) == 1:
+            assigned_name = names[0]
+        else:
+            assigned_name = None
+
+        payload: dict[str, Any] = {
+            "relationId": str(rel.get("id") or uuid.uuid4()),
+            "type": rel_type.upper(),
+            "sourceClassId": source_id,
+            "targetClassId": target_id,
+            "name": assigned_name,
+        }
+
+        if rel_type in ("association", "aggregation", "composition"):
+            if len(multiplicities) != 2:
+                src_label = class_names_by_id.get(source_id, source_id)
+                tgt_label = class_names_by_id.get(target_id, target_id)
+                raise UmlValidationError(
+                    f"La relación '{rel_type}' entre '{src_label}' y '{tgt_label}' "
+                    f"no contiene exactamente 2 multiplicidades reconocibles en sus etiquetas "
+                    f"(se encontraron {len(multiplicities)}: {multiplicities})."
+                )
+            payload["sourceMultiplicity"] = multiplicities[0]
+            payload["targetMultiplicity"] = multiplicities[1]
+
+        commands.append(("CREATE_RELATION", payload))
 
     return commands
+
+
+def _classify_relation_labels(labels: list[Any]) -> tuple[list[str], list[str], list[str]]:
+    """
+    Clasifica las etiquetas visuales de una relación por patrón:
+    - Multiplicidades: coincide con el formato UML de cardinalidad
+      ('1', '*', '0..1', '0..*', '1..*', 'N..M', 'n', 'm')
+    - Roles: comienza con prefijo de visibilidad UML ('+', '-', '#', '~')
+    - Nombres: cualquier otra etiqueta textual que no sea rol ni multiplicidad
+    """
+    multiplicities: list[str] = []
+    roles: list[str] = []
+    names: list[str] = []
+
+    for item in labels:
+        if item is None:
+            continue
+        text = str(item).strip()
+        if not text or text.lower() == "null":
+            continue
+
+        if _MULTIPLICITY_RE.match(text):
+            multiplicities.append(text)
+        elif text.startswith(_ROLE_PREFIXES):
+            roles.append(text)
+        else:
+            names.append(text)
+
+    return multiplicities, roles, names
 
 
 def _parse_parameters(raw: Any, class_name: str, method_name: str) -> list[dict[str, str]]:

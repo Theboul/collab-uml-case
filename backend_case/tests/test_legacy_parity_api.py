@@ -110,6 +110,38 @@ def test_parity_api_07_uml_from_image():
         assert data["uml_json"]["classes"][0]["name"] == "Producto"
 
 
+def test_parity_api_07b_uml_from_image_never_leaks_gemini_error_detail():
+    """
+    call_gemini_from_image atrapa sus propias excepciones y devuelve
+    {"error": str(e)} -- para errores HTTP de `requests`, ese string incluye
+    la URL completa de la request, con la API key de Gemini en el query
+    string. El valor de la key acá es sintético (no una key real, ni siquiera
+    una ya rotada) -- alcanza con probar que CUALQUIER string con esa forma
+    nunca llega al cliente, sin dejar un fragmento de credencial real en el
+    repo.
+    """
+    leaky_detail = (
+        "400 Client Error: Bad Request for url: "
+        "https://generativelanguage.googleapis.com/v1beta/models/"
+        "gemini-flash-lite-latest:generateContent?key=AQ.FakeSyntheticKeyForTestingOnly123"
+    )
+
+    with patch(
+        "backend_case.app.legacy.api_router.call_gemini_from_image",
+        return_value={"error": leaky_detail},
+    ):
+        dummy_png = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15c4\x00\x00\x00\nIDATx\x9cc`\x00\x00\x00\x02\x00\x01H\xaf\xa4q\x00\x00\x00\x00IEND\xaeB`\x82"
+        files = {"image": ("borrosa.png", io.BytesIO(dummy_png), "image/png")}
+        response = client.post("/api/uml_from_image/", files=files)
+
+    assert response.status_code == 200
+    body_text = response.text
+    assert "key=" not in body_text
+    assert "FakeSyntheticKeyForTestingOnly123" not in body_text
+    assert "generativelanguage.googleapis.com" not in body_text
+    assert "No se pudo interpretar la imagen" in body_text
+
+
 def test_parity_api_08_generar_flutter_success():
     valid_uml = {
         "classes": [
