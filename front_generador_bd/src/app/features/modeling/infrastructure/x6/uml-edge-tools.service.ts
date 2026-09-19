@@ -39,27 +39,41 @@ export class UmlEdgeToolsService {
     };
   }
 
+  /** Aristas con un arrastre de vértice en curso (entre el mousedown y el mouseup sobre el handle). */
+  private readonly edgesMovingVertex = new Set<string>();
+
   /**
    * Adjunta el tool de vértices a toda relación (drag-to-connect o renderCells) y persiste
    * los cambios de trazado. La persistencia se emite en el mismo punto que node:moved: al
    * soltar el arrastre (batch:stop de 'move-vertex', que siempre ocurre tanto al mover como
    * al agregar un vértice), nunca en cada mousemove intermedio. Eliminar un vértice (doble
-   * clic sobre su handle) no pasa por un batch, así que usa el evento dedicado que dispara
-   * removeVertexAt.
+   * clic sobre su handle) no pasa por un batch, así que se detecta por el cambio de cantidad.
    */
   registerListeners(graph: Graph): void {
     graph.on('edge:added', ({ edge }) => {
       edge.addTools([this.verticesToolConfig()]);
     });
 
+    graph.on('edge:batch:start', ({ edge, name }) => {
+      if (name === 'move-vertex') this.edgesMovingVertex.add(edge.id);
+    });
+
     graph.on('edge:batch:stop', ({ edge, name }) => {
       if (name !== 'move-vertex') return;
+      this.edgesMovingVertex.delete(edge.id);
       this.ngZone.run(() => {
         this.verticesChanged$.next({ edgeId: edge.id, vertices: edge.getVertices() });
       });
     });
 
-    graph.on('edge:vertexs:removed', ({ edge }) => {
+    // Borrado real de un vértice. `edge:vertexs:removed` no sirve para detectarlo: X6 lo emite
+    // cuando una coordenada deja de estar en el array (model/edge.js), o sea también al MOVER
+    // un vértice, en cada paso del arrastre. Se distingue por cantidad (bajó) y por origen: solo
+    // lo que hace el usuario con la herramienta (`options.ui`), nunca una reconciliación
+    // programática, y fuera de un arrastre (ahí ya persiste el batch:stop con el estado final).
+    graph.on('edge:change:vertices', ({ edge, previous, current, options }) => {
+      if (!options?.['ui'] || this.edgesMovingVertex.has(edge.id)) return;
+      if ((current?.length ?? 0) >= (previous?.length ?? 0)) return;
       this.ngZone.run(() => {
         this.verticesChanged$.next({ edgeId: edge.id, vertices: edge.getVertices() });
       });
