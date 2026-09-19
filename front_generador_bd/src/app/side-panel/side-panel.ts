@@ -10,7 +10,6 @@ import { UmlImageServiceTs } from '../../services/imports/uml-image.service';
 import { FrontendGeneratorService } from '../../services/exports/frontend-generator.service';
 import { Spinner } from "../components/diagram/spinner/spinner";
 import { ChatbotService } from '../../services/IA/chatbot.service';
-import { BackendGeneratorService } from '../../services/exports/backend-generator.service';
 
 
 @Component({
@@ -22,9 +21,7 @@ import { BackendGeneratorService } from '../../services/exports/backend-generato
 export class SidePanel {
   private frontendGeneratorService = inject(FrontendGeneratorService);
   private chatboxService = inject(ChatbotService);
-  private backendGeneratorService=inject(BackendGeneratorService);
   @Output() elementDragged = new EventEmitter<CdkDragEnd>();
-  @Output() saveClicked = new EventEmitter<void>();
   @Output() generateClicked = new EventEmitter<string>();
 
   public showActions: boolean = false;
@@ -63,9 +60,6 @@ export class SidePanel {
   onDragEnded(event: CdkDragEnd) {
     this.elementDragged.emit(event);
     event.source.reset();
-  }
-  onSaveClicked() {
-    this.saveClicked.emit();
   }
   onGenerate() {
     if (this.prompt.trim()) {
@@ -215,10 +209,7 @@ export class SidePanel {
   isLoadingGeneratefrontend(): boolean {
     return this.frontendGeneratorService.loading();
   }
-  isLoadingGenerateBackend():boolean{
-    return this.backendGeneratorService.loading();
-  }
-  
+
 
 
 }

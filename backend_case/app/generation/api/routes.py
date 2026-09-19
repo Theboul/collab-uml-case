@@ -44,10 +44,10 @@ async def generate_spring_backend(
     CU10: genera y devuelve el .zip de un backend Spring Boot a partir del
     modelo UML persistido del lienzo. Solo lectura (no incrementa version),
     mismo control de acceso que GET /{canvas_id}. Valida con UMLValidator y
-    SpringCompatibilityValidator antes de generar -- si el modelo tiene
-    errores bloqueantes o usa una característica no soportada por el
-    generador, rechaza con 422/400 explícito y nunca llega a invocar al
-    generador Java. Si el generador Java está caído o no responde a tiempo,
+    SpringCompatibilityValidator antes de generar -- si el modelo no tiene
+    ninguna clase, tiene errores bloqueantes o usa una característica no
+    soportada por el generador, rechaza con 422/400 explícito y nunca llega
+    a invocar al generador Java. Si el generador Java está caído o no responde a tiempo,
     devuelve 503 explícito -- nunca deja escapar la excepción del cliente
     HTTP subyacente como 500 genérico.
     """

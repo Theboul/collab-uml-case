@@ -180,3 +180,40 @@ def test_generate_spring_backend_generator_unavailable_returns_controlled_503(
 
     assert res.status_code == 503
     assert res.json()["code"] == "SPRING_GENERATOR_UNAVAILABLE"
+
+
+def test_generate_spring_backend_rejects_empty_model_without_calling_port(client: TestClient):
+    """
+    Precondición de CU10 ("modelo UML con información suficiente"): un lienzo sin
+    ninguna clase se rechaza con 422 controlado ANTES de invocar al generador --
+    no se entrega un zip ni una colección Postman vacíos.
+    """
+    canvas_id, _ = _create_canvas(client, "Lienzo CU10 Vacío")
+
+    with patch.object(HttpSpringAdapter, "generate") as mock_generate:
+        res = client.post(f"/api/v2/canvases/{canvas_id}/generation/spring")
+
+    assert res.status_code == 422
+    assert res.headers["content-type"] == "application/json"
+    assert "content-disposition" not in res.headers
+    body = res.json()
+    assert body["code"] == "GENERATION_EMPTY_MODEL"
+    assert "al menos una clase" in body["message"]
+    assert body["details"] == []
+    mock_generate.assert_not_called()
+
+
+def test_generate_spring_backend_empty_model_check_lifts_once_a_class_exists(client: TestClient):
+    canvas_id, version = _create_canvas(client, "Lienzo CU10 Vacío y luego con clase")
+
+    with patch.object(HttpSpringAdapter, "generate", return_value=FAKE_ZIP_BYTES) as mock_generate:
+        empty = client.post(f"/api/v2/canvases/{canvas_id}/generation/spring")
+        assert empty.status_code == 422
+        mock_generate.assert_not_called()
+
+        _create_class(client, canvas_id, version, "Producto")
+        filled = client.post(f"/api/v2/canvases/{canvas_id}/generation/spring")
+
+    assert filled.status_code == 200
+    assert filled.headers["content-type"] == "application/zip"
+    mock_generate.assert_called_once()

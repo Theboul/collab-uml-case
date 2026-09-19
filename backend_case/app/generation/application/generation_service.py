@@ -36,6 +36,18 @@ _ACCESS_FORBIDDEN_DETAIL = {
     ),
 }
 
+_EMPTY_MODEL_DETAIL = {
+    "code": "GENERATION_EMPTY_MODEL",
+    "message": (
+        "El lienzo no tiene ninguna clase. Agregá al menos una clase al modelo "
+        "antes de generar el backend."
+    ),
+}
+
+# 422 literal: la constante de status cambió de nombre entre versiones de Starlette
+# (UNPROCESSABLE_ENTITY quedó deprecada y UNPROCESSABLE_CONTENT no existe en las viejas).
+_HTTP_422 = 422
+
 _TARGET_GENERATOR = "spring-boot-v1"
 
 
@@ -61,6 +73,9 @@ class GenerationService:
             )
 
         modelo = res.lienzo.modelo
+
+        if not modelo.classes:
+            raise HTTPException(status_code=_HTTP_422, detail=_EMPTY_MODEL_DETAIL)
 
         resultado_uml = self.uml_validator.validate(modelo)
         if not resultado_uml.is_valid:

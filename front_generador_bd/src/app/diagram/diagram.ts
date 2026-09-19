@@ -6,8 +6,6 @@ import { DiagramService } from '../../services/diagram/diagram.service';
 import { FallbackService } from '../../services/diagram/fallback.service';
 import { RelationshipService } from '../../services/diagram/relationship.service';
 import { UmlClass, Attribute, Method } from '../../models/uml-class.model';
-import { DiagramExportService } from '../../services/exports/diagram-export.service';
-import { BackendGeneratorService } from '../../services/exports/backend-generator.service';
 import { ChatbotService } from '../../services/IA/chatbot.service';
 import { UmlValidationService } from '../../services/colaboration/uml-validation.service';
 import { ActivatedRoute } from '@angular/router';
@@ -31,8 +29,6 @@ export class Diagram implements AfterViewInit {
     private diagramService: DiagramService,
     private fallbackService: FallbackService,
     private relationshipService: RelationshipService,
-    private exportService: DiagramExportService,
-    private backendGen: BackendGeneratorService,
     private chatbot: ChatbotService,
     private umlValidation: UmlValidationService,
     private route: ActivatedRoute
@@ -48,8 +44,6 @@ export class Diagram implements AfterViewInit {
           this.sidePanel.elementDragged.subscribe((event: CdkDragEnd) => {
             this.onDragEnded(event);
           });
-
-          this.sidePanel.saveClicked.subscribe(() => this.saveDiagram());
 
           this.sidePanel.generateClicked.subscribe((prompt: string) => {
             this.generateFromPrompt(prompt);
@@ -80,14 +74,6 @@ export class Diagram implements AfterViewInit {
         });
       }
   }
-  saveDiagram() {
-    const json = this.exportService.export(this.diagramService.getGraph());
-    console.log('JSON exportado:', JSON.stringify(json, null, 2));
-
-    // luego lo puedes enviar a backend
-    this.backendGen.generateBackend(json, 'mi-backend.zip');
-  }
-
   generateFromPrompt(prompt: string) {
     this.chatbot.isLoading.set(true);
     this.chatbot.generateDiagram(prompt).subscribe({
