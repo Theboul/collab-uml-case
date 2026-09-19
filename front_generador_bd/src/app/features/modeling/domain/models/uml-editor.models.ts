@@ -124,17 +124,36 @@ export const UML_NODE_DIMENSIONS = {
   HEADER_HEIGHT: 32,
   TITLE_Y: 16,
   ATTR_START_Y: 42,
-  LINE_HEIGHT: 16,
+  /** Alto de una fila de operación de una sola línea — igual a ATTR_ROW_HEIGHT para que
+   *  ambos compartimentos tengan el mismo ritmo vertical. */
+  LINE_HEIGHT: 22,
   SEP_PADDING: 10,
   BOTTOM_PADDING: 12,
   MIN_WIDTH: 180,
+  /** Tope del ancho que el nodo toma solo según su contenido; más allá, el texto se envuelve. */
+  MAX_WIDTH: 340,
   MIN_HEIGHT: 110,
-  /** Alto de fila real de atributo (Fase 2) — más alto que LINE_HEIGHT (16) para
-   *  fuente 12px con line-height ~1.5 y para dar lugar al ícono de eliminar. */
+  /** Alto de fila real de atributo (Fase 2) con fuente 12px y lugar para el ícono de eliminar. */
   ATTR_ROW_HEIGHT: 22,
   ATTR_FONT_SIZE: 12,
-  /** Filas visibles antes de que el compartimento de atributos entre en scroll interno. */
-  ATTR_MAX_VISIBLE_ROWS: 7,
+  /** Misma fuente que los atributos: los tres compartimentos comparten tamaño de texto. */
+  OP_FONT_SIZE: 12,
+  TITLE_FONT_SIZE: 13,
+  TITLE_LINE_HEIGHT: 18,
+  TITLE_PADDING_X: 16,
+  /** Padding vertical total del encabezado (arriba + abajo) alrededor de las líneas del título. */
+  HEADER_PADDING_Y: 14,
+  /** Filas envueltas (atributo u operación con más de una línea): alto por línea y padding vertical.
+   *  Una fila de una línea da 16 + 6 = ATTR_ROW_HEIGHT. */
+  WRAP_LINE_HEIGHT: 16,
+  ROW_V_PADDING: 6,
+  /** Sangría de las líneas de continuación de una fila envuelta. */
+  WRAP_INDENT: 12,
+  ATTR_PADDING_X: 8,
+  /** Espacio reservado a la derecha de la fila de atributo para el ícono de eliminar. */
+  ATTR_ICON_RESERVE: 25,
+  ATTR_NAME_TYPE_GAP: 8,
+  OP_PADDING_X: 10,
 } as const;
 
 export interface SubElementSelection {

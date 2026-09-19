@@ -1,12 +1,8 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
-import {
-  SubElementSelection,
-  UML_NODE_DIMENSIONS,
-  UmlClassDto,
-} from '../domain/models/uml-editor.models';
+import { SubElementSelection, UmlClassDto } from '../domain/models/uml-editor.models';
 import { EditorStateService } from './editor-state.service';
 import { UmlGraphService } from '../infrastructure/x6/uml-graph.service';
-import { visibleAttributeRowCount } from '../infrastructure/x6/uml-class-node-visual';
+import { attributeRowRect, operationRowRect } from '../infrastructure/x6/uml-class-node-layout';
 
 @Injectable({
   providedIn: 'root',
@@ -58,32 +54,19 @@ export class EditorSelectionService {
     const cls = this.state.model().classes.find((c) => c.id === sub.classId);
     if (!cls) return;
 
-    if (sub.type === 'attribute') {
-      const idx = cls.attributes.findIndex((a) => a.id === sub.elementId);
-      const scrollRow = this.graphService.getAttributeScrollRow(sub.classId);
-      const visibleRows = visibleAttributeRowCount(cls.attributes.length);
-      if (idx !== -1 && idx >= scrollRow && idx < scrollRow + visibleRows) {
-        const itemRelY =
-          UML_NODE_DIMENSIONS.HEADER_HEIGHT +
-          UML_NODE_DIMENSIONS.SEP_PADDING +
-          (idx - scrollRow) * UML_NODE_DIMENSIONS.ATTR_ROW_HEIGHT;
-        this.graphService.setRowHighlight(sub.classId, itemRelY, UML_NODE_DIMENSIONS.ATTR_ROW_HEIGHT);
-      } else {
-        // Sin índice válido, o la fila está scrolleada fuera de la ventana visible
-        // del compartimento — no hay nada que resaltar en pantalla.
-        this.graphService.clearRowHighlight(sub.classId);
-      }
-    } else if (sub.type === 'operation') {
-      const idx = cls.operations.findIndex((o) => o.id === sub.elementId);
-      if (idx !== -1) {
-        const attrBlockHeight = visibleAttributeRowCount(cls.attributes.length) * UML_NODE_DIMENSIONS.ATTR_ROW_HEIGHT;
-        const sep2Y = UML_NODE_DIMENSIONS.HEADER_HEIGHT + UML_NODE_DIMENSIONS.SEP_PADDING + attrBlockHeight + 6;
-        const opStartY = sep2Y + UML_NODE_DIMENSIONS.SEP_PADDING;
-        const itemRelY = opStartY - 4 + idx * UML_NODE_DIMENSIONS.LINE_HEIGHT;
-        this.graphService.setRowHighlight(sub.classId, itemRelY);
-      } else {
-        this.graphService.clearRowHighlight(sub.classId);
-      }
+    // La fila a resaltar sale del mismo layout con el que está dibujado el nodo (alto
+    // variable por envoltura de texto), así el resaltado no se desalinea de la fila.
+    const layout = this.graphService.getNodeLayout(sub.classId);
+    const rect = !layout
+      ? null
+      : sub.type === 'attribute'
+        ? attributeRowRect(layout, cls.attributes.findIndex((a) => a.id === sub.elementId))
+        : operationRowRect(layout, cls.operations.findIndex((o) => o.id === sub.elementId));
+
+    if (rect) {
+      this.graphService.setRowHighlight(sub.classId, rect.y, rect.height);
+    } else {
+      this.graphService.clearRowHighlight(sub.classId);
     }
   }
 

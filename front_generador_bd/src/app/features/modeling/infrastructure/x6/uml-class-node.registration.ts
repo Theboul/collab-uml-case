@@ -12,39 +12,67 @@ export function registerUmlClassNode(): void {
   if (registered) return;
   try {
     Graph.registerNode('uml-class-node', {
-      inherit: 'rect',
+      // Sin `inherit: 'rect'`: ese shape trae defaults para los selectores CSS `rect` y
+      // `text` (fuente 14 Arial, text-anchor middle, borde #333…) que X6 re-aplica a
+      // TODOS los <rect>/<text> de la vista en cada actualización — incluidas las filas
+      // de atributos y operaciones que pinta UmlAttributeRowsService a mano — y las
+      // desarmaban (p. ej. al resaltar una fila).
       width: 190,
       height: 130,
       markup: [
         { tagName: 'rect', selector: 'body' },
         { tagName: 'rect', selector: 'header' },
+        // Aplana las esquinas inferiores (redondeadas) del encabezado, que ahora tiene color propio.
+        { tagName: 'rect', selector: 'headerCap' },
         { tagName: 'rect', selector: 'rowHighlight' },
         { tagName: 'text', selector: 'title' },
-        { tagName: 'line', selector: 'separator1' },
-        // Filas reales de atributo (Fase 2): grupo vacío poblado/mutado directamente
-        // en el DOM por UmlAttributeRowsService, fuera del sistema declarativo de
-        // attrs de X6 (necesita clip + scroll + listeners por fila).
+        // Separadores como rect de ancho relativo: un <line> no puede expresar
+        // `x2 = 100%` (refX2 es alias de refX y solo traslada el elemento).
+        { tagName: 'rect', selector: 'separator1' },
+        // Filas reales de atributo y de operación: grupos vacíos poblados/mutados
+        // directamente en el DOM por UmlAttributeRowsService, fuera del sistema
+        // declarativo de attrs de X6 (necesitan filas de alto variable por envoltura
+        // de texto y listeners por fila).
         { tagName: 'g', selector: 'attributeRows' },
-        { tagName: 'line', selector: 'separator2' },
-        { tagName: 'text', selector: 'operations', className: 'uml-operations-text' },
+        { tagName: 'rect', selector: 'separator2' },
+        { tagName: 'g', selector: 'operationRows' },
+        // Contorno encima de todo: el encabezado con fondo propio y el hover de fila
+        // taparían la mitad interior de un trazo dibujado en `body`.
+        { tagName: 'rect', selector: 'frame' },
       ],
       attrs: {
         body: {
           refWidth: '100%',
           refHeight: '100%',
           fill: '#ffffff',
-          stroke: '#1e293b',
-          strokeWidth: 1.5,
+          stroke: 'none',
           rx: 4,
           ry: 4,
         },
         header: {
           refWidth: '100%',
           height: 32,
-          fill: '#f8fafc',
+          fill: '#e0e7ff',
           stroke: 'none',
           rx: 4,
           ry: 4,
+        },
+        headerCap: {
+          refWidth: '100%',
+          height: 4,
+          y: 28,
+          fill: '#e0e7ff',
+          stroke: 'none',
+        },
+        frame: {
+          refWidth: '100%',
+          refHeight: '100%',
+          fill: 'none',
+          stroke: '#1e293b',
+          strokeWidth: 1.5,
+          rx: 4,
+          ry: 4,
+          pointerEvents: 'none',
         },
         rowHighlight: {
           display: 'none',
@@ -64,36 +92,30 @@ export function registerUmlClassNode(): void {
           fontFamily: 'Inter, system-ui, sans-serif',
           fontSize: 13,
           fontWeight: 700,
+          lineHeight: 18,
           fill: '#0f172a',
         },
         separator1: {
-          stroke: '#1e293b',
-          strokeWidth: 1.5,
-          x1: 0,
-          refX2: '100%',
-          y1: 32,
-          y2: 32,
+          refWidth: '100%',
+          height: 1.5,
+          y: 31.25,
+          fill: '#1e293b',
+          stroke: 'none',
         },
         attributeRows: {
           refX: 0,
           refY: 42,
         },
         separator2: {
-          stroke: '#cbd5e1',
-          strokeWidth: 1,
-          x1: 0,
-          refX2: '100%',
-          y1: 82,
-          y2: 82,
+          refWidth: '100%',
+          height: 1,
+          y: 81.5,
+          fill: '#cbd5e1',
+          stroke: 'none',
         },
-        operations: {
-          refX: 10,
+        operationRows: {
+          refX: 0,
           refY: 92,
-          fontFamily: 'JetBrains Mono, monospace',
-          fontSize: 11,
-          fill: '#334155',
-          textAnchor: 'start',
-          textVerticalAnchor: 'top',
         },
       },
     });

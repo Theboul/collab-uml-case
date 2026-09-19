@@ -7,7 +7,6 @@ import {
   UmlParameter,
   UmlRelationDto,
   UmlRelationType,
-  UML_NODE_DIMENSIONS,
 } from '../../domain/models/uml-editor.models';
 import { buildUmlClassNodeVisual } from './uml-class-node-visual';
 
@@ -76,15 +75,15 @@ export class UmlDiagramAdapterService {
   ): { nodes: X6NodeConfig[]; edges: X6EdgeConfig[] } {
     const nodes: X6NodeConfig[] = (model.classes || []).map((c) => {
       const nodeLayout = layout?.nodes?.[c.id] || { x: 100, y: 100, width: 190, height: 130 };
-      const visual = buildUmlClassNodeVisual(c);
-      const calculatedMinWidth = Math.max(UML_NODE_DIMENSIONS.MIN_WIDTH, nodeLayout.width || 190);
+      // El ancho persistido es un piso: el nodo crece por contenido hasta MAX_WIDTH.
+      const visual = buildUmlClassNodeVisual(c, nodeLayout.width || 190);
 
       return {
         id: c.id,
         shape: 'uml-class-node',
         x: nodeLayout.x,
         y: nodeLayout.y,
-        width: Math.max(calculatedMinWidth, nodeLayout.width || 180),
+        width: visual.width,
         height: Math.max(visual.minHeight, nodeLayout.height || 120),
         data: {
           name: c.name,

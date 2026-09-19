@@ -101,3 +101,22 @@ vez de introducir uno nuevo solo para esto.
 No se tocó el límite de 7 filas, ni `uml-class-node.registration.ts`, ni la firma de ningún método
 público de `UmlAttributeRowsService` — el fix vive entero dentro del cuerpo de `paintRows()` más
 dos métodos privados nuevos (`paintScrollFade`, `ensureFadeGradientDef`).
+
+## Actualización (2026-09-19): sin scroll interno, el nodo crece y envuelve el texto
+
+Las secciones anteriores sobre scroll interno, `ATTR_MAX_VISIBLE_ROWS`, el fundido y el badge
+`+N` quedan **superadas**: el nodo ya no recorta ni scrollea — muestra todos los atributos y
+operaciones, se ensancha según el texto más largo (hasta `MAX_WIDTH` = 340px) y lo que aun así no
+entra se envuelve en varias líneas que se suman al alto. Se eliminó `ATTR_MAX_VISIBLE_ROWS`, el
+scroll por rueda, el fundido y el badge; la truncación con elipsis también (ahora se envuelve).
+
+- La geometría (ancho mínimo, líneas envueltas, alto/posición de cada fila) sale de una función pura
+  en `uml-class-node-layout.ts`; render (`UmlAttributeRowsService`), hit-testing
+  (`UmlInteractionService`) y resaltado de fila (`EditorSelectionService`) leen todos de ahí.
+- Las operaciones dejaron de ser un único `<text>` declarativo: son filas SVG pintadas a mano en el
+  selector `operationRows`, igual que los atributos en `attributeRows`.
+- El shape ya no hereda de `rect`: ese `inherit` traía defaults para los selectores CSS `rect`/`text`
+  que X6 re-aplicaba a todas las filas manuales en cada actualización completa de la vista (p. ej. al
+  resaltar una fila), desarmándolas. Bug preexistente, reproducido antes en la línea base.
+- Un resize manual re-acomoda las filas al nuevo ancho (`node:resized`), lo que también cierra la
+  limitación anotada más arriba sobre el recálculo en `node:resized`.

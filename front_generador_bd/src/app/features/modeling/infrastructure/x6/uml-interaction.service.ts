@@ -1,7 +1,8 @@
 import { Injectable } from '@angular/core';
 import { Graph, Node } from '@antv/x6';
 import { UML_NODE_DIMENSIONS, UmlNodeSubElementEvent } from '../../domain/models/uml-editor.models';
-import { visibleAttributeRowCount } from './uml-class-node-visual';
+import { buildUmlClassNodeVisual } from './uml-class-node-visual';
+import { operationIndexAtY, operationRowRect } from './uml-class-node-layout';
 
 @Injectable({
   providedIn: 'root',
@@ -11,8 +12,7 @@ export class UmlInteractionService {
     graph: Graph | null,
     node: Node,
     clientX: number,
-    clientY: number,
-    targetElem?: SVGElement | null
+    clientY: number
   ): UmlNodeSubElementEvent | null {
     if (!graph) return null;
     const pos = node.getPosition();
@@ -21,19 +21,16 @@ export class UmlInteractionService {
     const localPoint = graph.clientToLocal(clientX, clientY);
     const relY = localPoint.y - pos.y;
 
-    const attributes: Array<{ id: string; name: string; type: string; visibility: string }> =
-      data.attributes || [];
     const operations: Array<{ id: string; name: string; returnType: string; visibility: string }> =
       data.operations || [];
 
-    const attrBlockHeight = visibleAttributeRowCount(attributes.length) * UML_NODE_DIMENSIONS.ATTR_ROW_HEIGHT;
-    const sep2Y = UML_NODE_DIMENSIONS.HEADER_HEIGHT + UML_NODE_DIMENSIONS.SEP_PADDING + attrBlockHeight + 6;
-    const opStartY = sep2Y + UML_NODE_DIMENSIONS.SEP_PADDING;
+    // Misma geometría con la que se dibujaron las filas (encabezado y filas envueltos incluidos).
+    const { layout } = buildUmlClassNodeVisual(data, size.width);
 
     const nodeBBox = { x: pos.x, y: pos.y, width: size.width, height: size.height };
 
     // 1. Zona de Encabezado (Nombre de la Clase)
-    if (relY <= UML_NODE_DIMENSIONS.HEADER_HEIGHT) {
+    if (relY <= layout.headerHeight) {
       return {
         classId: node.id,
         type: 'class',
@@ -45,37 +42,19 @@ export class UmlInteractionService {
       };
     }
 
-    // 2. Resolver por elemento SVG específico (tspan / text)
-    const isTspan = targetElem?.tagName?.toLowerCase() === 'tspan';
-
-    // 3. Zona de Atributos: filas reales con sus propios listeners nativos
+    // 2. Zona de Atributos: filas reales con sus propios listeners nativos
     // (ver UmlAttributeRowsService) — un click que llega hasta acá es espacio en
-    // blanco del compartimento (menos atributos que ATTR_MAX_VISIBLE_ROWS), no
-    // resuelve a nada.
-    if (relY < sep2Y) {
+    // blanco del compartimento, no resuelve a nada.
+    if (relY < layout.sep2Y) {
       return null;
     }
 
-    // 4. Zona de Operaciones
-    if (operations.length === 0) return null;
-
-    let opIndex = -1;
-    if (isTspan && targetElem?.parentElement) {
-      const tspans = Array.from(targetElem.parentElement.children);
-      opIndex = tspans.indexOf(targetElem);
-    }
-    if (opIndex < 0 || opIndex >= operations.length) {
-      opIndex = Math.max(
-        0,
-        Math.min(
-          operations.length - 1,
-          Math.floor((relY - opStartY + 2) / UML_NODE_DIMENSIONS.LINE_HEIGHT)
-        )
-      );
-    }
-
+    // 3. Zona de Operaciones: la fila se resuelve por geometría (una operación puede
+    // ocupar varias líneas si su firma se envolvió).
+    const opIndex = operationIndexAtY(layout, relY);
     const op = operations[opIndex];
-    if (!op) return null;
+    const rect = operationRowRect(layout, opIndex);
+    if (!op || !rect) return null;
 
     return {
       classId: node.id,
@@ -84,7 +63,7 @@ export class UmlInteractionService {
       name: op.name,
       typeOrReturn: op.returnType,
       visibility: op.visibility,
-      itemRelY: opStartY - 4 + opIndex * UML_NODE_DIMENSIONS.LINE_HEIGHT,
+      itemRelY: rect.y,
       nodeBBox,
       clientX,
       clientY,

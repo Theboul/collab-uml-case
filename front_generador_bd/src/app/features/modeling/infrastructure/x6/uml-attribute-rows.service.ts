@@ -1,7 +1,11 @@
 import { Injectable, NgZone, inject } from '@angular/core';
 import { Subject } from 'rxjs';
 import { CellView, Graph, Node } from '@antv/x6';
-import { UML_NODE_DIMENSIONS, UmlNodeSubElementEvent } from '../../domain/models/uml-editor.models';
+import {
+  UML_NODE_DIMENSIONS as D,
+  UmlNodeSubElementEvent,
+} from '../../domain/models/uml-editor.models';
+import { UmlAttributeRowLayout, UmlClassLayout, UmlRowLayout } from './uml-class-node-layout';
 import type { NodeDblClickEvent } from './uml-graph.service';
 
 export interface UmlAttributeRowInput {
@@ -12,24 +16,24 @@ export interface UmlAttributeRowInput {
 }
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
-const ROW_PADDING_X = 8;
 const ICON_SIZE = 13;
-const ICON_GAP = 4;
-const NAME_TYPE_GAP = 8;
-const ROWS_SELECTOR_NAME = 'attributeRows';
-/** Affordance de "hay más atributos abajo" cuando el compartimento está scrolleado — ver docs/analysis/decision-render-atributos-svg-vs-foreignobject.md. */
-const SCROLL_FADE_HEIGHT = 16;
-const FADE_GRADIENT_ID = 'uml-attr-fade-bottom';
-/** Mismo tono que `nameText`/`typeText` en `buildRow()` — contraste ~10:1 sobre el fade blanco, no `#64748b` (~4.76:1, insuficiente para 9px). */
-const BADGE_FILL = '#334155';
+const ATTRIBUTE_ROWS_SELECTOR = 'attributeRows';
+const OPERATION_ROWS_SELECTOR = 'operationRows';
+const MONO_FONT = 'JetBrains Mono, monospace';
+const TEXT_FILL = '#334155';
 
 /**
- * Dueño de las filas reales del compartimento de atributos (Fase 2): construye y
- * muta a mano el subárbol DOM del selector `attributeRows` del shape registrado en
- * `uml-class-node.registration.ts` — a propósito por fuera del sistema declarativo
- * de `attrs` de X6, porque necesita clip + scroll + listeners por fila, cosas que
- * ese sistema no cubre. Decisión de usar SVG puro (no `foreignObject`) documentada
- * en `docs/analysis/decision-render-atributos-svg-vs-foreignobject.md`.
+ * Dueño de las filas reales de los compartimentos de atributos y de operaciones:
+ * construye y muta a mano el subárbol DOM de los selectores `attributeRows` y
+ * `operationRows` del shape registrado en `uml-class-node.registration.ts` — a
+ * propósito por fuera del sistema declarativo de `attrs` de X6, porque las filas
+ * tienen alto variable (los textos largos se envuelven en varias líneas) y los
+ * atributos necesitan listeners por fila. La posición, el alto y las líneas de cada
+ * fila vienen ya calculados de `UmlClassLayout`; este servicio solo las dibuja.
+ * Decisión de usar SVG puro (no `foreignObject`) documentada en
+ * `docs/analysis/decision-render-atributos-svg-vs-foreignobject.md`.
+ *
+ * No hay scroll interno ni recorte: el nodo crece hasta mostrar todas las filas.
  *
  * No inyecta `UmlGraphService` (que sí inyecta este servicio para llamar a
  * `render()`) para no crear una dependencia circular — expone sus propios Subjects
@@ -48,55 +52,29 @@ export class UmlAttributeRowsService {
   readonly rowDblClick$ = new Subject<NodeDblClickEvent>();
   readonly deleteRequested$ = new Subject<{ classId: string; attributeId: string }>();
 
-  /** Contenedores con el listener de rueda/mousedown ya wireado (una sola vez por nodo). */
+  /** Contenedores con el listener de mousedown ya wireado (una sola vez por nodo). */
   private readonly wiredContainers = new WeakSet<Element>();
-  /** Última lista de atributos pintada por nodo, para poder repintar en el wheel sin pedirla de vuelta. */
-  private readonly latestAttributes = new WeakMap<Node, UmlAttributeRowInput[]>();
 
-  /**
-   * Reconstruye las filas visibles del compartimento de atributos de `node` según
-   * el scroll actual (clampeado a lo que sigue siendo válido si la lista encogió).
-   */
+  /** Reconstruye las filas de atributos y de operaciones de `node` según `layout`. */
   render(
     graph: Graph,
     node: Node,
     attributes: UmlAttributeRowInput[],
-    attrBlockHeight: number,
+    layout: UmlClassLayout,
   ): void {
     const view = graph.findViewByCell(node);
     if (!view || !graph.renderer.isViewMounted(view)) {
-      this.renderOnceMounted(graph, node, attributes, attrBlockHeight);
+      this.renderOnceMounted(graph, node, attributes, layout);
       return;
     }
 
-    const container = this.findRowsContainer(graph, node);
-    if (!container) return;
+    const attrContainer = this.findRowsContainer(graph, node, ATTRIBUTE_ROWS_SELECTOR);
+    const opContainer = this.findRowsContainer(graph, node, OPERATION_ROWS_SELECTOR);
+    if (!attrContainer || !opContainer) return;
 
-    this.latestAttributes.set(node, attributes);
-
-    const visibleRows = Math.max(
-      1,
-      Math.round(attrBlockHeight / UML_NODE_DIMENSIONS.ATTR_ROW_HEIGHT),
-    );
-    const maxStartRow = Math.max(0, attributes.length - visibleRows);
-    const requestedScroll = (node.prop('attrScrollRow') as number | undefined) ?? 0;
-    const scrollRow = Math.min(maxStartRow, Math.max(0, requestedScroll));
-    if (scrollRow !== requestedScroll) {
-      node.prop('attrScrollRow', scrollRow, { silent: true });
-    }
-
-    container.setAttribute('data-total-rows', String(attributes.length));
-    container.setAttribute('data-visible-rows', String(visibleRows));
-
-    this.paintRows(node, container, attributes, scrollRow, visibleRows);
-    this.wireContainer(node, container);
-  }
-
-  /** Fila actualmente en el tope del scroll de un nodo (0 si no hay scroll aplicado). */
-  getScrollRow(graph: Graph | null, nodeId: string): number {
-    const node = graph?.getCellById(nodeId);
-    if (!node || !node.isNode()) return 0;
-    return (node.prop('attrScrollRow') as number | undefined) ?? 0;
+    this.paintAttributeRows(node, attrContainer, attributes, layout);
+    this.paintOperationRows(opContainer, layout);
+    this.wireContainer(attrContainer);
   }
 
   /**
@@ -130,12 +108,12 @@ export class UmlAttributeRowsService {
     graph: Graph,
     node: Node,
     attributes: UmlAttributeRowInput[],
-    attrBlockHeight: number,
+    layout: UmlClassLayout,
   ): void {
     const onMounted = ({ view }: { view: CellView }): void => {
       if (view.cell.id !== node.id) return;
       graph.off('view:mounted', onMounted);
-      queueMicrotask(() => this.render(graph, node, attributes, attrBlockHeight));
+      queueMicrotask(() => this.render(graph, node, attributes, layout));
     };
     graph.on('view:mounted', onMounted);
   }
@@ -146,124 +124,85 @@ export class UmlAttributeRowsService {
    * la vista. Confirmado leyendo `@antv/x6/lib/view/markup.js`: ese mapa vive solo
    * en memoria, X6 NUNCA estampa un atributo `data-selector` en el DOM para markup
    * genérico (eso es específico de puertos/magnets, ver `cell.js`). Usar
-   * `container.querySelector('[data-selector="..."]')` (como hacía esta función
-   * antes) no matchea nunca — `render()` cortaba en el guard de `!container` y las
-   * filas jamás se pintaban. Bug real de Fase 2, confirmado por lectura de fuente.
+   * `container.querySelector('[data-selector="..."]')` no matchea nunca.
    */
-  private findRowsContainer(graph: Graph, node: Node): SVGGElement | null {
+  private findRowsContainer(graph: Graph, node: Node, selector: string): SVGGElement | null {
     const view = graph.findViewByCell(node) as unknown as {
       selectors?: Record<string, Element | Element[]>;
     } | null;
-    const el = view?.selectors?.[ROWS_SELECTOR_NAME];
+    const el = view?.selectors?.[selector];
     if (!el || Array.isArray(el)) return null;
     return el as SVGGElement;
   }
 
-  private paintRows(
+  private paintAttributeRows(
     node: Node,
     container: SVGGElement,
     attributes: UmlAttributeRowInput[],
-    scrollRow: number,
-    visibleRows: number,
+    layout: UmlClassLayout,
   ): void {
     while (container.firstChild) {
       container.removeChild(container.firstChild);
     }
-    const nodeWidth = node.getSize().width;
-    const slice = attributes.slice(scrollRow, scrollRow + visibleRows);
-    slice.forEach((attr, i) => {
-      container.appendChild(this.buildRow(node, attr, i, nodeWidth));
+    layout.attrRows.forEach((row, i) => {
+      const attr = attributes[i];
+      if (attr) container.appendChild(this.buildAttributeRow(node, attr, row, layout));
     });
+  }
 
-    const hiddenBelow = attributes.length - (scrollRow + visibleRows);
-    if (hiddenBelow > 0) {
-      this.paintScrollFade(container, nodeWidth, visibleRows, hiddenBelow);
+  private paintOperationRows(container: SVGGElement, layout: UmlClassLayout): void {
+    while (container.firstChild) {
+      container.removeChild(container.firstChild);
+    }
+    for (const row of layout.opRows) {
+      container.appendChild(this.buildOperationRow(row));
     }
   }
 
-  /**
-   * Affordance visual de "hay más atributos abajo" (bug encontrado en sesión de
-   * CU9: el límite de `ATTR_MAX_VISIBLE_ROWS` de `uml-class-node-visual.ts` es
-   * correcto, pero no tenía ninguna señal de que el compartimento es scrolleable
-   * — ver docs/analysis/decision-render-atributos-svg-vs-foreignobject.md).
-   * Fundido real vía `<linearGradient>` (no un rect semi-transparente plano, que
-   * se ve como una barra rota) + badge "+N" con el conteo restante. Ambos con
-   * `pointer-events: none` — decorativos, no interfieren con el click de fila ni
-   * con el listener de `wheel` de `wireContainer()`.
-   */
-  private paintScrollFade(
-    container: SVGGElement,
-    nodeWidth: number,
-    visibleRows: number,
-    hiddenBelow: number,
+  /** Un `<text>` con un `<tspan>` por línea; cada línea con su `y` absoluto (centro vertical) dentro de la fila. */
+  private appendLines(
+    text: SVGTextElement,
+    row: UmlRowLayout,
+    startX: number,
+    textAnchor: 'start' | 'end' = 'start',
   ): void {
-    const svgRoot = container.ownerSVGElement;
-    if (svgRoot) this.ensureFadeGradientDef(svgRoot);
-
-    const blockHeight = visibleRows * UML_NODE_DIMENSIONS.ATTR_ROW_HEIGHT;
-
-    const fade = document.createElementNS(SVG_NS, 'rect');
-    fade.setAttribute('x', '0');
-    fade.setAttribute('y', String(blockHeight - SCROLL_FADE_HEIGHT));
-    fade.setAttribute('width', String(nodeWidth));
-    fade.setAttribute('height', String(SCROLL_FADE_HEIGHT));
-    fade.setAttribute('fill', `url(#${FADE_GRADIENT_ID})`);
-    fade.setAttribute('pointer-events', 'none');
-    container.appendChild(fade);
-
-    const badge = document.createElementNS(SVG_NS, 'text');
-    badge.setAttribute('x', String(nodeWidth - 6));
-    badge.setAttribute('y', String(blockHeight - 4));
-    badge.setAttribute('text-anchor', 'end');
-    badge.setAttribute('font-family', 'JetBrains Mono, monospace');
-    badge.setAttribute('font-size', '9');
-    badge.setAttribute('font-weight', '600');
-    badge.setAttribute('fill', BADGE_FILL);
-    badge.setAttribute('pointer-events', 'none');
-    badge.textContent = `+${hiddenBelow}`;
-    container.appendChild(badge);
+    row.lines.forEach((line, i) => {
+      const tspan = document.createElementNS(SVG_NS, 'tspan');
+      tspan.setAttribute(
+        'x',
+        String(startX + (textAnchor === 'start' && i > 0 ? D.WRAP_INDENT : 0)),
+      );
+      tspan.setAttribute(
+        'y',
+        String(row.y + D.ROW_V_PADDING / 2 + i * D.WRAP_LINE_HEIGHT + D.WRAP_LINE_HEIGHT / 2),
+      );
+      tspan.textContent = line;
+      text.appendChild(tspan);
+    });
   }
 
-  /** Crea el `<linearGradient>` compartido una sola vez por `<svg>` raíz del canvas (reutilizado por ID en todos los nodos). */
-  private ensureFadeGradientDef(svgRoot: SVGSVGElement): void {
-    if (svgRoot.querySelector(`#${FADE_GRADIENT_ID}`)) return;
-
-    let defs = svgRoot.querySelector('defs');
-    if (!defs) {
-      defs = document.createElementNS(SVG_NS, 'defs');
-      svgRoot.insertBefore(defs, svgRoot.firstChild);
-    }
-
-    const gradient = document.createElementNS(SVG_NS, 'linearGradient');
-    gradient.setAttribute('id', FADE_GRADIENT_ID);
-    gradient.setAttribute('x1', '0');
-    gradient.setAttribute('y1', '0');
-    gradient.setAttribute('x2', '0');
-    gradient.setAttribute('y2', '1');
-
-    const stopTransparent = document.createElementNS(SVG_NS, 'stop');
-    stopTransparent.setAttribute('offset', '0%');
-    stopTransparent.setAttribute('stop-color', '#ffffff');
-    stopTransparent.setAttribute('stop-opacity', '0');
-
-    const stopOpaque = document.createElementNS(SVG_NS, 'stop');
-    stopOpaque.setAttribute('offset', '100%');
-    stopOpaque.setAttribute('stop-color', '#ffffff');
-    stopOpaque.setAttribute('stop-opacity', '0.95');
-
-    gradient.appendChild(stopTransparent);
-    gradient.appendChild(stopOpaque);
-    defs.appendChild(gradient);
+  private buildOperationRow(row: UmlRowLayout): SVGTextElement {
+    const text = document.createElementNS(SVG_NS, 'text');
+    text.setAttribute('class', 'uml-operations-text');
+    text.setAttribute('text-anchor', 'start');
+    text.setAttribute('dominant-baseline', 'central');
+    text.setAttribute('font-family', MONO_FONT);
+    text.setAttribute('font-size', String(D.OP_FONT_SIZE));
+    text.setAttribute('fill', TEXT_FILL);
+    this.appendLines(text, row, D.OP_PADDING_X);
+    return text;
   }
 
-  private buildRow(
+  private buildAttributeRow(
     node: Node,
     attr: UmlAttributeRowInput,
-    rowIndex: number,
-    nodeWidth: number,
+    layout: UmlAttributeRowLayout,
+    classLayout: UmlClassLayout,
   ): SVGGElement {
-    const rowY = rowIndex * UML_NODE_DIMENSIONS.ATTR_ROW_HEIGHT;
-    const centerY = rowY + UML_NODE_DIMENSIONS.ATTR_ROW_HEIGHT / 2;
+    const nodeWidth = classLayout.width;
+    const rowY = layout.y;
+    const firstLineCenterY = rowY + D.ROW_V_PADDING / 2 + D.WRAP_LINE_HEIGHT / 2;
+    const iconCenterY = rowY + layout.height / 2;
 
     const row = document.createElementNS(SVG_NS, 'g');
     row.setAttribute('class', 'uml-attr-row');
@@ -274,7 +213,7 @@ export class UmlAttributeRowsService {
     bg.setAttribute('x', '0');
     bg.setAttribute('y', String(rowY));
     bg.setAttribute('width', String(nodeWidth));
-    bg.setAttribute('height', String(UML_NODE_DIMENSIONS.ATTR_ROW_HEIGHT));
+    bg.setAttribute('height', String(layout.height));
     bg.setAttribute('fill', 'transparent');
     row.appendChild(bg);
 
@@ -284,8 +223,8 @@ export class UmlAttributeRowsService {
     // siendo la dueña de los estados dinámicos (hover, opacity del ícono).
     const icon = document.createElementNS(SVG_NS, 'text');
     icon.setAttribute('class', 'uml-attr-delete');
-    icon.setAttribute('x', String(nodeWidth - ROW_PADDING_X));
-    icon.setAttribute('y', String(centerY));
+    icon.setAttribute('x', String(nodeWidth - D.ATTR_PADDING_X));
+    icon.setAttribute('y', String(iconCenterY));
     icon.setAttribute('text-anchor', 'end');
     icon.setAttribute('dominant-baseline', 'central');
     icon.setAttribute('font-family', 'Material Symbols Outlined');
@@ -294,75 +233,39 @@ export class UmlAttributeRowsService {
     icon.textContent = 'delete';
     row.appendChild(icon);
 
-    const typeRightX = nodeWidth - ROW_PADDING_X - ICON_SIZE - ICON_GAP;
-    const typeText = document.createElementNS(SVG_NS, 'text');
-    typeText.setAttribute('class', 'uml-attr-type');
-    typeText.setAttribute('x', String(typeRightX));
-    typeText.setAttribute('y', String(centerY));
-    typeText.setAttribute('text-anchor', 'end');
-    typeText.setAttribute('dominant-baseline', 'central');
-    typeText.setAttribute('font-family', 'JetBrains Mono, monospace');
-    typeText.setAttribute('font-size', String(UML_NODE_DIMENSIONS.ATTR_FONT_SIZE));
-    typeText.setAttribute('fill', '#334155');
-    typeText.textContent = `: ${attr.type}`;
-    row.appendChild(typeText);
-
-    const fullLabel = `${attr.visibility} ${attr.name}`;
     const nameText = document.createElementNS(SVG_NS, 'text');
     nameText.setAttribute('class', 'uml-attr-name');
-    nameText.setAttribute('x', String(ROW_PADDING_X));
-    nameText.setAttribute('y', String(centerY));
     nameText.setAttribute('text-anchor', 'start');
     nameText.setAttribute('dominant-baseline', 'central');
-    nameText.setAttribute('font-family', 'JetBrains Mono, monospace');
-    nameText.setAttribute('font-size', String(UML_NODE_DIMENSIONS.ATTR_FONT_SIZE));
-    nameText.setAttribute('fill', '#334155');
-    nameText.textContent = fullLabel;
-    const title = document.createElementNS(SVG_NS, 'title');
-    title.textContent = `${fullLabel} : ${attr.type}`;
-    nameText.appendChild(title);
+    nameText.setAttribute('font-family', MONO_FONT);
+    nameText.setAttribute('font-size', String(D.ATTR_FONT_SIZE));
+    nameText.setAttribute('fill', TEXT_FILL);
+
+    if (layout.twoColumns) {
+      // Una sola línea: nombre a la izquierda, tipo alineado a la derecha (antes del ícono).
+      nameText.setAttribute('x', String(D.ATTR_PADDING_X));
+      nameText.setAttribute('y', String(firstLineCenterY));
+      nameText.textContent = layout.name;
+
+      const typeText = document.createElementNS(SVG_NS, 'text');
+      typeText.setAttribute('class', 'uml-attr-type');
+      typeText.setAttribute('x', String(nodeWidth - D.ATTR_ICON_RESERVE));
+      typeText.setAttribute('y', String(firstLineCenterY));
+      typeText.setAttribute('text-anchor', 'end');
+      typeText.setAttribute('dominant-baseline', 'central');
+      typeText.setAttribute('font-family', MONO_FONT);
+      typeText.setAttribute('font-size', String(D.ATTR_FONT_SIZE));
+      typeText.setAttribute('fill', TEXT_FILL);
+      typeText.textContent = layout.type;
+      row.appendChild(typeText);
+    } else {
+      // No entra en una línea: texto único envuelto en varias líneas.
+      this.appendLines(nameText, layout, D.ATTR_PADDING_X);
+    }
     row.appendChild(nameText);
 
-    // getComputedTextLength() exige que el elemento esté anclado a un <svg> con
-    // layout — recién es seguro medir/truncar después de este appendChild, por
-    // eso el `row` ya se devuelve completo y el caller lo agrega al contenedor
-    // real antes de que se dispare cualquier medición (ver render()/paintRows()).
-    queueMicrotask(() => this.truncateNameIfNeeded(nameText, fullLabel, typeText, typeRightX));
-
-    this.wireRowEvents(row, icon, node, attr, rowY);
+    this.wireRowEvents(row, icon, node, attr, classLayout, rowY);
     return row;
-  }
-
-  /**
-   * Trunca el nombre con elipsis para que no invada la columna de tipo — no hay
-   * `text-overflow` nativo en SVG. Recalcula solo cuando cambian los datos del
-   * atributo (ver el `render()` que dispara `buildRow`), no en cada frame de un
-   * resize manual en vivo del nodo: limitación aceptada y documentada en
-   * docs/analysis/decision-render-atributos-svg-vs-foreignobject.md.
-   */
-  private truncateNameIfNeeded(
-    nameEl: SVGTextElement,
-    fullLabel: string,
-    typeEl: SVGTextElement,
-    typeRightX: number,
-  ): void {
-    if (!nameEl.isConnected) return;
-    const typeWidth = typeEl.getComputedTextLength();
-    const maxWidth = Math.max(20, typeRightX - typeWidth - NAME_TYPE_GAP - ROW_PADDING_X);
-    if (nameEl.getComputedTextLength() <= maxWidth) return;
-
-    let lo = 0;
-    let hi = fullLabel.length;
-    while (lo < hi) {
-      const mid = Math.ceil((lo + hi) / 2);
-      nameEl.textContent = fullLabel.slice(0, mid) + '…';
-      if (nameEl.getComputedTextLength() <= maxWidth) {
-        lo = mid;
-      } else {
-        hi = mid - 1;
-      }
-    }
-    nameEl.textContent = lo > 0 ? fullLabel.slice(0, lo) + '…' : '…';
   }
 
   private wireRowEvents(
@@ -370,8 +273,11 @@ export class UmlAttributeRowsService {
     icon: SVGTextElement,
     node: Node,
     attr: UmlAttributeRowInput,
+    classLayout: UmlClassLayout,
     rowRelY: number,
   ): void {
+    const itemRelY = classLayout.headerHeight + D.SEP_PADDING + rowRelY;
+
     row.addEventListener('click', (e: MouseEvent) => {
       e.stopPropagation();
       if (!attr.id) return;
@@ -381,47 +287,27 @@ export class UmlAttributeRowsService {
         );
         return;
       }
-      this.ngZone.run(() => this.rowClick$.next(this.toSubElementEvent(node, attr, rowRelY, e)));
+      this.ngZone.run(() => this.rowClick$.next(this.toSubElementEvent(node, attr, itemRelY, e)));
     });
 
     row.addEventListener('dblclick', (e: MouseEvent) => {
       e.stopPropagation();
       if (e.target === icon || !attr.id) return;
-      this.ngZone.run(() => this.rowDblClick$.next(this.toDblClickEvent(node, attr, rowRelY)));
+      this.ngZone.run(() => this.rowDblClick$.next(this.toDblClickEvent(node, attr, itemRelY)));
     });
   }
 
-  /** Wireado una sola vez por nodo: bloquea el drag del nodo desde el compartimento y maneja el scroll. */
-  private wireContainer(node: Node, container: SVGGElement): void {
+  /** Wireado una sola vez por nodo: bloquea el drag del nodo desde el compartimento de atributos. */
+  private wireContainer(container: SVGGElement): void {
     if (this.wiredContainers.has(container)) return;
     this.wiredContainers.add(container);
-
     container.addEventListener('mousedown', (e: MouseEvent) => e.stopPropagation());
-
-    container.addEventListener('wheel', (e: WheelEvent) => {
-      const totalRows = Number(container.getAttribute('data-total-rows') ?? '0');
-      const visibleRows = Number(container.getAttribute('data-visible-rows') ?? '1');
-      const maxStartRow = Math.max(0, totalRows - visibleRows);
-      if (maxStartRow <= 0) return;
-
-      e.preventDefault();
-      e.stopPropagation();
-
-      const current = (node.prop('attrScrollRow') as number | undefined) ?? 0;
-      const direction = e.deltaY > 0 ? 1 : e.deltaY < 0 ? -1 : 0;
-      const next = Math.min(maxStartRow, Math.max(0, current + direction));
-      if (next === current) return;
-
-      node.prop('attrScrollRow', next, { silent: true });
-      const attributes = this.latestAttributes.get(node) ?? [];
-      this.paintRows(node, container, attributes, next, visibleRows);
-    });
   }
 
   private toSubElementEvent(
     node: Node,
     attr: UmlAttributeRowInput,
-    rowRelY: number,
+    itemRelY: number,
     e: MouseEvent,
   ): UmlNodeSubElementEvent {
     const pos = node.getPosition();
@@ -433,7 +319,7 @@ export class UmlAttributeRowsService {
       name: attr.name,
       typeOrReturn: attr.type,
       visibility: attr.visibility,
-      itemRelY: UML_NODE_DIMENSIONS.HEADER_HEIGHT + UML_NODE_DIMENSIONS.SEP_PADDING + rowRelY,
+      itemRelY,
       nodeBBox: { x: pos.x, y: pos.y, width: size.width, height: size.height },
       clientX: e.clientX,
       clientY: e.clientY,
@@ -443,7 +329,7 @@ export class UmlAttributeRowsService {
   private toDblClickEvent(
     node: Node,
     attr: UmlAttributeRowInput,
-    rowRelY: number,
+    itemRelY: number,
   ): NodeDblClickEvent {
     const pos = node.getPosition();
     const size = node.getSize();
@@ -454,7 +340,7 @@ export class UmlAttributeRowsService {
       name: attr.name,
       type: attr.type,
       visibility: attr.visibility,
-      itemRelY: UML_NODE_DIMENSIONS.HEADER_HEIGHT + UML_NODE_DIMENSIONS.SEP_PADDING + rowRelY,
+      itemRelY,
       nodeBBox: { x: pos.x, y: pos.y, width: size.width, height: size.height },
     };
   }

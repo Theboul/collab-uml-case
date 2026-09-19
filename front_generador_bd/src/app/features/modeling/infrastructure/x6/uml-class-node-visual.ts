@@ -1,17 +1,17 @@
-import { UmlParameter, UML_NODE_DIMENSIONS } from '../../domain/models/uml-editor.models';
+import type { Node } from '@antv/x6';
+import { UML_NODE_DIMENSIONS as D, UmlParameter } from '../../domain/models/uml-editor.models';
+import { UmlClassLayout, computeUmlClassLayout } from './uml-class-node-layout';
 
 /**
  * Punto único de cálculo del contenido visual del nodo de clase (texto de encabezado,
- * operaciones y geometría derivada). Usado por `UmlGraphService.addNode`,
+ * geometría de separadores y compartimentos). Usado por `UmlGraphService.addNode`,
  * `UmlGraphService.updateNodeData`, `UmlDiagramAdapterService.modelToCells` y
- * `UmlGraphReconciliationService` — antes esta lógica estaba triplicada entre esos
- * archivos.
+ * `UmlGraphReconciliationService`.
  *
- * Fase 2: el compartimento de atributos pasó de un `<text>` con `\n` a filas SVG
- * reales (ver `UmlAttributeRowsService`), por eso ya no expone `attrs.attributes` —
- * expone `attrBlockHeight` (con tope en ATTR_MAX_VISIBLE_ROWS) para que tanto el
- * renderer de filas como el resto de la geometría del nodo (separador, operaciones)
- * usen el mismo número.
+ * Los atributos y las operaciones ya no son texto declarativo de X6: son filas SVG
+ * reales que pinta `UmlAttributeRowsService` a partir de `layout` (ver
+ * `uml-class-node-layout.ts`). Acá solo se traduce ese layout a los `attrs` del shape
+ * registrado (encabezado, título, separadores y posición de cada compartimento).
  */
 export interface UmlClassNodeVisualInput {
   name: string;
@@ -26,75 +26,66 @@ export interface UmlClassNodeVisualInput {
   }[];
 }
 
-export interface UmlClassNodeVisualAttrs {
-  title: { text: string };
-  separator2: { y1: number; y2: number };
-  operations: { text: string; refY: number };
-  // Índice requerido para asignar directamente a `Cell.attrs` de X6 (Attr.CellAttrs
-  // es `{ [selector: string]: ComplexAttrs }`); las claves de arriba ya cubren
-  // el contrato real, esto solo satisface la firma estructural de X6.
-  [selector: string]: Record<string, string | number>;
-}
+/** `Cell.attrs` de X6 es `{ [selector]: { [attr]: valor } }`. */
+export type UmlClassNodeVisualAttrs = Record<string, Record<string, string | number>>;
 
 export interface UmlClassNodeVisual {
   attrs: UmlClassNodeVisualAttrs;
+  layout: UmlClassLayout;
+  /** Ancho final del nodo (el pedido, o el mínimo por contenido si es mayor). */
+  width: number;
+  /** Ancho mínimo por contenido, entre MIN_WIDTH y MAX_WIDTH. */
+  minWidth: number;
+  /** Alto mínimo del nodo para mostrar todo el contenido, en el `width` calculado. */
   minHeight: number;
-  /**
-   * Alto del compartimento de atributos con tope en ATTR_MAX_VISIBLE_ROWS filas
-   * (Fase 2 — filas reales con scroll interno, ver UmlAttributeRowsService). A
-   * partir de ese tope el nodo deja de crecer con más atributos.
-   */
-  attrBlockHeight: number;
 }
 
-/** Cuántas filas de atributo se ven sin hacer scroll, para una cantidad de atributos dada. */
-export function visibleAttributeRowCount(attributeCount: number): number {
-  return Math.min(Math.max(1, attributeCount), UML_NODE_DIMENSIONS.ATTR_MAX_VISIBLE_ROWS);
-}
+/** Alto de los separadores: el 1 es el trazo fuerte bajo el encabezado; el 2, el tenue entre atributos y operaciones. */
+const SEPARATOR1_THICKNESS = 1.5;
+const SEPARATOR2_THICKNESS = 1;
+/** Alto del rect que aplana las esquinas inferiores redondeadas del encabezado. */
+const HEADER_CAP_HEIGHT = 4;
 
-function formatOperationParams(parameters: UmlParameter[] | string | undefined): string {
-  if (Array.isArray(parameters)) {
-    return parameters.map((p) => `${p.name}: ${p.type}`).join(', ');
-  }
-  if (typeof parameters === 'string') {
-    return parameters;
-  }
-  return '';
-}
-
-export function buildUmlClassNodeVisual(data: UmlClassNodeVisualInput): UmlClassNodeVisual {
-  const titleText = data.name + (data.isAbstract ? ' {abstract}' : '');
-
-  const attributes = data.attributes || [];
-  const attrBlockHeight = visibleAttributeRowCount(attributes.length) * UML_NODE_DIMENSIONS.ATTR_ROW_HEIGHT;
-
-  const operations = data.operations || [];
-  const opsList =
-    operations.length > 0
-      ? operations
-          .map(
-            (o) =>
-              `${o.visibility || '+'} ${o.name}(${formatOperationParams(o.parameters)}) : ${o.returnType || 'void'}`,
-          )
-          .join('\n')
-      : '';
-
-  const sep2Y =
-    UML_NODE_DIMENSIONS.HEADER_HEIGHT + UML_NODE_DIMENSIONS.SEP_PADDING + attrBlockHeight + 6;
-  const opY = sep2Y + UML_NODE_DIMENSIONS.SEP_PADDING;
-  const opHeight = Math.max(1, operations.length) * UML_NODE_DIMENSIONS.LINE_HEIGHT;
-  const minHeight = Math.max(
-    UML_NODE_DIMENSIONS.MIN_HEIGHT,
-    opY + opHeight + UML_NODE_DIMENSIONS.BOTTOM_PADDING,
+/**
+ * @param requestedWidth ancho actual/persistido del nodo; el resultado nunca es menor
+ *   que lo que pide el contenido (hasta MAX_WIDTH).
+ */
+export function buildUmlClassNodeVisual(
+  data: UmlClassNodeVisualInput,
+  requestedWidth = 0,
+): UmlClassNodeVisual {
+  const layout = computeUmlClassLayout(
+    {
+      name: data.name ?? '',
+      isAbstract: !!data.isAbstract,
+      attributes: data.attributes || [],
+      operations: data.operations || [],
+    },
+    requestedWidth,
   );
 
   return {
     attrs: {
-      title: { text: titleText },
-      separator2: { y1: sep2Y, y2: sep2Y },
-      operations: { text: opsList, refY: opY },
+      title: { text: layout.titleLines.join('\n'), refY: layout.headerHeight / 2 },
+      header: { height: layout.headerHeight },
+      headerCap: { y: layout.headerHeight - HEADER_CAP_HEIGHT },
+      separator1: { y: layout.headerHeight - SEPARATOR1_THICKNESS / 2 },
+      attributeRows: { refY: layout.headerHeight + D.SEP_PADDING },
+      separator2: { y: layout.sep2Y - SEPARATOR2_THICKNESS / 2 },
+      operationRows: { refY: layout.opsStartY },
     },
-    minHeight,
-    attrBlockHeight,
+    layout,
+    width: layout.width,
+    minWidth: layout.minWidth,
+    minHeight: layout.minHeight,
   };
+}
+
+/** Aplica los `attrs` calculados a un nodo ya creado (misma escritura para todos los caminos de actualización). */
+export function applyUmlClassVisual(node: Node, visual: UmlClassNodeVisual): void {
+  for (const [selector, props] of Object.entries(visual.attrs)) {
+    for (const [prop, value] of Object.entries(props)) {
+      node.setAttrByPath(`${selector}/${prop}`, value);
+    }
+  }
 }

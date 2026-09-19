@@ -15,7 +15,8 @@ import { UmlInteractionService } from './uml-interaction.service';
 import { UmlEdgeToolsService } from './uml-edge-tools.service';
 import { registerUmlClassNode } from './uml-class-node.registration';
 import { UmlGraphReconciliationService } from './uml-graph-reconciliation.service';
-import { buildUmlClassNodeVisual } from './uml-class-node-visual';
+import { applyUmlClassVisual, buildUmlClassNodeVisual } from './uml-class-node-visual';
+import { UmlClassLayout } from './uml-class-node-layout';
 import { UmlAttributeRowsService } from './uml-attribute-rows.service';
 
 export interface CellSelectionEvent {
@@ -230,8 +231,10 @@ export class UmlGraphService {
       new Transform({
         resizing: {
           enabled: true,
-          minWidth: 160,
-          minHeight: 90,
+          // Nunca más angosto/bajo que el contenido (ancho hasta MAX_WIDTH; lo que no
+          // entra se envuelve y suma alto): así ni un resize manual recorta texto.
+          minWidth: (node: Node) => this.contentMinSize(node).width,
+          minHeight: (node: Node) => this.contentMinSize(node).height,
           orthogonal: false, // ¡Solo esquinas (nw, ne, se, sw)! Los bordes quedan libres para los puertos.
         },
       })
@@ -347,7 +350,7 @@ export class UmlGraphService {
     // Clic en nodo -> Seleccionar nodo y detectar subelemento (Atributo, Operación o Encabezado)
     this.graph.on('node:click', ({ node, e }) => {
       this.ngZone.run(() => {
-        const subEvent = this.resolveSemanticTarget(node, e.clientX, e.clientY, e.target as SVGElement);
+        const subEvent = this.resolveSemanticTarget(node, e.clientX, e.clientY);
         if (subEvent) {
           this.nodeSubElementClick$.next(subEvent);
         }
@@ -358,7 +361,7 @@ export class UmlGraphService {
     this.graph.on('node:dblclick', ({ node, e }) => {
       e.stopPropagation();
       this.ngZone.run(() => {
-        const eventData = this.resolveSemanticTarget(node, e.clientX, e.clientY, e.target as SVGElement);
+        const eventData = this.resolveSemanticTarget(node, e.clientX, e.clientY);
         if (eventData) {
           this.nodeDblClick$.next({
             nodeId: eventData.classId,
@@ -377,6 +380,7 @@ export class UmlGraphService {
     // Redimensionamiento
     this.graph.on('node:resized', ({ node }) => {
       this.ngZone.run(() => {
+        this.reflowNode(node);
         const pos = node.getPosition();
         const size = node.getSize();
         this.nodeResized$.next({
@@ -530,19 +534,8 @@ export class UmlGraphService {
    * Resuelve semánticamente el objetivo de interacción (clic o doble clic) dentro de un nodo UML:
    * Encabezado (Clase), Compartimento de Atributos (por attributeId), o de Operaciones (por operationId).
    */
-  resolveSemanticTarget(
-    node: Node,
-    clientX: number,
-    clientY: number,
-    targetElem?: SVGElement | null
-  ): UmlNodeSubElementEvent | null {
-    return this.interactionService.resolveSemanticTarget(
-      this.graph,
-      node,
-      clientX,
-      clientY,
-      targetElem
-    );
+  resolveSemanticTarget(node: Node, clientX: number, clientY: number): UmlNodeSubElementEvent | null {
+    return this.interactionService.resolveSemanticTarget(this.graph, node, clientX, clientY);
   }
 
   /**
@@ -552,9 +545,11 @@ export class UmlGraphService {
     this.interactionService.setRowHighlight(this.graph, nodeId, itemRelY, height);
   }
 
-  /** Fila actualmente en el tope del scroll del compartimento de atributos de un nodo. */
-  getAttributeScrollRow(nodeId: string): number {
-    return this.attributeRowsService.getScrollRow(this.graph, nodeId);
+  /** Layout (filas, envolturas, alturas) con el que está dibujado un nodo, o null si no existe. */
+  getNodeLayout(nodeId: string): UmlClassLayout | null {
+    const node = this.graph?.getCellById(nodeId);
+    if (!node || !node.isNode()) return null;
+    return buildUmlClassNodeVisual(node.getData() || {}, node.getSize().width).layout;
   }
 
   /**
@@ -576,8 +571,8 @@ export class UmlGraphService {
       addNode: (config) => this.addNode(config),
       addEdge: (config) => this.addEdge(config),
       setNodePosition: (nodeId, x, y) => this.setNodePositionSilent(nodeId, x, y),
-      renderAttributeRows: (node, attributes, attrBlockHeight) =>
-        this.attributeRowsService.render(this.graph!, node, attributes, attrBlockHeight),
+      renderAttributeRows: (node, attributes, layout) =>
+        this.attributeRowsService.render(this.graph!, node, attributes, layout),
     });
     this.hideAllPorts();
   }
@@ -585,14 +580,15 @@ export class UmlGraphService {
   addNode(config: X6NodeConfig): Node {
     if (!this.graph) throw new Error('Graph no inicializado');
 
-    const visual = buildUmlClassNodeVisual(config.data);
+    const visual = buildUmlClassNodeVisual(config.data, config.width);
 
     const node = this.graph.addNode({
       ...config,
+      width: visual.width,
       height: Math.max(config.height || UML_NODE_DIMENSIONS.MIN_HEIGHT, visual.minHeight),
       attrs: visual.attrs,
     });
-    this.attributeRowsService.render(this.graph, node, config.data.attributes || [], visual.attrBlockHeight);
+    this.attributeRowsService.render(this.graph, node, config.data.attributes || [], visual.layout);
     return node;
   }
 
@@ -612,30 +608,48 @@ export class UmlGraphService {
       // es un trinquete de una sola dirección: crece con altas pero nunca baja
       // con bajas — bug real de Fase 2 (eliminar un atributo no achicaba la
       // clase), más visible ahora que cada fila mide 22px en vez de 16px.
-      const previousVisual = buildUmlClassNodeVisual(node.getData() || {});
+      const currentSize = node.getSize();
+      const previousVisual = buildUmlClassNodeVisual(node.getData() || {}, currentSize.width);
 
       node.setData(data);
-      const visual = buildUmlClassNodeVisual(data);
+      // Igual que con el alto: si el ancho estaba justo al del contenido, sigue al
+      // contenido nuevo (puede achicarse); si el usuario lo ensanchó, se respeta.
+      const wasAtContentWidth = currentSize.width <= previousVisual.minWidth;
+      const visual = buildUmlClassNodeVisual(data, wasAtContentWidth ? 0 : currentSize.width);
 
-      node.setAttrByPath('title/text', visual.attrs.title.text);
-      node.setAttrByPath('separator2/y1', visual.attrs.separator2.y1);
-      node.setAttrByPath('separator2/y2', visual.attrs.separator2.y2);
-      node.setAttrByPath('operations/text', visual.attrs.operations.text);
-      node.setAttrByPath('operations/refY', visual.attrs.operations.refY);
-      this.attributeRowsService.render(this.graph, node, data.attributes || [], visual.attrBlockHeight);
+      applyUmlClassVisual(node, visual);
+      this.attributeRowsService.render(this.graph, node, data.attributes || [], visual.layout);
 
-      const currentSize = node.getSize();
       const wasAtContentHeight = currentSize.height <= previousVisual.minHeight;
       const nextHeight = wasAtContentHeight
         ? visual.minHeight
         : Math.max(currentSize.height, visual.minHeight);
-      node.setSize({
-        width: Math.max(currentSize.width, UML_NODE_DIMENSIONS.MIN_WIDTH),
-        height: nextHeight,
-      });
+      node.setSize({ width: visual.width, height: nextHeight });
 
       const selected = this.graph.getSelectedCells().filter((c) => c.isNode()).map((c) => c.id);
       this.updatePortsVisibility(selected);
+    }
+  }
+
+  /** Tamaño mínimo del nodo para mostrar todo su contenido, al ancho actual (el alto depende del ancho por la envoltura). */
+  private contentMinSize(node: Node): { width: number; height: number } {
+    const visual = buildUmlClassNodeVisual(node.getData() || {}, node.getSize().width);
+    return { width: visual.minWidth, height: visual.minHeight };
+  }
+
+  /**
+   * Re-acomoda el contenido de un nodo a su tamaño actual tras un resize manual: al
+   * cambiar el ancho cambia cómo se envuelve el texto, y con eso el alto necesario.
+   */
+  private reflowNode(node: Node): void {
+    if (!this.graph) return;
+    const data = node.getData() || {};
+    const size = node.getSize();
+    const visual = buildUmlClassNodeVisual(data, size.width);
+    applyUmlClassVisual(node, visual);
+    this.attributeRowsService.render(this.graph, node, data.attributes || [], visual.layout);
+    if (size.width !== visual.width || size.height < visual.minHeight) {
+      node.setSize({ width: visual.width, height: Math.max(size.height, visual.minHeight) });
     }
   }
 
@@ -712,8 +726,6 @@ export class UmlGraphService {
       },
       attrs: {
         title: { text: defaultName },
-        attributes: { text: '' },
-        operations: { text: '' },
       },
       ports: this.adapter.getDefaultPorts(),
     });

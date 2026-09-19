@@ -1,7 +1,8 @@
 import { Injectable } from '@angular/core';
 import { Edge, Graph, Node } from '@antv/x6';
 import { X6EdgeConfig, X6NodeConfig } from './uml-diagram-adapter.service';
-import { buildUmlClassNodeVisual } from './uml-class-node-visual';
+import { applyUmlClassVisual, buildUmlClassNodeVisual } from './uml-class-node-visual';
+import { UmlClassLayout } from './uml-class-node-layout';
 
 /**
  * Callbacks hacia `UmlGraphService` para las mutaciones que ya tienen dueño ahí
@@ -13,7 +14,7 @@ export interface GraphReconciliationPorts {
   addNode(config: X6NodeConfig): void;
   addEdge(config: X6EdgeConfig): void;
   setNodePosition(nodeId: string, x: number, y: number): void;
-  renderAttributeRows(node: Node, attributes: X6NodeConfig['data']['attributes'], attrBlockHeight: number): void;
+  renderAttributeRows(node: Node, attributes: X6NodeConfig['data']['attributes'], layout: UmlClassLayout): void;
 }
 
 /**
@@ -98,20 +99,19 @@ export class UmlGraphReconciliationService {
     ports: GraphReconciliationPorts,
   ): void {
     const currentData = node.getData() ?? {};
-    if (JSON.stringify(currentData) !== JSON.stringify(config.data)) {
-      node.setData(config.data);
-      const visual = buildUmlClassNodeVisual(config.data);
-      node.setAttrByPath('title/text', visual.attrs.title.text);
-      node.setAttrByPath('separator2/y1', visual.attrs.separator2.y1);
-      node.setAttrByPath('separator2/y2', visual.attrs.separator2.y2);
-      node.setAttrByPath('operations/text', visual.attrs.operations.text);
-      node.setAttrByPath('operations/refY', visual.attrs.operations.refY);
-      ports.renderAttributeRows(node, config.data.attributes, visual.attrBlockHeight);
-    }
+    const dataChanged = JSON.stringify(currentData) !== JSON.stringify(config.data);
+    if (dataChanged) node.setData(config.data);
 
     const currentSize = node.getSize();
-    if (currentSize.width !== config.width || currentSize.height !== config.height) {
-      node.resize(config.width, config.height);
+    const sizeChanged = currentSize.width !== config.width || currentSize.height !== config.height;
+    if (sizeChanged) node.resize(config.width, config.height);
+
+    // El layout depende del contenido Y del ancho (la envoltura de texto cambia con él),
+    // así que un resize remoto también obliga a re-pintar las filas.
+    if (dataChanged || sizeChanged) {
+      const visual = buildUmlClassNodeVisual(config.data, config.width);
+      applyUmlClassVisual(node, visual);
+      ports.renderAttributeRows(node, config.data.attributes, visual.layout);
     }
 
     const currentPos = node.getPosition();
