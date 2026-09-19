@@ -43,13 +43,13 @@ public class {{EntityName}}Service {
     }
 {{#manyToOne}}
 
-    public Optional<{{TargetEntity}}> find{{TargetEntity}}ById(Long id) {
+    public Optional<{{TargetEntity}}> find{{TargetEntity}}ById({{TargetPkType}} id) {
         return {{targetField}}Repository.findById(id);
     }
 {{/manyToOne}}
 {{#oneToOne}}
 
-    public Optional<{{TargetEntity}}> find{{TargetEntity}}ById(Long id) {
+    public Optional<{{TargetEntity}}> find{{TargetEntity}}ById({{TargetPkType}} id) {
         return {{targetField}}Repository.findById(id);
     }
 {{/oneToOne}}

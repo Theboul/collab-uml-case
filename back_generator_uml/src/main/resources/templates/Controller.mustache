@@ -49,7 +49,7 @@ public class {{EntityName}}Controller {
 {{#manyToOne}}
                 // Manejar relación ManyToOne: {{targetField}}
                 if (key.equals("{{targetField}}id") && value != null) {
-                    Long relId = convertToLong(value);
+                    {{TargetPkType}} relId = convertTo{{TargetPkType}}(value);
                     service.find{{TargetEntity}}ById(relId).ifPresent(entity::set{{TargetEntity}});
                     return;
                 }
@@ -57,7 +57,7 @@ public class {{EntityName}}Controller {
 {{#oneToOne}}
                 // Manejar relación OneToOne: {{targetField}}
                 if (key.equals("{{targetField}}id") && value != null) {
-                    Long relId = convertToLong(value);
+                    {{TargetPkType}} relId = convertTo{{TargetPkType}}(value);
                     service.find{{TargetEntity}}ById(relId).ifPresent(entity::set{{TargetEntity}});
                     return;
                 }
@@ -85,6 +85,10 @@ public class {{EntityName}}Controller {
             return ((Number) value).longValue();
         }
         return Long.parseLong(value.toString());
+    }
+
+    private String convertToString(Object value) {
+        return value.toString();
     }
     
     private Object convertValue(Object value, Class<?> targetType) {

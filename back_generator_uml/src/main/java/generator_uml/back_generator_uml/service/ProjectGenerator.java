@@ -139,11 +139,13 @@ public class ProjectGenerator {
                             List<Map<String, Object>> intermediateManyToOne = new ArrayList<>();
                             intermediateManyToOne.add(Map.of(
                                 "TargetEntity", firstEntity,
+                                "TargetPkType", pkTypeOf(firstEntity, schema),
                                 "targetField", firstEntityField,
                                 "ignoreBackReference", NamingUtil.toField(intermediateEntityName)
                             ));
                             intermediateManyToOne.add(Map.of(
                                 "TargetEntity", secondEntity,
+                                "TargetPkType", pkTypeOf(secondEntity, schema),
                                 "targetField", secondEntityField,
                                 "ignoreBackReference", NamingUtil.toField(intermediateEntityName)
                             ));
@@ -193,55 +195,42 @@ public class ProjectGenerator {
             }
             boolean isChild = parentClass != null;
 
-            // ====== ATRIBUTOS (PK dinámica: num -> Long autoinc, String -> PK sin autoinc) ======
+            // ====== ATRIBUTOS (PK: atributo "id" explícito, o id técnico Long sintético) ======
+            PkResolver.Pk pk = PkResolver.resolve(c, schema);
             List<Map<String, Object>> attrs = new ArrayList<>();
             boolean pkAssigned = false;
-            String pkName = null;
-            String pkType = null;
 
-            // Si tiene padre (herencia), NO debe asignar PK propia
-            // La PK viene del padre
+            // Si tiene padre (herencia), NO declara PK propia: la hereda del ancestro raíz
             for (var attr : c.getAttributes()) {
                 Map<String, Object> a = new HashMap<>();
                 String type = TypeMapper.toJava(attr.getType());
                 String name = NamingUtil.toField(attr.getName());
 
-                boolean isNumeric = type.equalsIgnoreCase("int")
-                        || type.equalsIgnoreCase("Integer")
-                        || type.equalsIgnoreCase("long")
-                        || type.equalsIgnoreCase("Long")
-                        || type.equalsIgnoreCase("short")
-                        || type.equalsIgnoreCase("byte");
+                if (isChild && PkResolver.isIdName(attr.getName())) {
+                    // ya heredado (o sintético del ancestro): declararlo de nuevo duplicaría el campo
+                    continue;
+                }
 
-                // SOLO asignar PK si NO tiene padre Y es el primer atributo Y no se ha asignado aún
-                if (!isChild && !pkAssigned) {
-                    if (isNumeric) {
-                        a.put("isId", true);
-                        a.put("type", "Long");
-                        a.put("generated", true);
-                        pkAssigned = true;
-                        pkName = name;
-                        pkType = "Long";
-                    } else if (type.equalsIgnoreCase("String")
-                            || type.equalsIgnoreCase("char")
-                            || type.equalsIgnoreCase("Character")) {
-                        a.put("isId", true);
-                        a.put("type", "String");
-                        a.put("generated", false);
-                        pkAssigned = true;
-                        pkName = name;
-                        pkType = "String";
-                    } else {
-                        a.put("isId", false);
-                        a.put("type", type);
-                    }
+                if (!isChild && !pkAssigned && PkResolver.isIdName(attr.getName())) {
+                    a.put("isId", true);
+                    a.put("type", pk.type());
+                    a.put("generated", pk.generated());
+                    pkAssigned = true;
                 } else {
-                    // Si tiene padre, TODOS los atributos son normales (no PK)
                     a.put("isId", false);
                     a.put("type", type);
                 }
                 a.put("name", name);
                 attrs.add(a);
+            }
+
+            if (!isChild && pk.synthetic()) {
+                Map<String, Object> idAttr = new HashMap<>();
+                idAttr.put("isId", true);
+                idAttr.put("type", pk.type());
+                idAttr.put("name", pk.name());
+                idAttr.put("generated", pk.generated());
+                attrs.add(0, idAttr);
             }
 
             // ====== RELACIONES ======
@@ -320,6 +309,7 @@ public class ProjectGenerator {
                                 // source *..1 target => Source tiene ManyToOne hacia Target
                                 manyToOne.add(Map.of(
                                         "TargetEntity", targetEntity,
+                                        "TargetPkType", pkTypeOf(targetEntity, schema),
                                         "targetField", NamingUtil.toField(targetEntity)
                                 ));
                             } else if (!sourceIsMany && !targetIsMany) {
@@ -327,6 +317,7 @@ public class ProjectGenerator {
                                 boolean isComposition = "composition".equals(rel.getType());
                                 oneToOne.add(Map.of(
                                         "TargetEntity", targetEntity,
+                                        "TargetPkType", pkTypeOf(targetEntity, schema),
                                         "targetField", NamingUtil.toField(targetEntity),
                                         "composition", isComposition
                                 ));
@@ -368,6 +359,7 @@ public class ProjectGenerator {
                                 // source 1..* target => Target tiene ManyToOne hacia Source
                                 manyToOne.add(Map.of(
                                         "TargetEntity", sourceEntity,
+                                        "TargetPkType", pkTypeOf(sourceEntity, schema),
                                         "targetField", NamingUtil.toField(sourceEntity)
                                 ));
                             } else if (targetIsMany && sourceIsMany) {
@@ -451,48 +443,13 @@ public class ProjectGenerator {
             entityCtx.put("hasManyToOne", !manyToOne.isEmpty());
             entityCtx.put("hasOneToOne", !oneToOne.isEmpty());
 
-            // PK para Controller/Service
-            if (isChild) {
-                final String parentClassName = parentClass;
-                UmlClass parent = schema.getClasses().stream()
-                        .filter(pc -> NamingUtil.toJavaClass(pc.getName()).equals(parentClassName))
-                        .findFirst()
-                        .orElse(null);
-
-                if (parent != null && !parent.getAttributes().isEmpty()) {
-                    String parentPkName = NamingUtil.toField(parent.getAttributes().get(0).getName());
-                    String parentPkType = TypeMapper.toJava(parent.getAttributes().get(0).getType());
-                    String pkSetter = "set" + Character.toUpperCase(parentPkName.charAt(0)) + parentPkName.substring(1);
-                    String pkGetter = "get" + Character.toUpperCase(parentPkName.charAt(0)) + parentPkName.substring(1);
-                    
-                    // Determinar si la PK del padre es autogenerada (numérica)
-                    boolean pkGenerated = isNumericType(parentPkType);
-
-                    entityCtx.put("pkName", parentPkName);
-                    entityCtx.put("pkType", parentPkType);
-                    entityCtx.put("pkSetter", pkSetter);
-                    entityCtx.put("pkGetter", pkGetter);
-                    entityCtx.put("pkGenerated", pkGenerated);
-                    entityCtx.put("hasPk", true);
-                } else {
-                    entityCtx.put("hasPk", false);
-                }
-            } else if (pkAssigned) {
-                String pkSetter = "set" + Character.toUpperCase(pkName.charAt(0)) + pkName.substring(1);
-                String pkGetter = "get" + Character.toUpperCase(pkName.charAt(0)) + pkName.substring(1);
-                
-                // Determinar si es autogenerada basándose en el tipo
-                boolean pkGenerated = isNumericType(pkType);
-                
-                entityCtx.put("pkName", pkName);
-                entityCtx.put("pkType", pkType);
-                entityCtx.put("pkSetter", pkSetter);
-                entityCtx.put("pkGetter", pkGetter);
-                entityCtx.put("pkGenerated", pkGenerated);
-                entityCtx.put("hasPk", true);
-            } else {
-                entityCtx.put("hasPk", false);
-            }
+            // PK para Controller/Service/Repository (la de la propia clase, o la del ancestro raíz)
+            entityCtx.put("pkName", pk.name());
+            entityCtx.put("pkType", pk.type());
+            entityCtx.put("pkSetter", "set" + Character.toUpperCase(pk.name().charAt(0)) + pk.name().substring(1));
+            entityCtx.put("pkGetter", "get" + Character.toUpperCase(pk.name().charAt(0)) + pk.name().substring(1));
+            entityCtx.put("pkGenerated", pk.generated());
+            entityCtx.put("hasPk", true);
 
             // render
             render("Entity.mustache", entityCtx, modelDir.resolve(entityName + ".java"));
@@ -520,10 +477,13 @@ public class ProjectGenerator {
         return zip;
     }
 
-    private boolean isNumericType(String javaType) {
-        return javaType.equalsIgnoreCase("int") || javaType.equalsIgnoreCase("Integer")
-                || javaType.equalsIgnoreCase("long") || javaType.equalsIgnoreCase("Long")
-                || javaType.equalsIgnoreCase("short") || javaType.equalsIgnoreCase("byte");
+    /** Tipo de la PK (propia o heredada del ancestro raíz) de la entidad referenciada por una relación. */
+    private static String pkTypeOf(String entityName, UmlSchema schema) {
+        return schema.getClasses().stream()
+                .filter(cl -> NamingUtil.toJavaClass(cl.getName()).equals(entityName))
+                .findFirst()
+                .map(cl -> PkResolver.resolve(cl, schema).type())
+                .orElse("Long");
     }
 
     private void render(String template, Map<String, Object> ctx, Path target) throws IOException {

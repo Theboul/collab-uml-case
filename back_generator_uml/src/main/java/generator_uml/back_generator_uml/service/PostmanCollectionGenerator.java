@@ -89,39 +89,10 @@ public class PostmanCollectionGenerator {
             folder.put("name", entityName);
             ArrayNode folderItems = folder.putArray("item");
 
-            // Detectar PK considerando herencia
-            String pkType = "String";
-            String pkName = "id";
-            
-            // Detectar si tiene padre (herencia)
-            final String[] parentClassNameHolder = {null};
-            for (var rel : schema.getRelationships()) {
-                if ("generalization".equals(rel.getType()) && rel.getSourceId().equals(c.getId())) {
-                    parentClassNameHolder[0] = schema.getClasses().stream()
-                            .filter(pc -> pc.getId().equals(rel.getTargetId()))
-                            .map(UmlClass::getName)
-                            .findFirst().orElse(null);
-                    break;
-                }
-            }
-            
-            // Si tiene padre, buscar PK en el padre
-            if (parentClassNameHolder[0] != null) {
-                final String parentClassName = parentClassNameHolder[0];
-                UmlClass parent = schema.getClasses().stream()
-                        .filter(pc -> pc.getName().equals(parentClassName))
-                        .findFirst().orElse(null);
-                
-                if (parent != null && !parent.getAttributes().isEmpty()) {
-                    // El primer atributo del padre es la PK
-                    pkName = NamingUtil.toField(parent.getAttributes().get(0).getName());
-                    pkType = TypeMapper.toJava(parent.getAttributes().get(0).getType());
-                }
-            } else if (!c.getAttributes().isEmpty()) {
-                // Si NO tiene padre, el primer atributo es la PK
-                pkName = NamingUtil.toField(c.getAttributes().get(0).getName());
-                pkType = TypeMapper.toJava(c.getAttributes().get(0).getType());
-            }
+            // PK efectiva (misma regla que ProjectGenerator: id explícito o id técnico Long)
+            PkResolver.Pk pk = PkResolver.resolve(c, schema);
+            String pkType = pk.type();
+            String pkName = pk.name();
 
             // GET All
             folderItems.add(createGetAllRequest(entityName, pluralName));
@@ -229,7 +200,7 @@ public class PostmanCollectionGenerator {
 
         ObjectNode body = requestDetails.putObject("body");
         body.put("mode", "raw");
-        body.put("raw", generateSampleBody(c, schema, shouldIncludeIdInPost(c)));
+        body.put("raw", generateSampleBody(c, schema, shouldIncludeIdInPost(c, schema)));
 
         ObjectNode url = requestDetails.putObject("url");
         url.put("raw", "{{baseUrl}}/api/" + pluralName);
@@ -374,14 +345,12 @@ public class PostmanCollectionGenerator {
                     .findFirst().orElse(null);
 
             if (parent != null) {
-                for (int i = 0; i < parent.getAttributes().size(); i++) {
-                    var attr = parent.getAttributes().get(i);
+                for (var attr : parent.getAttributes()) {
                     String fieldName = NamingUtil.toField(attr.getName());
                     String type = TypeMapper.toJava(attr.getType());
 
-                    // El primer atributo del padre es la PK
-                    // Solo incluirlo si includeId es true
-                    if (i == 0 && !includeId) {
+                    // El atributo "id" del padre es la PK: solo incluirlo si includeId es true
+                    if (PkResolver.isIdName(attr.getName()) && !includeId) {
                         continue;
                     }
 
@@ -391,15 +360,12 @@ public class PostmanCollectionGenerator {
         }
 
         // Atributos propios de la clase
-        // Si tiene padre, NINGUNO de estos es PK
-        // Si NO tiene padre, el primero es PK
-        for (int i = 0; i < c.getAttributes().size(); i++) {
-            var attr = c.getAttributes().get(i);
+        // Un atributo "id" propio es la PK (si hay padre, ProjectGenerator lo omite: se hereda)
+        for (var attr : c.getAttributes()) {
             String fieldName = NamingUtil.toField(attr.getName());
             String type = TypeMapper.toJava(attr.getType());
 
-            // Si NO tiene padre y es el primer atributo, es la PK
-            if (parentClass == null && i == 0 && !includeId) {
+            if (PkResolver.isIdName(attr.getName()) && (parentClass != null || !includeId)) {
                 continue;
             }
 
@@ -448,8 +414,8 @@ public class PostmanCollectionGenerator {
                                 .filter(tc -> tc.getName().equals(targetName))
                                 .findFirst().orElse(null);
 
-                        if (targetClass != null && !targetClass.getAttributes().isEmpty()) {
-                            String targetPkType = TypeMapper.toJava(targetClass.getAttributes().get(0).getType());
+                        if (targetClass != null) {
+                            String targetPkType = PkResolver.resolve(targetClass, schema).type();
                             body.set(fieldName, generateSampleValue(targetPkType, fieldName));
                         }
                     }
@@ -462,8 +428,8 @@ public class PostmanCollectionGenerator {
                                 .filter(tc -> tc.getName().equals(targetName))
                                 .findFirst().orElse(null);
 
-                        if (targetClass != null && !targetClass.getAttributes().isEmpty()) {
-                            String targetPkType = TypeMapper.toJava(targetClass.getAttributes().get(0).getType());
+                        if (targetClass != null) {
+                            String targetPkType = PkResolver.resolve(targetClass, schema).type();
                             body.set(fieldName, generateSampleValue(targetPkType, fieldName));
                         }
                     }
@@ -489,8 +455,8 @@ public class PostmanCollectionGenerator {
                                 .filter(sc -> sc.getName().equals(sourceName))
                                 .findFirst().orElse(null);
 
-                        if (sourceClass != null && !sourceClass.getAttributes().isEmpty()) {
-                            String sourcePkType = TypeMapper.toJava(sourceClass.getAttributes().get(0).getType());
+                        if (sourceClass != null) {
+                            String sourcePkType = PkResolver.resolve(sourceClass, schema).type();
                             body.set(fieldName, generateSampleValue(sourcePkType, fieldName));
                         }
                     }
@@ -582,12 +548,12 @@ public class PostmanCollectionGenerator {
             String firstPkType = "Long";
             String secondPkType = "Long";
             
-            if (firstClass != null && !firstClass.getAttributes().isEmpty()) {
-                firstPkType = TypeMapper.toJava(firstClass.getAttributes().get(0).getType());
+            if (firstClass != null) {
+                firstPkType = PkResolver.resolve(firstClass, schema).type();
             }
-            
-            if (secondClass != null && !secondClass.getAttributes().isEmpty()) {
-                secondPkType = TypeMapper.toJava(secondClass.getAttributes().get(0).getType());
+
+            if (secondClass != null) {
+                secondPkType = PkResolver.resolve(secondClass, schema).type();
             }
             
             body.set(firstFieldName, generateSampleValue(firstPkType, firstFieldName));
@@ -630,24 +596,9 @@ public class PostmanCollectionGenerator {
         };
     }
 
-    private boolean isNumericType(String javaType) {
-        return javaType.equalsIgnoreCase("int") || javaType.equalsIgnoreCase("Integer")
-                || javaType.equalsIgnoreCase("long") || javaType.equalsIgnoreCase("Long")
-                || javaType.equalsIgnoreCase("short") || javaType.equalsIgnoreCase("byte");
-    }
-
-    private boolean shouldIncludeIdInPost(UmlClass c) {
-        // El primer atributo de la clase (o del padre si tiene herencia) es la PK
-        // Si es numérica → autogenerada → NO incluir en POST
-        // Si es String → manual → SÍ incluir en POST
-        
-        String pkType = "String";
-        
-        // Buscar el primer atributo (si no tiene atributos, asumir autogenerada)
-        if (!c.getAttributes().isEmpty()) {
-            pkType = TypeMapper.toJava(c.getAttributes().get(0).getType());
-        }
-        
-        return !isNumericType(pkType);
+    private boolean shouldIncludeIdInPost(UmlClass c, UmlSchema schema) {
+        // PK autogenerada (Long, incluye el id sintético) -> NO incluir en POST
+        // PK String explícita (manual) -> SÍ incluir en POST
+        return !PkResolver.resolve(c, schema).generated();
     }
 }
