@@ -1,16 +1,18 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideZonelessChangeDetection, signal } from '@angular/core';
 import { provideRouter, Router } from '@angular/router';
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
 import { DashboardComponent } from './dashboard.component';
 import { DashboardService, ProjectDto } from './dashboard.service';
 import { AuthService } from '../../core/auth';
+import { UmlApiService } from '../modeling/application/uml-api.service';
 
 describe('DashboardComponent', () => {
   let component: DashboardComponent;
   let fixture: ComponentFixture<DashboardComponent>;
   let router: Router;
   let dashboardServiceSpy: jasmine.SpyObj<DashboardService>;
+  let umlApiSpy: jasmine.SpyObj<UmlApiService>;
 
   const mockProjects: ProjectDto[] = [
     {
@@ -48,11 +50,13 @@ describe('DashboardComponent', () => {
       'duplicateProject',
     ]);
 
-    dashboardServiceSpy.getMetrics.and.returnValue(of({
-      totalEntities: 22,
-      activeProjects: 2,
-      referentialIntegrity: 98,
-    }));
+    dashboardServiceSpy.getMetrics.and.returnValue(
+      of({
+        totalEntities: 22,
+        activeProjects: 2,
+        referentialIntegrity: 98,
+      }),
+    );
     dashboardServiceSpy.getRecentProjects.and.returnValue(of([mockProjects[0]]));
     dashboardServiceSpy.getAllProjects.and.returnValue(of(mockProjects));
 
@@ -64,6 +68,10 @@ describe('DashboardComponent', () => {
       }),
     });
 
+    // El componente inyecta UmlApiService (import XMI), que a su vez necesita HttpClient:
+    // se sustituye por un spy para que el test no toque la red ni exija provideHttpClient.
+    umlApiSpy = jasmine.createSpyObj('UmlApiService', ['importXmi']);
+
     await TestBed.configureTestingModule({
       imports: [DashboardComponent],
       providers: [
@@ -71,6 +79,7 @@ describe('DashboardComponent', () => {
         provideRouter([]),
         { provide: DashboardService, useValue: dashboardServiceSpy },
         { provide: AuthService, useValue: authServiceSpy },
+        { provide: UmlApiService, useValue: umlApiSpy },
       ],
     }).compileComponents();
 
@@ -124,5 +133,49 @@ describe('DashboardComponent', () => {
   it('should open join modal', () => {
     component.openJoinModal();
     expect(component.isJoinModalOpen).toBeTrue();
+  });
+
+  describe('importXmiFile', () => {
+    const fileEvent = (file: File | null): Event => {
+      const input = { files: file ? [file] : [], value: 'model.xmi' };
+      return { target: input } as unknown as Event;
+    };
+
+    it('should navigate to the imported canvas room on success', () => {
+      const file = new File(['<xmi/>'], 'model.xmi');
+      umlApiSpy.importXmi.and.returnValue(
+        of({ canvas: { roomName: 'imported-room' } }) as unknown as ReturnType<
+          UmlApiService['importXmi']
+        >,
+      );
+      const event = fileEvent(file);
+
+      component.importXmiFile(event);
+
+      expect(umlApiSpy.importXmi).toHaveBeenCalledWith(file);
+      expect(router.navigate).toHaveBeenCalledWith(['/diagram', 'imported-room']);
+      expect(component.isImportingXmi).toBeFalse();
+      expect((event.target as HTMLInputElement).value).toBe('');
+    });
+
+    it('should do nothing when no file is selected', () => {
+      component.importXmiFile(fileEvent(null));
+
+      expect(umlApiSpy.importXmi).not.toHaveBeenCalled();
+      expect(component.isImportingXmi).toBeFalse();
+    });
+
+    it('should reset the importing state and alert when the import fails', () => {
+      const alertSpy = spyOn(window, 'alert');
+      umlApiSpy.importXmi.and.returnValue(
+        throwError(() => ({ error: { message: 'XMI inválido' } })),
+      );
+
+      component.importXmiFile(fileEvent(new File(['x'], 'bad.xmi')));
+
+      expect(component.isImportingXmi).toBeFalse();
+      expect(alertSpy).toHaveBeenCalledWith('Error de importación: XMI inválido');
+      expect(router.navigate).not.toHaveBeenCalled();
+    });
   });
 });

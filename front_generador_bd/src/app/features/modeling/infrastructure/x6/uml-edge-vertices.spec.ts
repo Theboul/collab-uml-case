@@ -91,7 +91,15 @@ describe('Herramienta de vértices de relaciones: persistencia al mover / borrar
    */
   async function dragEdgeMidpoint(dy: number): Promise<{ emittedBeforeRelease: number }> {
     const path = await waitFor(toolPath);
-    const { x, y } = midpointOf(path);
+    // La arista se rutea y se pinta de forma asíncrona: se espera a que su punto medio
+    // deje de moverse antes de agarrarla (con la máquina cargada se medía a mitad de layout).
+    let { x, y } = midpointOf(path);
+    for (let stable = 0; stable < 3;) {
+      await sleep(16);
+      const next = midpointOf(path);
+      stable = next.x === x && next.y === y ? stable + 1 : 0;
+      ({ x, y } = next);
+    }
     fireMouse(path, 'mousedown', x, y);
     for (let i = 1; i <= STEPS; i++) {
       await sleep(4);
@@ -99,7 +107,10 @@ describe('Herramienta de vértices de relaciones: persistencia al mover / borrar
     }
     const emittedBeforeRelease = emitted.length;
     fireMouse(document.body, 'mouseup', x, y + dy);
-    await sleep(80);
+    // Espera a que llegue la emisión de persistencia y deja un margen para que un
+    // duplicado (el bug que este spec cubre) alcance a manifestarse.
+    await waitFor(() => emitted.length > 0);
+    await sleep(60);
     return { emittedBeforeRelease };
   }
 
