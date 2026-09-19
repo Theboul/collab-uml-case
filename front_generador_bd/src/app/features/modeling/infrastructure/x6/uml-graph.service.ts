@@ -304,12 +304,22 @@ export class UmlGraphService {
 
     this.edgeToolsService.registerListeners(this.graph);
 
-    // Posición en vivo durante el arrastre (para el streaming a otros peers)
-    this.graph.on('node:move', ({ node }) => {
+    // Inicio del gesto: X6 dispara `node:move` una única vez por arrastre, así que
+    // solo sirve para marcar el estado — la posición en vivo sale de `node:moving`.
+    this.graph.on('node:move', () => {
       if (this.isPanningActive || this.isApplyingRemotePosition) {
         return;
       }
       this._isDraggingLocally = true;
+    });
+
+    // Posición en vivo durante el arrastre (para el streaming a otros peers):
+    // `node:moving` se dispara en cada movimiento del mouse; la cadencia de envío la
+    // acota el throttle del facade (ver collaboration-tuning.ts).
+    this.graph.on('node:moving', ({ node }) => {
+      if (this.isPanningActive || this.isApplyingRemotePosition) {
+        return;
+      }
       this.ngZone.run(() => {
         const pos = node.getPosition();
         this.nodeDragging$.next({
