@@ -407,19 +407,15 @@ public class ProjectGenerator {
             List<Map<String, Object>> methods = new ArrayList<>();
             for (var m : c.getMethods()) {
                 Map<String, Object> mm = new HashMap<>();
-                String returnType = (m.getReturnType() == null || m.getReturnType().isBlank()) ? "void" : TypeMapper.toJava(m.getReturnType());
+                String returnType = TypeMapper.toJavaReturn(m.getReturnType());
                 mm.put("name", m.getName());
                 mm.put("parameters", m.getParameters() == null ? "" : m.getParameters());
                 mm.put("returnType", returnType);
 
-                String defaultReturn = switch (returnType) {
-                    case "int", "long", "short", "byte" -> "0";
-                    case "double", "float" -> "0.0";
-                    case "boolean" -> "false";
-                    case "char" -> "'\\u0000'";
-                    default -> "null";
-                };
-                mm.put("defaultReturn", defaultReturn);
+                // un método void no lleva "return": sin la clave, la sección {{#defaultReturn}} no se renderiza
+                if (!"void".equals(returnType)) {
+                    mm.put("defaultReturn", TypeMapper.defaultReturn(returnType));
+                }
                 methods.add(mm);
             }
 

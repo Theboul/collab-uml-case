@@ -45,7 +45,7 @@ public class JsonNormalizer {
         List<UmlMethod> methods = c.getMethods().stream().map(m -> {
             UmlMethod nm = new UmlMethod();
             nm.setName(toCamelCase(m.getName()));
-            nm.setReturnType(TypeMapper.toJava(m.getReturnType()));
+            nm.setReturnType(TypeMapper.toJavaReturn(m.getReturnType()));
 
             // Normalizar parámetros "nombre:Tipo"
             if (m.getParameters() != null && !m.getParameters().isBlank()) {
