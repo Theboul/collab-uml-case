@@ -33,11 +33,27 @@ Decisiones tomadas al cerrar la Prioridad 1 (2026-09-20):
 
 ## Prioridad 2 — Colaboración (CU5)
 
-Implementar el `LockStore` del ADR-0003 detrás de una sola interfaz; sacar el broadcast de
-`canvas_update` de las rutas HTTP; enviar deltas en vez del Lienzo completo; reconexión en el
-gateway del frontend (hoy `WebSocketCollaborationGateway` no tiene `onclose` ni reconexión; un
-cierre por violación de protocolo, o una caída de red, deja la colaboración muerta hasta recargar).
-La reconexión no debe entrar en bucle ante un rechazo de handshake (403).
+Decisiones y parámetros: **Addendum del 2026-09-20 del ADR-0003** (y `.claude/rules/redis.md`).
+Cada paso: diffs por partes que se muestran antes de aplicar, tests propios, comparación de ruff y
+mypy contra un `git worktree` limpio de `HEAD`, y E2E con uvicorn real en los pasos que tocan el WS.
+`code-review` (Estándares y Especificación) al final.
+
+| Paso | Qué | Estado |
+|---|---|---|
+| 0 | Addendum del ADR-0003 y actualización de `redis.md` | Hecho |
+| 1 | Puerto `CollaborationRoom` (`join`, `leave`, `publish`) con adaptador en memoria; sustituye a `CollaborationRoomRegistry` sin cambiar el comportamiento | Pendiente |
+| 2 | Publicar `canvas_update` tras el commit, desde la capa de aplicación (puerto `ChangePublisher`), fuera de las rutas HTTP y del asistente | Pendiente |
+| 3 | Reconexión del gateway: aceptar y cerrar con 4403, backoff 1 s a 30 s con jitter y máximo de reintentos, resync al reabrir | Pendiente |
+| 4 | Deltas por diferencia antes/después con `fromVersion`/`toVersion`; snapshot solo como respaldo si hay hueco | Pendiente |
+| 5 | `LockStore` (puerto y adaptador en memoria), mensajes de lock, presencia y UX del frontend | Pendiente |
+| 6 | Adaptadores Redis (fan-out, presencia, `LockStore`); `fakeredis` como dependencia de desarrollo; 2 workers y `--ws-max-size 8192` en compose | Pendiente |
+| 7 | `code-review`, docs (ADR, `requirements-matrix`, `redis.md`, este plan) y E2E con 2 workers | Pendiente |
+
+Puntos de partida verificados: hoy se publica antes del commit (`routes.py`, dentro del handler;
+el commit está en `get_db_session`); los comandos de layout no emiten evento de dominio;
+`ElementoAgregado` no lleva los datos del elemento; el front ya reconcilia el grafo por id de
+forma incremental (`UmlGraphReconciliationService`); `WebSocketCollaborationGateway` no tiene
+`onclose` ni reconexión; `fakeredis` no está instalado y no hay Redis local.
 
 ## Prioridad 3 — Retirar el legado y unificar vocabulario
 
@@ -49,6 +65,17 @@ glosario de `CONTEXT.md` en código, API y eventos.
 ---
 
 # Tareas diferidas
+
+## Colaboración — diferido de la Prioridad 2
+
+- **Aplicar el lock en el servidor, detrás de una bandera.** Hoy el lock es advisory: el servidor
+  lleva y difunde el estado pero no rechaza mutaciones HTTP sobre un elemento bloqueado por otra
+  Sesión; la integridad la da la versión optimista. Aplicarlo exige mapear cada comando a los
+  elementos que toca (los payloads son heterogéneos: `classId`, `elementId`, `relationId`, ...).
+  Nombre de la bandera por definir (Addendum del ADR-0003, §5 y §8).
+- **Reintento automático tras un `409`.** Hoy, ante `409 VERSION_CONFLICT`, el frontend descarta el
+  historial local y recarga el snapshot. Mejor: traer los cambios desde su versión y reaplicar los
+  comandos que no se solapan con lo que cambió. Fuera de la Prioridad 2 (Addendum, §6).
 
 ## Seguridad — pendientes de la Prioridad 1
 
