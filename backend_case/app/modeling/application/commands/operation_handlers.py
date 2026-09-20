@@ -11,6 +11,7 @@ from backend_case.app.modeling.application.commands.schemas import (
     DeleteOperationCommand,
     UpdateOperationCommand,
 )
+from backend_case.app.modeling.application.commands.undo import inverso_de_edicion
 from core.uml_domain.events import DomainEvent, ElementoAgregado, ElementoEliminado
 from core.uml_domain.exceptions import ElementoNoEncontrado, UmlValidationError
 from core.uml_domain.model import (
@@ -20,6 +21,15 @@ from core.uml_domain.model import (
     UmlOperation,
     UmlParameter,
 )
+
+# Campo de dominio -> clave del comando UPDATE_OPERATION (para el payload de undo).
+_CLAVES_OPERACION = {
+    "name": "name",
+    "return_type": "returnType",
+    "visibility": "visibility",
+    "is_static": "isStatic",
+    "is_abstract": "isAbstract",
+}
 
 
 def _compute_op_signature(op: UmlOperation | AddOperationCommand | UpdateOperationCommand) -> tuple[str, tuple[str, ...]]:
@@ -116,7 +126,7 @@ class OperationCommandHandler(CommandHandler):
 
     def _handle_update_operation(
         self, lienzo: Lienzo, payload: dict[str, Any]
-    ) -> tuple[DomainEvent | None, None]:
+    ) -> tuple[DomainEvent | None, dict[str, Any] | None]:
         if "id" in payload and "operationId" not in payload:
             payload["operationId"] = payload["id"]
         if "updates" in payload and isinstance(payload["updates"], dict):
@@ -124,41 +134,20 @@ class OperationCommandHandler(CommandHandler):
 
         cmd = UpdateOperationCommand(**payload)
 
-        clase = lienzo.modelo.find_classifier_by_id(cmd.classId)
-        if clase is None or not isinstance(clase, UmlClass):
-            raise ElementoNoEncontrado(f"Clase con ID '{cmd.classId}' no encontrada.")
-
-        op = next((o for o in clase.operations if o.id == cmd.operationId), None)
-        if op is None:
-            raise ElementoNoEncontrado(
-                f"Operación con ID '{cmd.operationId}' no encontrada en la clase '{clase.name}'."
-            )
-
-        if cmd.name is not None:
-            proposed_name = cmd.name.strip()
-            param_types = tuple(p.type.strip().lower() for p in op.parameters)
-            new_sig = (proposed_name.lower(), param_types)
-
-            for other in clase.operations:
-                if other.id != cmd.operationId and _compute_op_signature(other) == new_sig:
-                    raise UmlValidationError(
-                        f"Ya existe otra operación con la firma '{proposed_name}({', '.join(param_types)})' en la clase '{clase.name}'."
-                    )
-            op.name = proposed_name
-
-        if cmd.returnType is not None:
-            op.return_type = cmd.returnType.strip()
-
-        if cmd.visibility is not None:
-            op.visibility = cmd.visibility
-
-        if cmd.isStatic is not None:
-            op.is_static = cmd.isStatic
-
-        if cmd.isAbstract is not None:
-            op.is_abstract = cmd.isAbstract
-
-        return None, None
+        op, evento = lienzo.modelo.editar_operacion(
+            cmd.classId,
+            cmd.operationId,
+            nombre=cmd.name,
+            tipo_retorno=cmd.returnType,
+            visibilidad=cmd.visibility,
+            is_static=cmd.isStatic,
+            is_abstract=cmd.isAbstract,
+        )
+        if evento is None:
+            return None, None
+        return evento, inverso_de_edicion(
+            evento, _CLAVES_OPERACION, {"classId": cmd.classId, "operationId": op.id}
+        )
 
     def _handle_delete_operation(
         self, lienzo: Lienzo, payload: dict[str, Any]

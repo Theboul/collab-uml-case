@@ -18,18 +18,21 @@ from backend_case.app.modeling.application.commands.schemas import (
     RestoreElementsCommand,
     UpdateClassNameCommand,
 )
+from backend_case.app.modeling.application.commands.undo import inverso_de_edicion
 from backend_case.app.schemas.uml import UmlModelSchema
 from core.uml_domain.events import DomainEvent, ElementoAgregado, ElementoEliminado
-from core.uml_domain.exceptions import ElementoNoEncontrado, UmlValidationError
+from core.uml_domain.exceptions import UmlValidationError
 from core.uml_domain.model import (
     AggregationKind,
     AssociationEnd,
     Lienzo,
     MultiplicityRange,
     UmlAssociation,
-    UmlClass,
     UmlGeneralization,
 )
+
+# Campo de dominio -> clave del comando UPDATE_CLASS_NAME (para el payload de undo).
+_CLAVES_CLASE = {"name": "name", "is_abstract": "isAbstract"}
 
 
 class ClassCommandHandler(CommandHandler):
@@ -105,27 +108,20 @@ class ClassCommandHandler(CommandHandler):
 
     def _handle_update_class_name(
         self, lienzo: Lienzo, payload: dict[str, Any]
-    ) -> tuple[DomainEvent | None, None]:
+    ) -> tuple[DomainEvent | None, dict[str, Any] | None]:
         if "id" in payload and "classId" not in payload:
             payload["classId"] = payload["id"]
         cmd = UpdateClassNameCommand(**payload)
 
-        clase = lienzo.modelo.find_classifier_by_id(cmd.classId)
-        if clase is None or not isinstance(clase, UmlClass):
-            raise ElementoNoEncontrado(f"Clase con ID '{cmd.classId}' no encontrada.")
-
-        # Comprobar unicidad ignorando mayúsculas/minúsculas con otras clases
-        otro = lienzo.modelo.find_classifier_by_name(cmd.name)
-        if otro is not None and otro.id != cmd.classId:
-            raise UmlValidationError(
-                f"Ya existe otra clase con el nombre '{cmd.name}' en este modelo."
-            )
-
-        clase.name = cmd.name.strip()
-        if cmd.isAbstract is not None:
-            clase.is_abstract = cmd.isAbstract
-
-        return None, None
+        clase, evento = lienzo.modelo.editar_clase(
+            cmd.classId, nombre=cmd.name, is_abstract=cmd.isAbstract
+        )
+        if evento is None:
+            return None, None
+        # UpdateClassNameCommand exige `name`: el inverso lo lleva siempre (el anterior si cambió).
+        return evento, inverso_de_edicion(
+            evento, _CLAVES_CLASE, {"classId": clase.id, "name": clase.name}
+        )
 
     def _handle_delete_elements(
         self, lienzo: Lienzo, payload: dict[str, Any]

@@ -13,8 +13,10 @@ from typing import Dict, List, Optional, Tuple, Any
 import uuid
 
 from core.uml_domain.events import (
+    CambioCampo,
     DomainEvent,
     ElementoAgregado,
+    ElementoModificado,
     LienzoCreado,
     RelacionAgregada,
     RelacionModificada,
@@ -259,6 +261,39 @@ class UmlVisualLayout:
 # MODELO RAÍZ CANÓNICO
 # ==============================================================================
 
+def _aplicar_cambios(
+    entidad: object, elemento_id: str, tipo: str, contenedor_id: str, propuestos: Dict[str, object]
+) -> Optional[ElementoModificado]:
+    """Asigna solo los campos propuestos (no-None) cuyo valor difiere; None si nada cambió."""
+    cambios = tuple(
+        CambioCampo(campo, getattr(entidad, campo), nuevo)
+        for campo, nuevo in propuestos.items()
+        if nuevo is not None and getattr(entidad, campo) != nuevo
+    )
+    for cambio in cambios:
+        setattr(entidad, cambio.campo, cambio.nuevo)
+    if not cambios:
+        return None
+    return ElementoModificado(
+        elemento_id=elemento_id, tipo=tipo, contenedor_id=contenedor_id, cambios=cambios
+    )
+
+
+def _texto_requerido(valor: Optional[str], mensaje: str) -> Optional[str]:
+    """Recorta el texto propuesto; None (no tocar) pasa igual y un texto vacío se rechaza."""
+    if valor is None:
+        return None
+    limpio = valor.strip()
+    if not limpio:
+        raise UmlValidationError(mensaje)
+    return limpio
+
+
+def _firma_operacion(op: UmlOperation) -> Tuple[str, Tuple[str, ...]]:
+    """Firma para detectar sobrecarga duplicada: nombre + tipos de parámetros (sin mayúsculas)."""
+    return (op.name.strip().lower(), tuple(p.type.strip().lower() for p in op.parameters))
+
+
 @dataclass
 class UmlDomainModel:
     """
@@ -318,6 +353,101 @@ class UmlDomainModel:
         clase = UmlClass(id=str(uuid.uuid4()), name=nombre, is_abstract=is_abstract)
         self.classes.append(clase)
         return clase, ElementoAgregado(elemento_id=clase.id, tipo="UmlClass")
+
+    # Edición de elementos (CU3): como `editar_asociacion`, solo muta los campos provistos
+    # (no-None), pero valida TODO antes de mutar y devuelve `None` en vez de evento si nada
+    # cambió realmente.
+
+    def _buscar_clase(self, clase_id: str) -> UmlClass:
+        clase = self.find_classifier_by_id(clase_id)
+        if not isinstance(clase, UmlClass):
+            raise ElementoNoEncontrado(f"Clase con ID '{clase_id}' no encontrada.")
+        return clase
+
+    def editar_clase(
+        self, clase_id: str, nombre: Optional[str] = None, is_abstract: Optional[bool] = None
+    ) -> Tuple[UmlClass, Optional[ElementoModificado]]:
+        """CU3: renombra y/o alterna la abstracción de una clase (nombre único global)."""
+        clase = self._buscar_clase(clase_id)
+        nuevo_nombre = _texto_requerido(nombre, "El nombre de la clase no puede estar vacío.")
+        if nuevo_nombre is not None:
+            otro = self.find_classifier_by_name(nuevo_nombre)
+            if otro is not None and otro.id != clase.id:
+                raise UmlValidationError(
+                    f"Ya existe otra clase con el nombre '{nombre}' en este modelo."
+                )
+        propuestos: Dict[str, object] = {"name": nuevo_nombre, "is_abstract": is_abstract}
+        evento = _aplicar_cambios(clase, clase.id, "UmlClass", "", propuestos)
+        return clase, evento
+
+    def editar_atributo(
+        self,
+        clase_id: str,
+        atributo_id: str,
+        nombre: Optional[str] = None,
+        tipo: Optional[str] = None,
+        visibilidad: Optional[VisibilityKind] = None,
+        is_static: Optional[bool] = None,
+    ) -> Tuple[UmlAttribute, Optional[ElementoModificado]]:
+        """CU3: edita un atributo (nombre único, sin distinguir mayúsculas, dentro de su clase)."""
+        clase = self._buscar_clase(clase_id)
+        atributo = next((a for a in clase.attributes if a.id == atributo_id), None)
+        if atributo is None:
+            raise ElementoNoEncontrado(
+                f"Atributo con ID '{atributo_id}' no encontrado en la clase '{clase.name}'."
+            )
+        nuevo_nombre = _texto_requerido(nombre, "El nombre del atributo no puede estar vacío.")
+        nuevo_tipo = _texto_requerido(tipo, "El tipo del atributo no puede estar vacío.")
+        if nuevo_nombre is not None and any(
+            a.id != atributo.id and a.name.strip().lower() == nuevo_nombre.lower()
+            for a in clase.attributes
+        ):
+            raise UmlValidationError(
+                f"Ya existe otro atributo llamado '{nombre}' en la clase '{clase.name}'."
+            )
+        cambios: Dict[str, object] = {
+            "name": nuevo_nombre,
+            "type": nuevo_tipo,
+            "visibility": visibilidad,
+            "is_static": is_static,
+        }
+        return atributo, _aplicar_cambios(atributo, atributo.id, "UmlAttribute", clase.id, cambios)
+
+    def editar_operacion(
+        self,
+        clase_id: str,
+        operacion_id: str,
+        nombre: Optional[str] = None,
+        tipo_retorno: Optional[str] = None,
+        visibilidad: Optional[VisibilityKind] = None,
+        is_static: Optional[bool] = None,
+        is_abstract: Optional[bool] = None,
+    ) -> Tuple[UmlOperation, Optional[ElementoModificado]]:
+        """CU3: edita una operación (firma = nombre + tipos de parámetros, única por clase)."""
+        clase = self._buscar_clase(clase_id)
+        operacion = next((o for o in clase.operations if o.id == operacion_id), None)
+        if operacion is None:
+            raise ElementoNoEncontrado(
+                f"Operación con ID '{operacion_id}' no encontrada en la clase '{clase.name}'."
+            )
+        nuevo_nombre = _texto_requerido(nombre, "El nombre de la operación no puede estar vacío.")
+        if nuevo_nombre is not None:
+            tipos = tuple(p.type.strip().lower() for p in operacion.parameters)
+            if any(o.id != operacion.id and _firma_operacion(o) == (nuevo_nombre.lower(), tipos)
+                   for o in clase.operations):
+                raise UmlValidationError(
+                    f"Ya existe otra operación con la firma '{nuevo_nombre}({', '.join(tipos)})' "
+                    f"en la clase '{clase.name}'."
+                )
+        cambios: Dict[str, object] = {
+            "name": nuevo_nombre,
+            "return_type": tipo_retorno.strip() if tipo_retorno is not None else None,
+            "visibility": visibilidad,
+            "is_static": is_static,
+            "is_abstract": is_abstract,
+        }
+        evento = _aplicar_cambios(operacion, operacion.id, "UmlOperation", clase.id, cambios)
+        return operacion, evento
 
     def agregar_asociacion(
         self,

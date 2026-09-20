@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Callable
 from typing import Any
 
@@ -23,6 +24,8 @@ from core.uml_domain.model import (
 )
 from core.uml_domain.validation import UMLValidator, ValidationResult
 
+logger = logging.getLogger(__name__)
+
 
 class CanvasService:
     """
@@ -32,6 +35,17 @@ class CanvasService:
     def __init__(self, repository: CanvasRepository) -> None:
         self.repository = repository
         self.command_dispatcher = CommandDispatcher()
+
+    @staticmethod
+    def _registrar_eventos(canvas_id: str, eventos: list[DomainEvent | None]) -> None:
+        """
+        El dispatcher devuelve el evento de dominio de cada comando. Todavía no hay un consumidor
+        (colaboración CU5 / sync CU13), pero se registra en vez de descartarlo. Se llama DESPUÉS de
+        persistir: un guardado rechazado (409) o un lote revertido no deja rastro de cambios falsos.
+        """
+        for evento in eventos:
+            if evento is not None:
+                logger.info("Evento de dominio en el lienzo %s: %s", canvas_id, evento)
 
     async def _verificar_acceso_edicion(
         self, canvas_id: str, owner_id: str | None, user_id: str | None
@@ -262,7 +276,7 @@ class CanvasService:
             }
 
         # Despachar comando semántico al handler correspondiente
-        _, undo_payload = self.command_dispatcher.dispatch(res.lienzo, cmd_type, payload)
+        evento, undo_payload = self.command_dispatcher.dispatch(res.lienzo, cmd_type, payload)
 
         # Persistir de forma atómica validando que la versión siga siendo expected_version
         saved_result = await self.repository.guardar_atomico(
@@ -270,6 +284,7 @@ class CanvasService:
             expected_version=expected_version,
             lienzo=res.lienzo,
         )
+        self._registrar_eventos(canvas_id, [evento])
 
         return saved_result, undo_payload
 
@@ -296,14 +311,18 @@ class CanvasService:
                 "links": {},
             }
 
+        eventos: list[DomainEvent | None] = []
         for cmd_type, payload in commands:
-            self.command_dispatcher.dispatch(res.lienzo, cmd_type, payload)
+            evento, _ = self.command_dispatcher.dispatch(res.lienzo, cmd_type, payload)
+            eventos.append(evento)
 
-        return await self.repository.guardar_atomico(
+        saved_result = await self.repository.guardar_atomico(
             canvas_id=canvas_id,
             expected_version=expected_version,
             lienzo=res.lienzo,
         )
+        self._registrar_eventos(canvas_id, eventos)
+        return saved_result
 
     async def ejecutar_resolviendo_secuencial(
         self,
@@ -338,10 +357,12 @@ class CanvasService:
             }
 
         failures: list[str] = []
+        eventos: list[DomainEvent | None] = []
         for index, raw_item in enumerate(raw_items):
             try:
                 cmd_type, payload = resolver(raw_item, res.lienzo.modelo)
-                self.command_dispatcher.dispatch(res.lienzo, cmd_type, payload)
+                evento, _ = self.command_dispatcher.dispatch(res.lienzo, cmd_type, payload)
+                eventos.append(evento)
             except UmlDomainError as err:
                 failures.append(f"Operación #{index + 1}: {err}")
             except (KeyError, TypeError, ValueError, AttributeError, IndexError) as err:
@@ -360,11 +381,13 @@ class CanvasService:
                 "No se pudieron aplicar las siguientes operaciones:\n- " + "\n- ".join(failures)
             )
 
-        return await self.repository.guardar_atomico(
+        saved_result = await self.repository.guardar_atomico(
             canvas_id=canvas_id,
             expected_version=expected_version,
             lienzo=res.lienzo,
         )
+        self._registrar_eventos(canvas_id, eventos)
+        return saved_result
 
     async def listar_lienzos(self, user_id: str | None = None) -> list[dict[str, Any]]:
         """

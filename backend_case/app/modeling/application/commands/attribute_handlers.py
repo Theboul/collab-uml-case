@@ -11,9 +11,18 @@ from backend_case.app.modeling.application.commands.schemas import (
     DeleteAttributeCommand,
     UpdateAttributeCommand,
 )
+from backend_case.app.modeling.application.commands.undo import inverso_de_edicion
 from core.uml_domain.events import DomainEvent, ElementoAgregado, ElementoEliminado
 from core.uml_domain.exceptions import ElementoNoEncontrado, UmlValidationError
 from core.uml_domain.model import Lienzo, UmlAttribute, UmlClass
+
+# Campo de dominio -> clave del comando UPDATE_ATTRIBUTE (para el payload de undo).
+_CLAVES_ATRIBUTO = {
+    "name": "name",
+    "type": "type",
+    "visibility": "visibility",
+    "is_static": "isStatic",
+}
 
 
 class AttributeCommandHandler(CommandHandler):
@@ -90,7 +99,7 @@ class AttributeCommandHandler(CommandHandler):
 
     def _handle_update_attribute(
         self, lienzo: Lienzo, payload: dict[str, Any]
-    ) -> tuple[DomainEvent | None, None]:
+    ) -> tuple[DomainEvent | None, dict[str, Any] | None]:
         if "id" in payload and "attributeId" not in payload:
             payload["attributeId"] = payload["id"]
         if "updates" in payload and isinstance(payload["updates"], dict):
@@ -98,35 +107,19 @@ class AttributeCommandHandler(CommandHandler):
 
         cmd = UpdateAttributeCommand(**payload)
 
-        clase = lienzo.modelo.find_classifier_by_id(cmd.classId)
-        if clase is None or not isinstance(clase, UmlClass):
-            raise ElementoNoEncontrado(f"Clase con ID '{cmd.classId}' no encontrada.")
-
-        attr = next((a for a in clase.attributes if a.id == cmd.attributeId), None)
-        if attr is None:
-            raise ElementoNoEncontrado(
-                f"Atributo con ID '{cmd.attributeId}' no encontrado en la clase '{clase.name}'."
-            )
-
-        if cmd.name is not None:
-            name_clean = cmd.name.strip()
-            name_lower = name_clean.lower()
-            if any(a.name.strip().lower() == name_lower and a.id != cmd.attributeId for a in clase.attributes):
-                raise UmlValidationError(
-                    f"Ya existe otro atributo llamado '{cmd.name}' en la clase '{clase.name}'."
-                )
-            attr.name = name_clean
-
-        if cmd.type is not None:
-            attr.type = cmd.type.strip()
-
-        if cmd.visibility is not None:
-            attr.visibility = cmd.visibility
-
-        if cmd.isStatic is not None:
-            attr.is_static = cmd.isStatic
-
-        return None, None
+        attr, evento = lienzo.modelo.editar_atributo(
+            cmd.classId,
+            cmd.attributeId,
+            nombre=cmd.name,
+            tipo=cmd.type,
+            visibilidad=cmd.visibility,
+            is_static=cmd.isStatic,
+        )
+        if evento is None:
+            return None, None
+        return evento, inverso_de_edicion(
+            evento, _CLAVES_ATRIBUTO, {"classId": cmd.classId, "attributeId": attr.id}
+        )
 
     def _handle_delete_attribute(
         self, lienzo: Lienzo, payload: dict[str, Any]

@@ -29,6 +29,29 @@ class ElementoAgregado(DomainEvent):
 
 
 @dataclass(frozen=True)
+class CambioCampo:
+    """Un campo que cambió: nombre del atributo de dominio (snake_case) y sus valores."""
+
+    campo: str
+    anterior: object
+    nuevo: object
+
+
+@dataclass(frozen=True)
+class ElementoModificado(DomainEvent):
+    """
+    Un elemento existente cambió (clase, atributo u operación). Solo lista los campos cuyo valor
+    realmente cambió, con el anterior y el nuevo: un consumidor (log de cambios, colaboración,
+    undo, sync) no necesita releer el modelo para saber qué pasó.
+    """
+
+    elemento_id: str = ""
+    tipo: str = ""  # "UmlClass" | "UmlAttribute" | "UmlOperation"
+    contenedor_id: str = ""  # id de la clase dueña (atributos/operaciones); "" para una clase
+    cambios: tuple[CambioCampo, ...] = ()
+
+
+@dataclass(frozen=True)
 class RelacionAgregada(DomainEvent):
     relacion_id: str = ""
     tipo: str = ""  # "UmlAssociation" | "UmlGeneralization" | "UmlRealization" | ...
