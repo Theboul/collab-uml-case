@@ -66,6 +66,8 @@ class UpdateClassNameCommand(BaseModel):
 
     classId: str
     name: str = Field(..., min_length=1, max_length=255)
+    # None = no tocar. Pydantic convierte "true"/"false" y rechaza el resto (no truthiness).
+    isAbstract: bool | None = None
 
 
 class DeleteElementsCommand(BaseModel):

@@ -122,8 +122,8 @@ class ClassCommandHandler(CommandHandler):
             )
 
         clase.name = cmd.name.strip()
-        if "isAbstract" in payload:
-            clase.is_abstract = bool(payload["isAbstract"])
+        if cmd.isAbstract is not None:
+            clase.is_abstract = cmd.isAbstract
 
         return None, None
 
