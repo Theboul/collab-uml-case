@@ -1,4 +1,4 @@
-import { Injectable, NgZone, inject } from '@angular/core';
+import { Injectable, NgZone, effect, inject } from '@angular/core';
 import { Subject } from 'rxjs';
 import { Graph, Node, Edge } from '@antv/x6';
 import { Selection } from '@antv/x6-plugin-selection';
@@ -19,7 +19,11 @@ import { UmlInteractionService } from './uml-interaction.service';
 import { UmlEdgeToolsService } from './uml-edge-tools.service';
 import { registerUmlClassNode } from './uml-class-node.registration';
 import { UmlGraphReconciliationService } from './uml-graph-reconciliation.service';
-import { applyUmlClassVisual, buildUmlClassNodeVisual } from './uml-class-node-visual';
+import {
+  applyUmlClassVisual,
+  buildUmlClassNodeVisual,
+  UmlClassNodeVisualInput,
+} from './uml-class-node-visual';
 import { UmlClassLayout } from './uml-class-node-layout';
 import { UmlAttributeRowsService } from './uml-attribute-rows.service';
 import { RemoteLocksService } from '../../application/remote-locks.service';
@@ -139,6 +143,13 @@ export class UmlGraphService {
    * mandar la posición por WebSocket.
    */
   readonly localPointerMove$ = new Subject<{ x: number; y: number }>();
+
+  constructor() {
+    effect(() => {
+      const locks = this.remoteLocksService.remoteLocks();
+      this.updateLockedNodesVisuals(locks);
+    });
+  }
 
   get isInitialized(): boolean {
     return this.graph !== null;
@@ -607,8 +618,34 @@ export class UmlGraphService {
       height: Math.max(config.height || UML_NODE_DIMENSIONS.MIN_HEIGHT, visual.minHeight),
       attrs: visual.attrs,
     });
+    const isLocked = Boolean(this.remoteLocksService.remoteLocks()[node.id]);
+    if (isLocked) {
+      node.setAttrByPath('frame/stroke', '#f59e0b');
+      node.setAttrByPath('frame/strokeWidth', 2);
+      node.setAttrByPath('frame/strokeDasharray', '4 2');
+    }
     this.attributeRowsService.render(this.graph, node, config.data.attributes || [], visual.layout);
     return node;
+  }
+
+  /**
+   * Actualiza el contorno visual (borde discontinuo ámbar) de los nodos bloqueados por otros peers.
+   */
+  updateLockedNodesVisuals(locks: Record<string, unknown>): void {
+    if (!this.graph) return;
+    const nodes = this.graph.getNodes();
+    for (const node of nodes) {
+      const isLocked = Boolean(locks[node.id]);
+      if (isLocked) {
+        node.setAttrByPath('frame/stroke', '#f59e0b');
+        node.setAttrByPath('frame/strokeWidth', 2);
+        node.setAttrByPath('frame/strokeDasharray', '4 2');
+      } else {
+        node.setAttrByPath('frame/stroke', '#1e293b');
+        node.setAttrByPath('frame/strokeWidth', 1.5);
+        node.setAttrByPath('frame/strokeDasharray', 'none');
+      }
+    }
   }
 
   addEdge(config: X6EdgeConfig): Edge {
@@ -616,7 +653,7 @@ export class UmlGraphService {
     return this.graph.addEdge(config);
   }
 
-  updateNodeData(nodeId: string, data: any): void {
+  updateNodeData(nodeId: string, data: UmlClassNodeVisualInput): void {
     if (!this.graph) return;
     const node = this.graph.getCellById(nodeId);
     if (node && node.isNode()) {
