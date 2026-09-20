@@ -1,7 +1,9 @@
 <div class="h-full w-full flex bg-surface-lowest text-neutral-100 antialiased select-none">
   <!-- Contenido principal: header de proyecto + vista actual -->
   <div class="flex-1 flex flex-col min-w-0 overflow-hidden">
-    <header class="h-11 px-4 bg-surface-container-low/80 backdrop-blur border-b border-neutral-800/80 flex items-center justify-between shrink-0 z-10">
+    <header
+      class="h-11 px-4 bg-surface-container-low/80 backdrop-blur border-b border-neutral-800/80 flex items-center justify-between shrink-0 z-10"
+    >
       <div class="flex items-center gap-2 text-xs min-w-0">
         <a
           routerLink="/dashboard"
@@ -11,14 +13,50 @@
         >
           <sc-icon name="arrow_back" [size]="16"></sc-icon>
         </a>
-        <a routerLink="/dashboard" class="text-neutral-500 hover:text-neutral-300 font-medium shrink-0">
+        <a
+          routerLink="/dashboard"
+          class="text-neutral-500 hover:text-neutral-300 font-medium shrink-0"
+        >
           Espacio de trabajo
         </a>
         <span class="text-neutral-600 shrink-0">/</span>
-        <span class="text-neutral-200 font-semibold tracking-tight truncate">{{ projectName || 'Lienzo' }}</span>
+        <span class="text-neutral-200 font-semibold tracking-tight truncate">{{
+          projectName || 'Lienzo'
+        }}</span>
       </div>
 
       <div class="flex items-center gap-2 shrink-0">
+        <!-- Chips de presencia de colaboradores en la sala -->
+        <div
+          *ngIf="peers && peers.length > 0"
+          class="flex items-center gap-1.5 mr-1"
+          aria-label="Colaboradores en la sala"
+        >
+          <div
+            *ngFor="let peer of visiblePeers"
+            data-testid="peer-chip"
+            class="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs border border-neutral-700/80 bg-neutral-800/80 shadow-xs shrink-0 select-none transition-all"
+            [title]="peer.displayName || 'Colaborador'"
+          >
+            <span
+              class="w-2 h-2 rounded-full shrink-0 ring-1 ring-black/40"
+              [style.backgroundColor]="peer.color"
+            ></span>
+            <span class="text-neutral-300 font-medium max-w-[85px] truncate text-[11px]">
+              {{ peer.displayName || 'Colaborador' }}
+            </span>
+          </div>
+
+          <div
+            *ngIf="overflowCount > 0"
+            data-testid="overflow-badge"
+            class="h-5 px-1.5 rounded-full bg-neutral-800 border border-neutral-700 text-neutral-400 font-mono text-[10px] flex items-center justify-center font-semibold"
+            [title]="'+' + overflowCount + ' colaboradores más'"
+          >
+            +{{ overflowCount }}
+          </div>
+        </div>
+
         <div
           class="h-7 w-7 rounded-full bg-gradient-to-br from-primary-600 to-indigo-500 flex items-center justify-center font-bold text-[10px] text-white ring-1 ring-white/10"
           [title]="userName"

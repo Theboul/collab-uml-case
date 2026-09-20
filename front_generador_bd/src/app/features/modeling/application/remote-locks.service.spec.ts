@@ -200,6 +200,18 @@ describe('RemoteLocksService', () => {
       expect(service.remoteLocks()['class-1']).toBeUndefined();
     });
 
+    it('si el titular tiene displayName null o vacío, usa el fallback "otro usuario"', () => {
+      lockAcquired$.next({
+        type: 'lock_acquired',
+        elementId: 'class-1',
+        holder: { sessionId: 'peer-anon', userId: null, displayName: null },
+        ttlMs: 15000,
+      });
+
+      expect(service.isLockedByOther('class-1')).toBeTrue();
+      expect(service.getLockHolderName('class-1')).toBe('otro usuario');
+    });
+
     it('desbloquea el elemento cuando llega lock_released', () => {
       lockAcquired$.next({
         type: 'lock_acquired',

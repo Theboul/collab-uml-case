@@ -79,6 +79,10 @@ export interface PresenceSession {
   displayName: string | null;
 }
 
+export interface PresencePeer extends PresenceSession {
+  color: string;
+}
+
 export interface PresenceSnapshotMessage {
   type: 'presence_snapshot';
   sessions: PresenceSession[];

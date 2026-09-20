@@ -25,6 +25,7 @@ import { RemoteCursorsService } from './remote-cursors.service';
 import { RemoteCanvasSyncService } from './remote-canvas-sync.service';
 import { RemoteNodeDragService } from './remote-node-drag.service';
 import { RemoteLocksService } from './remote-locks.service';
+import { RemotePresenceService } from './remote-presence.service';
 import { NODE_DRAG_BROADCAST_THROTTLE_MS } from './collaboration-tuning';
 import { EditorStateService } from './editor-state.service';
 import { EditorHistoryService } from './editor-history.service';
@@ -56,6 +57,7 @@ export class UmlEditorFacade {
   private readonly remoteCanvasSyncService = inject(RemoteCanvasSyncService);
   private readonly remoteNodeDragService = inject(RemoteNodeDragService);
   private readonly remoteLocksService = inject(RemoteLocksService);
+  private readonly remotePresenceService = inject(RemotePresenceService);
 
   // Re-export reactive signals from specialized services (no API breaking changes)
   readonly canvasId = this.state.canvasId;
@@ -89,6 +91,7 @@ export class UmlEditorFacade {
   readonly assistantError = this.state.assistantError;
   readonly contextMenu = this.state.contextMenu;
   readonly remoteCursors = this.remoteCursorsService.cursors;
+  readonly presencePeers = this.remotePresenceService.remotePeers;
 
   readonly validationResult = this.state.validationResult;
   readonly isValidating = this.state.isValidating;
@@ -576,6 +579,8 @@ export class UmlEditorFacade {
     this.collabGateway.disconnect();
     this.remoteCursorsService.reset();
     this.remoteNodeDragService.reset();
+    this.remoteLocksService.reset();
+    this.remotePresenceService.reset();
   }
 
   /** Reintento manual del canal de colaboración, tras agotarse los automáticos. */

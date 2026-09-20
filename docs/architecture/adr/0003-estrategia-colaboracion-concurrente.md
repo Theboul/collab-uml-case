@@ -177,8 +177,14 @@ presence:canvas:{canvasId}:{sessionId}       # una clave por Sesión (no por usu
   respuesta, la app **falla al arrancar** (mismo patrón que `JWT_SECRET`). Compose con 2 workers y
   `--ws-max-size 8192`.
 
-### 8. Sigue abierto (se decide en el paso indicado)
+### 8. Sigue abierto / Límites conocidos (se decide o verifica en el paso indicado)
 
+- **Límite conocido de concurrencia para Nivel B (Paso 5e):** Carrera de arrastre simultáneo. Con el
+  diseño actual (bloqueo local optimista en UI vía `isLockedByOther` y servidor con locking de
+  carácter consultivo/advisory), dos usuarios pueden empezar a arrastrar el mismo nodo casi
+  simultáneamente antes de que viaje y llegue el primer `lock_denied` desde el servidor — existe
+  una ventana de carrera real. Se documenta como límite conocido a verificar explícitamente en el
+  Nivel B (Paso 5e), análogo al manejo de huecos de deltas en el Paso 4.
 - Lock por inactividad frente a lock por desconexión: el cliente libera explícitamente tras 60 s sin
   interacción en el panel, y re-adquiere si el usuario retoma; la desconexión real se resuelve por
   TTL de 15 s y limpieza al salir la Sesión (Paso 5).
