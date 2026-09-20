@@ -43,8 +43,8 @@ mypy contra un `git worktree` limpio de `HEAD`, y E2E con uvicorn real en los pa
 | 0 | Addendum del ADR-0003 y actualización de `redis.md` | Hecho |
 | 1 | Puerto `CollaborationRoom` (`join`, `leave`, `publish`) con adaptador en memoria; sustituye a `CollaborationRoomRegistry` sin cambiar el comportamiento | Hecho |
 | 2 | Publicar `canvas_update` tras el commit, desde la capa de aplicación (puerto `ChangePublisher`), fuera de las rutas HTTP y del asistente | Hecho |
-| 3 | Reconexión del gateway: aceptar y cerrar con 4403, backoff 1 s a 30 s con jitter y máximo de reintentos, resync al reabrir | Pendiente |
-| 4 | Deltas por diferencia antes/después con `fromVersion`/`toVersion`; snapshot solo como respaldo si hay hueco. Incluye que **todas** las rutas de mutación emitan deltas: hoy `POST /classes`, `POST /associations` y la importación XMI no publican nada | Pendiente |
+| 3 | Reconexión del gateway: aceptar y cerrar con 4401/4403, backoff 1 s a 30 s con jitter, máximo de 8 reintentos, resync al reabrir, indicador y botón "Reintentar". Verificado en Karma (Nivel A), en un navegador real contra un servidor real con proxy cortable (Nivel B, `scripts/collab-e2e/`) y en la app real (Nivel C, manual asistido) | Hecho |
+| 4 | Deltas por diferencia antes/después con `fromVersion`/`toVersion`; snapshot solo como respaldo si hay hueco. Incluye que **todas** las rutas que mutan un Lienzo existente emitan deltas: hoy `POST /classes` y `POST /associations` no publican nada. La importación XMI queda fuera: siempre crea un Lienzo nuevo, sin Sala a la que avisar | Pendiente |
 | 5 | `LockStore` (puerto y adaptador en memoria), mensajes de lock, presencia y UX del frontend | Pendiente |
 | 6 | Adaptadores Redis (fan-out, presencia, `LockStore`); `fakeredis` como dependencia de desarrollo; 2 workers y `--ws-max-size 8192` en compose | Pendiente |
 | 7 | `code-review`, docs (ADR, `requirements-matrix`, `redis.md`, este plan) y E2E con 2 workers | Pendiente |
@@ -73,6 +73,11 @@ glosario de `CONTEXT.md` en código, API y eventos.
   Sesión; la integridad la da la versión optimista. Aplicarlo exige mapear cada comando a los
   elementos que toca (los payloads son heterogéneos: `classId`, `elementId`, `relationId`, ...).
   Nombre de la bandera por definir (Addendum del ADR-0003, §5 y §8).
+- **Revocación de acceso en caliente.** El rol solo se calcula en el handshake: una Sesión abierta
+  no se revoca aunque se retire al Colaborador (ni existe hoy un flujo para retirarlo). Verificado en
+  la app real: tras retirarle el acceso, la Sesión de Beto siguió viva y solo la siguiente conexión
+  recibió 4403. Es una funcionalidad que no existe, no un defecto de lo construido; queda fuera de la
+  Prioridad 2.
 - **Reintento automático tras un `409`.** Hoy, ante `409 VERSION_CONFLICT`, el frontend descarta el
   historial local y recarga el snapshot. Mejor: traer los cambios desde su versión y reaplicar los
   comandos que no se solapan con lo que cambió. Fuera de la Prioridad 2 (Addendum, §6).
@@ -115,7 +120,8 @@ glosario de `CONTEXT.md` en código, API y eventos.
 - **El gateway no reconecta.** Mitigado parcialmente: los campos inválidos ya no cierran la Sesión
   (ver "Decisiones tomadas"), pero una violación de protocolo o una caída de red sigue dejando la
   colaboración muerta hasta recargar. La reconexión completa es Prioridad 2.
-- **El rechazo del handshake no llega como código 4401/4403.** Con un servidor real, cerrar antes
+- **El indicador de conexión no se veía sin desplazar la barra (RESUELTO en el Paso 3).** Estaba al final de la barra de herramientas, fuera de pantalla a 1038 y a 1600 px. Se movió junto a las insignias del encabezado (sala, versión, rol), que siempre son visibles. Verificado en la app real a ambos anchos y en las tres variantes: "Reconectando…" (x 363–463), "Sin conexión" + "Reintentar" (hasta x 529) y "Sin permiso en este lienzo" (x 363–516).
+- **El rechazo del handshake no llega como código 4401/4403 (RESUELTO en el Paso 3).** Con un servidor real, cerrar antes
   de `accept()` se traduce en HTTP 403 y el navegador ve un fallo de conexión, no el código. El
   cliente no distingue "sin permiso" de "sin red"; la reconexión no debe entrar en bucle con 403.
 - **`CanvasRepository.guardar()` conserva una rama de actualización sin control de versión.** Ya no

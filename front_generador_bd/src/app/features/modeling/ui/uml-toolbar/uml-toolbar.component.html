@@ -34,6 +34,36 @@
       [label]="facade.role() === 'ANFITRION' ? 'Anfitrión' : 'Colaborador'"
     ></sc-badge>
 
+    <!-- Estado del canal de colaboración, junto a las insignias (siempre visibles): solo aparece si no está conectado con normalidad -->
+    @let collab = facade.collaborationState();
+    @if (collab === 'reconnecting' || collab === 'failed' || collab === 'denied') {
+      <div
+        class="flex items-center gap-1.5 text-[11px] text-neutral-500 whitespace-nowrap"
+        role="status"
+        aria-live="polite"
+        data-testid="collaboration-status"
+      >
+        @if (collab === 'reconnecting') {
+          <span class="w-2 h-2 rounded-full bg-warning animate-pulse"></span>
+          <span>Reconectando…</span>
+        } @else if (collab === 'failed') {
+          <span class="w-2 h-2 rounded-full bg-danger"></span>
+          <span>Sin conexión</span>
+          <sc-button
+            variant="outline"
+            size="xs"
+            (onClick)="facade.retryCollaboration()"
+            ariaLabel="Reintentar la conexión de colaboración"
+          >
+            Reintentar
+          </sc-button>
+        } @else {
+          <span class="w-2 h-2 rounded-full bg-danger"></span>
+          <span>Sin permiso en este lienzo</span>
+        }
+      </div>
+    }
+
     <!-- Botón Compartir Lienzo usando sc-button y sc-icon -->
 
     <sc-button

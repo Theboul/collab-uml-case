@@ -18,3 +18,20 @@ export const NODE_DRAG_BROADCAST_THROTTLE_MS = 33;
  * en vez de dejarlo "pegado" a mitad de camino para siempre.
  */
 export const NODE_DRAG_STALE_TTL_MS = 700;
+
+/** Reconexión del canal de colaboración (ADR-0003, Addendum §7). */
+export const RECONNECT_MIN_DELAY_MS = 1_000;
+export const RECONNECT_MAX_DELAY_MS = 30_000;
+
+/**
+ * Reintentos consecutivos tras una caída antes de rendirse y avisar al usuario. Con el backoff
+ * (1+2+4+8+16+30+30+30 s, cada uno con jitter del 50 % al 100 %) son entre 1 y 2 minutos.
+ */
+export const RECONNECT_MAX_ATTEMPTS = 8;
+
+/**
+ * Una conexión que se mantiene establecida este tiempo se considera estable y el contador de
+ * fallos vuelve a cero. Sin esto, una conexión que se abre y se cae enseguida reiniciaría el
+ * contador en cada apertura y reintentaría cada ~1 s para siempre.
+ */
+export const RECONNECT_STABLE_AFTER_MS = 10_000;

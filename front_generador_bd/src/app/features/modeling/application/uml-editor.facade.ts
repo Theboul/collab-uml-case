@@ -79,6 +79,7 @@ export class UmlEditorFacade {
 
   readonly isSaving = this.state.isSaving;
   readonly lastSaved = this.state.lastSaved;
+  readonly collaborationState = this.collabGateway.connectionState;
   readonly isShareModalOpen = this.state.isShareModalOpen;
   readonly isAssistantPanelOpen = this.state.isAssistantPanelOpen;
   readonly isAssistantProcessing = this.state.isAssistantProcessing;
@@ -520,6 +521,11 @@ export class UmlEditorFacade {
     this.collabGateway.disconnect();
     this.remoteCursorsService.reset();
     this.remoteNodeDragService.reset();
+  }
+
+  /** Reintento manual del canal de colaboración, tras agotarse los automáticos. */
+  retryCollaboration(): void {
+    this.collabGateway.retry();
   }
 
   deleteElement(elementId: string): void {

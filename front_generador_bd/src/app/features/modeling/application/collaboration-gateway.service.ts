@@ -1,4 +1,4 @@
-import { InjectionToken, inject } from '@angular/core';
+import { InjectionToken, Signal, inject, signal } from '@angular/core';
 import { Observable, Subject, of } from 'rxjs';
 import { EditorCommand } from '../domain/commands/editor-commands';
 import {
@@ -10,10 +10,28 @@ import {
   RemoteNodeDragEvent,
 } from '../domain/models/collaboration.models';
 import { AuthService } from '../../../core/auth';
+import { RECONNECT_STABLE_AFTER_MS } from './collaboration-tuning';
+import { decideAfterClose } from './reconnect-policy';
+
+/** Estado del canal de colaboración, para mostrárselo al usuario. */
+export type CollaborationConnectionState =
+  | 'idle'
+  | 'connecting'
+  | 'open'
+  | 'reconnecting'
+  /** Reintentos agotados o token no renovable: hay un botón "Reintentar". */
+  | 'failed'
+  /** El servidor cerró con 4403: sin permiso sobre el lienzo, no se reintenta. */
+  | 'denied';
 
 export interface CollaborationGateway {
   connect(canvasId: string): void;
   disconnect(): void;
+  /** Reintento manual desde `failed`. */
+  retry(): void;
+  readonly connectionState: Signal<CollaborationConnectionState>;
+  /** Emite cada vez que el canal se establece tras una caída: hay que resincronizar. */
+  readonly reconnected$: Observable<void>;
   broadcastCommand(command: EditorCommand): void;
   sendCursorPosition(x: number, y: number): void;
   sendNodeDragPosition(nodeId: string, x: number, y: number): void;
@@ -35,12 +53,19 @@ export class NoOpCollaborationGateway implements CollaborationGateway {
   readonly remoteCanvasUpdate$: Observable<unknown> = of();
   readonly remoteNodeDrag$: Observable<RemoteNodeDragEvent> = of();
   readonly remoteNodeDragEnd$: Observable<string> = of();
+  readonly reconnected$: Observable<void> = of();
+  readonly connectionState: Signal<CollaborationConnectionState> =
+    signal<CollaborationConnectionState>('idle').asReadonly();
 
   connect(_canvasId: string): void {
     // No-op — usado como test double cuando no hace falta un WS real.
   }
 
   disconnect(): void {
+    // No-op
+  }
+
+  retry(): void {
     // No-op
   }
 
@@ -68,7 +93,10 @@ export class NoOpCollaborationGateway implements CollaborationGateway {
  * paso posterior del roadmap, no de este.
  */
 export class WebSocketCollaborationGateway implements CollaborationGateway {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly wsBaseUrl: string = defaultWsBaseUrl(),
+  ) {}
 
   private socket: WebSocket | null = null;
   private connectedCanvasId: string | null = null;
@@ -93,38 +121,138 @@ export class WebSocketCollaborationGateway implements CollaborationGateway {
   readonly remoteCommands$: Observable<EditorCommand> = of();
   readonly presence$: Observable<any> = of();
 
+  private readonly state = signal<CollaborationConnectionState>('idle');
+  readonly connectionState: Signal<CollaborationConnectionState> = this.state.asReadonly();
+
+  private readonly reconnectedSubject = new Subject<void>();
+  readonly reconnected$: Observable<void> = this.reconnectedSubject.asObservable();
+
+  private failedAttempts = 0; // reintentos consecutivos ya fallidos
+  private tokenRefreshed = false; // el 4401 solo se intenta una vez por ciclo
+  private hadDrop = false; // hubo una caída: la próxima vez que se establezca hay que resincronizar
+  private retryTimer: ReturnType<typeof setTimeout> | null = null;
+  private stableTimer: ReturnType<typeof setTimeout> | null = null;
+
   connect(canvasId: string): void {
-    if (this.connectedCanvasId === canvasId && this.socket) {
+    if (this.connectedCanvasId === canvasId && (this.socket || this.retryTimer)) {
       return;
     }
     this.disconnect();
 
-    const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    this.connectedCanvasId = canvasId;
+    this.state.set('connecting');
+    this.openSocket(canvasId);
+  }
+
+  disconnect(): void {
+    this.clearTimers();
+    const socket = this.socket;
+    this.socket = null; // su onclose se ignora: ya no es `this.socket`
+    this.connectedCanvasId = null;
+    this._peerId = null;
+    this.failedAttempts = 0;
+    this.tokenRefreshed = false;
+    this.hadDrop = false;
+    this.state.set('idle');
+    socket?.close();
+  }
+
+  retry(): void {
+    const canvasId = this.connectedCanvasId;
+    if (!canvasId || this.state() !== 'failed') return;
+    this.failedAttempts = 0;
+    this.tokenRefreshed = false;
+    this.state.set('connecting');
+    this.openSocket(canvasId);
+  }
+
+  private openSocket(canvasId: string): void {
     const displayName = this.authService.currentUser()?.fullName ?? '';
+    // El token se lee en cada intento: tras un 4401 es el recién renovado.
     const token = this.authService.accessToken();
     const params = new URLSearchParams();
     if (displayName) params.set('display_name', displayName);
     const queryString = params.toString();
     const url =
-      `${protocol}://${window.location.host}/ws/canvas/${encodeURIComponent(canvasId)}/collaboration` +
+      `${this.wsBaseUrl}/ws/canvas/${encodeURIComponent(canvasId)}/collaboration` +
       (queryString ? `?${queryString}` : '');
 
-    this.connectedCanvasId = canvasId;
     // El JWT viaja como subprotocolo (`Sec-WebSocket-Protocol: bearer, <jwt>`), no en la URL.
-    this.socket = new WebSocket(url, token ? ['bearer', token] : undefined);
-    this.socket.onmessage = (event) => {
+    const socket = new WebSocket(url, token ? ['bearer', token] : undefined);
+    this.socket = socket;
+    socket.onmessage = (event) => {
       this.handleMessage(event);
     };
-    this.socket.onerror = (err) => {
+    socket.onerror = (err) => {
       console.warn('[Collaboration] Error en la conexión WebSocket de colaboración.', err);
+    };
+    socket.onclose = (event) => {
+      this.handleClose(socket, event);
     };
   }
 
-  disconnect(): void {
-    this.socket?.close();
+  /**
+   * El canal se da por establecido cuando llega `connected` (la Sesión ya entró a la Sala), no con
+   * `onopen`: el servidor acepta siempre y puede cerrar enseguida con 4401/4403.
+   */
+  private handleEstablished(): void {
+    this.state.set('open');
+    this.clearStableTimer();
+    this.stableTimer = setTimeout(() => {
+      this.failedAttempts = 0;
+      this.tokenRefreshed = false;
+    }, RECONNECT_STABLE_AFTER_MS);
+    if (this.hadDrop) {
+      this.hadDrop = false;
+      this.reconnectedSubject.next();
+    }
+  }
+
+  private handleClose(socket: WebSocket, event: CloseEvent): void {
+    if (socket !== this.socket) return; // socket viejo o cierre intencional
     this.socket = null;
-    this.connectedCanvasId = null;
     this._peerId = null;
+    this.clearStableTimer();
+    this.hadDrop = true;
+    const canvasId = this.connectedCanvasId;
+    if (!canvasId) return;
+
+    const decision = decideAfterClose(event.code, this.failedAttempts, this.tokenRefreshed);
+    switch (decision.action) {
+      case 'give-up':
+        this.state.set(decision.reason === 'forbidden' ? 'denied' : 'failed');
+        return;
+      case 'refresh-token':
+        this.state.set('reconnecting');
+        this.authService.refreshSession().subscribe({
+          next: () => {
+            if (this.connectedCanvasId !== canvasId) return; // hubo un disconnect() mientras tanto
+            this.tokenRefreshed = true;
+            this.openSocket(canvasId);
+          },
+          error: () => this.state.set('failed'),
+        });
+        return;
+      case 'retry':
+        this.failedAttempts += 1;
+        this.state.set('reconnecting');
+        this.retryTimer = setTimeout(() => {
+          this.retryTimer = null;
+          this.openSocket(canvasId);
+        }, decision.delayMs);
+        return;
+    }
+  }
+
+  private clearStableTimer(): void {
+    if (this.stableTimer) clearTimeout(this.stableTimer);
+    this.stableTimer = null;
+  }
+
+  private clearTimers(): void {
+    this.clearStableTimer();
+    if (this.retryTimer) clearTimeout(this.retryTimer);
+    this.retryTimer = null;
   }
 
   broadcastCommand(_command: EditorCommand): void {
@@ -163,6 +291,7 @@ export class WebSocketCollaborationGateway implements CollaborationGateway {
       (parsed as { type?: string }).type === 'connected'
     ) {
       this._peerId = (parsed as { peerId?: string }).peerId ?? null;
+      this.handleEstablished();
       return;
     }
 
@@ -191,6 +320,11 @@ export class WebSocketCollaborationGateway implements CollaborationGateway {
       this.remoteNodeDragEndSubject.next(envelope.payload.nodeId);
     }
   }
+}
+
+function defaultWsBaseUrl(): string {
+  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+  return `${protocol}://${window.location.host}`;
 }
 
 export const COLLABORATION_GATEWAY = new InjectionToken<CollaborationGateway>(

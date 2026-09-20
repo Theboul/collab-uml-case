@@ -5,10 +5,13 @@ de la sala del mismo `canvas_id`, y limpia el registro al desconectar. Lo que un
 sesión puede enviar (tipos, campos, tamaño, frecuencia) está en `schemas.py` y
 `rate_limit.py`; cualquier otra cosa se descarta o cierra la conexión.
 
-Antes de aceptar el handshake se resuelve el rol del solicitante sobre el
-lienzo (mismo `resolver_rol` que usa la API HTTP) — si no es ANFITRION ni
-COLABORADOR, la conexión se cierra sin llegar a `accept()` ni asignarle
-una Sesión (nunca entra a la sala).
+Se acepta SIEMPRE el handshake antes de rechazar: cerrar antes de `accept()` llega
+al navegador como un fallo de handshake sin código (1006), indistinguible de una
+caída de red, y el cliente no sabría si reintentar. Tras aceptar se resuelve el rol
+del solicitante sobre el lienzo (mismo `resolver_rol` que usa la API HTTP) y se
+cierra con un código que el cliente puede leer: 4401 si presentó un token inválido
+o vencido (puede renovarlo y reintentar), 4403 si no es ANFITRION ni COLABORADOR
+(no debe reintentar). Un socket rechazado nunca entra a la sala ni recibe una Sesión.
 
 La sesión de DB para ese chequeo se abre y cierra manualmente en un bloque
 acotado (`async with async_session_factory()`) en vez de inyectarse vía
@@ -25,6 +28,7 @@ from backend_case.app.modeling.application.canvas_service import CanvasService
 from backend_case.app.modeling.infrastructure.canvas_repository import CanvasRepository
 from backend_case.app.shared.db.base import async_session_factory
 from backend_case.app.shared.security.dependencies import (
+    WS_UNAUTHORIZED_CLOSE_CODE,
     get_current_user_optional_ws,
     get_ws_bearer_token,
     ws_accept_subprotocol,
@@ -51,8 +55,9 @@ async def canvas_collaboration_websocket(
     room: CollaborationRoomDep,
     display_name: str | None = Query(default=None),
 ) -> None:
+    token = get_ws_bearer_token(websocket)
     async with async_session_factory() as session:
-        current_user = await get_current_user_optional_ws(session, get_ws_bearer_token(websocket))
+        current_user = await get_current_user_optional_ws(session, token)
         user_id = current_user.id if current_user else None
         service = CanvasService(CanvasRepository(session))
         try:
@@ -62,11 +67,14 @@ async def canvas_collaboration_websocket(
         else:
             role = res.role
 
+    await websocket.accept(subprotocol=ws_accept_subprotocol(websocket))
+    if token and current_user is None:
+        await websocket.close(code=WS_UNAUTHORIZED_CLOSE_CODE)  # token inválido o vencido: renovar
+        return
     if role not in ("ANFITRION", "COLABORADOR"):
-        await websocket.close(code=WS_FORBIDDEN_CLOSE_CODE)
+        await websocket.close(code=WS_FORBIDDEN_CLOSE_CODE)  # sin permiso: no reintentar
         return
 
-    await websocket.accept(subprotocol=ws_accept_subprotocol(websocket))
     room_session = await room.join(canvas_id, websocket, display_name)
     await websocket.send_text(json.dumps({"type": "connected", "peerId": room_session.id}))
     try:

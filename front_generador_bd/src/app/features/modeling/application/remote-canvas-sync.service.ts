@@ -47,18 +47,13 @@ export class RemoteCanvasSyncService {
   private pendingSnapshot: LienzoDetailDto | null = null;
 
   constructor() {
-    this.gateway.remoteCanvasUpdate$.subscribe((raw) => {
-      const dto = this.api.normalizeCanvas(raw);
+    this.gateway.remoteCanvasUpdate$.subscribe((raw) =>
+      this.receive(this.api.normalizeCanvas(raw)),
+    );
 
-      if (this.graphService.isDraggingLocally) {
-        if (!this.pendingSnapshot || dto.version > this.pendingSnapshot.version) {
-          this.pendingSnapshot = dto;
-        }
-        return;
-      }
-
-      this.applyIfNewer(dto);
-    });
+    // Tras reabrir el canal (una caída de red, un reinicio del servidor) pudo perderse algún cambio
+    // ajeno: se pide el estado actual y entra por la misma vía que un snapshot en vivo.
+    this.gateway.reconnected$.subscribe(() => this.resync());
 
     // Fin real de un arrastre local (contrato de X6: dispara una sola vez
     // por gesto) — momento de aplicar el snapshot que quedó diferido, si hay.
@@ -67,6 +62,28 @@ export class RemoteCanvasSyncService {
       const dto = this.pendingSnapshot;
       this.pendingSnapshot = null;
       this.applyIfNewer(dto);
+    });
+  }
+
+  /** Un snapshot (en vivo o de un resync): se difiere durante un arrastre local; si no, se aplica. */
+  private receive(dto: LienzoDetailDto): void {
+    if (this.graphService.isDraggingLocally) {
+      if (!this.pendingSnapshot || dto.version > this.pendingSnapshot.version) {
+        this.pendingSnapshot = dto;
+      }
+      return;
+    }
+
+    this.applyIfNewer(dto);
+  }
+
+  private resync(): void {
+    const canvasId = this.state.canvasId();
+    if (!canvasId) return;
+    this.api.getCanvas(canvasId).subscribe({
+      next: (dto) => this.receive(dto),
+      error: (err) =>
+        console.error('[Collaboration] No se pudo resincronizar tras reconectar.', err),
     });
   }
 

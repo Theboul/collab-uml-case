@@ -6,12 +6,15 @@ desconectar. Sin locks, sin presencia todavía.
 """
 
 import time
+from datetime import timedelta
 
+import jwt
 import pytest
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
 from backend_case.app.main import app
+from backend_case.app.shared.security.tokens import create_access_token
 
 client = TestClient(app)
 
@@ -185,49 +188,38 @@ def _register_and_get_token(client_: TestClient, email_prefix: str) -> str:
     return res.json()["accessToken"]
 
 
+def _close_code(test_client, url: str, **kwargs) -> int:
+    """
+    Conecta y devuelve el código con que el servidor cierra. La conexión DEBE aceptarse antes: un
+    rechazo previo a `accept()` llega al navegador como un fallo de handshake sin código (1006).
+    """
+    with (
+        test_client.websocket_connect(url, **kwargs) as ws,  # si no se acepta, lanza aquí
+        pytest.raises(WebSocketDisconnect) as exc,
+    ):
+        ws.receive_json()
+    return exc.value.code
+
+
 def test_ws_rejects_connection_without_valid_role():
     """
-    Hallazgo #1 de la auditoría: el WS de colaboración no validaba rol alguno.
-    Sin token, o con el token de un usuario ajeno al lienzo, la conexión debe
-    cerrarse con el código 4403 antes de entrar a la sala — nunca se le asigna
-    peer_id ni queda registrada en la Sala.
+    Sin token, o con el token de un usuario ajeno al lienzo, el servidor ACEPTA el WebSocket y lo
+    cierra con 4403 (sin permiso: el cliente no debe reintentar). Nunca se le asigna una Sesión ni
+    queda registrada en la Sala.
     """
-    import pytest
-    from backend_case.app.main import app as _app
-    from starlette.websockets import WebSocketDisconnect
-
-    with TestClient(_app) as scoped_client:
+    with TestClient(app) as scoped_client:
         owner_token = _register_and_get_token(scoped_client, "owner-ws-403")
         outsider_token = _register_and_get_token(scoped_client, "outsider-ws-403")
-
-        canvas_res = scoped_client.post(
+        canvas_id = scoped_client.post(
             "/api/v2/canvases",
             json={"name": "Lienzo WS Privado"},
             headers={"Authorization": f"Bearer {owner_token}"},
-        )
-        canvas_id = canvas_res.json()["id"]
+        ).json()["id"]
+        url = _url(canvas_id)
 
-        # Sin ningún token -> rechazado
-        with (
-            pytest.raises(WebSocketDisconnect) as exc_no_token,
-            scoped_client.websocket_connect(f"/ws/canvas/{canvas_id}/collaboration"),
-        ):
-            pass
-        assert exc_no_token.value.code == 4403
-
-        # Con token de un usuario autenticado pero ajeno al lienzo -> también rechazado
-        with (
-            pytest.raises(WebSocketDisconnect) as exc_outsider,
-            scoped_client.websocket_connect(
-                f"/ws/canvas/{canvas_id}/collaboration",
-                subprotocols=["bearer", outsider_token],
-            ),
-        ):
-            pass
-        assert exc_outsider.value.code == 4403
-
+        assert _close_code(scoped_client, url) == 4403
+        assert _close_code(scoped_client, url, subprotocols=["bearer", outsider_token]) == 4403
         assert canvas_id not in _rooms()
-
 
 def test_ws_accepts_connection_for_owner_and_joined_collaborator():
     """Contraparte del test anterior: el fix no debe romper el flujo legítimo."""
@@ -268,9 +260,6 @@ def test_ws_accepts_connection_for_owner_and_joined_collaborator():
 
 def test_ws_token_en_la_query_string_ya_no_autentica():
     """El token viaja solo como subprotocolo `bearer`; en la URL queda en logs e historial."""
-    import pytest
-    from starlette.websockets import WebSocketDisconnect
-
     with TestClient(app) as scoped_client:
         owner_token = _register_and_get_token(scoped_client, "owner-ws-query")
         canvas_id = scoped_client.post(
@@ -279,15 +268,7 @@ def test_ws_token_en_la_query_string_ya_no_autentica():
             headers={"Authorization": f"Bearer {owner_token}"},
         ).json()["id"]
 
-        with (
-            pytest.raises(WebSocketDisconnect) as exc,
-            scoped_client.websocket_connect(
-                f"/ws/canvas/{canvas_id}/collaboration?token={owner_token}"
-            ),
-        ):
-            pass
-        assert exc.value.code == 4403
-
+        assert _close_code(scoped_client, f"{_url(canvas_id)}?token={owner_token}") == 4403
 
 def test_ws_negocia_el_subprotocolo_bearer_solo_si_el_cliente_lo_ofrece():
 
@@ -437,6 +418,7 @@ def test_ws_el_exceso_de_frecuencia_se_descarta_sin_cerrar_la_conexion(monkeypat
         assert receptor.receive_json()["payload"]["x"] == 3.0
         assert len(_rooms()[canvas_id]) == 3  # el emisor sigue conectado
 
+
 def test_si_el_commit_falla_el_cambio_no_se_difunde(monkeypatch):
     """
     Publicar solo tras el commit: un commit fallido no deja a los demás con un cambio fantasma.
@@ -506,3 +488,55 @@ def test_un_fallo_al_publicar_no_falla_el_comando_ni_lo_revierte(monkeypatch):
         guardado = scoped_client.get(f"/api/v2/canvases/{canvas_id}").json()
         assert guardado["version"] == 2
         assert [c["name"] for c in guardado["model"]["classes"]] == ["Cliente"]
+
+
+def test_ws_token_invalido_o_vencido_cierra_con_4401():
+    """
+    Un token presentado pero inválido o vencido cierra con 4401: a diferencia del 4403, el cliente
+    puede renovarlo y reintentar (el access token dura 15 min y una reconexión tras una caída
+    larga lleva uno caducado).
+    """
+    with TestClient(app) as scoped_client:
+        owner_token = _register_and_get_token(scoped_client, "owner-ws-4401")
+        canvas_id = scoped_client.post(
+            "/api/v2/canvases",
+            json={"name": "Lienzo WS 4401"},
+            headers={"Authorization": f"Bearer {owner_token}"},
+        ).json()["id"]
+        claims = jwt.decode(owner_token, options={"verify_signature": False})
+        vencido = create_access_token(
+            claims["sub"], claims["email"], claims["fullName"], expires_delta=timedelta(seconds=-5)
+        )
+        url = _url(canvas_id)
+
+        assert _close_code(scoped_client, url, subprotocols=["bearer", vencido]) == 4401
+        assert _close_code(scoped_client, url, subprotocols=["bearer", "no-es-un-jwt"]) == 4401
+        assert canvas_id not in _rooms()
+
+
+def test_ws_lienzo_inexistente_cierra_con_4403():
+    with TestClient(app) as scoped_client:
+        assert _close_code(scoped_client, _url("no-existe")) == 4403
+        assert "no-existe" not in _rooms()
+
+
+def test_ws_el_rechazo_devuelve_el_subprotocolo_bearer():
+    """
+    El navegador exige que el servidor devuelva uno de los subprotocolos ofrecidos; si no, la
+    conexión falla como handshake y el cliente nunca llega a ver el código de cierre.
+    """
+    with TestClient(app) as scoped_client:
+        owner_token = _register_and_get_token(scoped_client, "owner-ws-sub")
+        outsider_token = _register_and_get_token(scoped_client, "outsider-ws-sub")
+        canvas_id = scoped_client.post(
+            "/api/v2/canvases",
+            json={"name": "Lienzo WS Subprotocolo Rechazo"},
+            headers={"Authorization": f"Bearer {owner_token}"},
+        ).json()["id"]
+
+        with scoped_client.websocket_connect(
+            _url(canvas_id), subprotocols=["bearer", outsider_token]
+        ) as ws:
+            assert ws.accepted_subprotocol == "bearer"
+            with pytest.raises(WebSocketDisconnect):
+                ws.receive_json()

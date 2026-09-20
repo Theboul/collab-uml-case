@@ -159,9 +159,13 @@ presence:canvas:{canvasId}:{sessionId}       # una clave por Sesión (no por usu
   commit no hay rollback: se registra y el cliente repara por resync.
 - **Handshake:** el servidor acepta el WebSocket y lo cierra con 4403 si el rol no basta, en vez de
   rechazar antes de `accept()`; así el cliente puede leer el código. Un socket sin permiso nunca
-  entra a una Sala.
-- **Reconexión** del cliente: backoff de 1 s a 30 s con jitter y un máximo de reintentos (la cifra
-  se fija en el Paso 3), sin reintentar tras un 4403, y resync al reabrir.
+  entra a una Sala. Un token presentado pero inválido o vencido cierra con **4401** (decidido en el
+  Paso 3): el access token dura 15 minutos y una reconexión tras una caída larga lleva uno
+  caducado, así que el cliente lo renueva una vez y reintenta; el 4403 no se reintenta.
+- **Reconexión** del cliente: backoff de 1 s a 30 s con jitter (1, 2, 4, 8, 16, 30, 30, 30 s), máximo
+  de **8 reintentos** (≈ 1 a 2 minutos) y **10 s** de conexión establecida para considerarla estable
+  y reiniciar el contador; sin reintentar tras un 4403; resync al reabrir. Tras agotar los
+  reintentos hay un botón "Reintentar".
 - **Deltas:** por diferencia entre el modelo antes y después del comando, en la capa de aplicación,
   sin tocar `core/uml_domain`. Llevan `fromVersion` y `toVersion`; si el cliente detecta un hueco
   pide un snapshot. Cambio directo, sin enviar snapshot y delta en paralelo. Los eventos de dominio
@@ -179,5 +183,4 @@ presence:canvas:{canvasId}:{sessionId}       # una clave por Sesión (no por usu
 - Formato del valor guardado en la clave del lock y nombres de los mensajes del protocolo de
   locks (Paso 5).
 - TTL y renovación de la clave de presencia, y nombre del canal de pub/sub (Paso 6).
-- Cifra del máximo de reintentos de reconexión (Paso 3).
 - Nombre de la bandera que activaría la aplicación del lock en el servidor (tarea diferida).
