@@ -42,7 +42,7 @@ export interface UmlClassNodeVisual {
 
 /** Alto de los separadores: el 1 es el trazo fuerte bajo el encabezado; el 2, el tenue entre atributos y operaciones. */
 const SEPARATOR1_THICKNESS = 1.5;
-const SEPARATOR2_THICKNESS = 1;
+const SEPARATOR2_THICKNESS = 1.5;
 /** Alto del rect que aplana las esquinas inferiores redondeadas del encabezado. */
 const HEADER_CAP_HEIGHT = 4;
 

@@ -108,8 +108,8 @@ export function registerUmlClassNode(): void {
         },
         separator2: {
           refWidth: '100%',
-          height: 1,
-          y: 81.5,
+          height: 1.5,
+          y: 81.25,
           fill: '#cbd5e1',
           stroke: 'none',
         },

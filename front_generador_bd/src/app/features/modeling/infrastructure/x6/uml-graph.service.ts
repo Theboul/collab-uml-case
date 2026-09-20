@@ -159,7 +159,7 @@ export class UmlGraphService {
         color: '#f8fafc',
       },
       grid: {
-        size: 20,
+        size: 10,
         visible: true,
         type: 'dot',
         args: {
