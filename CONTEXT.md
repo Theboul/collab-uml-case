@@ -77,11 +77,20 @@ Relación de uso débil entre dos Clases.
 Término paraguas para Clase, Atributo, Operación y Relación, cuando un evento o una regla se
 aplica a cualquiera de los cuatro.
 
+**Bloqueo**:
+Reserva temporal y exclusiva de un Elemento (Clase o Relación) adquirida por una Sesión para
+su edición interactiva. Expira automáticamente por tiempo (TTL) si la Sesión no envía una
+renovación periódica (heartbeat), y se libera al concluir la edición, al borrarse el Elemento
+o al salir la Sesión de la Sala. Es advisory en el servidor pero restrictivo en la interfaz de
+usuario.
+_Evitar_: lock, cerrojo, mutex, reserva permanente
+
 ## Relaciones entre términos
 
 - Un **Lienzo** tiene exactamente un **Modelo** y un **Diseño visual**.
 - Un **Lienzo** tiene un **Anfitrión** y cero o más **Colaboradores**.
 - Una **Sala** agrupa las **Sesiones** de un único **Lienzo**.
 - Un **Colaborador** o un **Anfitrión** puede tener varias **Sesiones** a la vez.
+- Un **Bloqueo** pertenece a una única **Sesión** sobre un **Elemento** de un **Lienzo**.
 - Una **Relación** conecta Clases o Interfaces; una **Realización** conecta una Clase con una
   Interfaz.

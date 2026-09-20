@@ -121,10 +121,11 @@ Vocabulario según `CONTEXT.md`: una **Sala** agrupa las **Sesiones** (conexione
 ### 4. Claves de Redis
 
 ```text
-lock:canvas:{canvasId}:element:{elementId}   # TTL 15 s, renovado con el heartbeat; valor: quién lo tiene
+lock:canvas:{canvasId}:element:{elementId}   # TTL 15 s, renovado con heartbeat; valor JSON: {"sessionId", "userId", "displayName"}
 presence:canvas:{canvasId}:{sessionId}       # una clave por Sesión (no por usuario); TTL corto
 ```
 
+- Valor del lock: JSON `{"sessionId": "<sessionId>", "userId": "<userId|null>", "displayName": "<displayName|null>"}`.
 - Se elimina la clave separada de heartbeat: renovar el TTL de la clave del lock ya cumple esa
   función.
 - La presencia es por Sesión: un mismo Colaborador con dos pestañas abiertas tiene dos Sesiones.
@@ -178,9 +179,11 @@ presence:canvas:{canvasId}:{sessionId}       # una clave por Sesión (no por usu
 
 ### 8. Sigue abierto (se decide en el paso indicado)
 
-- Lock por inactividad frente a lock por desconexión (tercer pendiente de este ADR): qué hace el
-  cliente para dejar de enviar heartbeat cuando el usuario no interactúa (Paso 5).
-- Formato del valor guardado en la clave del lock y nombres de los mensajes del protocolo de
-  locks (Paso 5).
+- Lock por inactividad frente a lock por desconexión: el cliente libera explícitamente tras 60 s sin
+  interacción en el panel, y re-adquiere si el usuario retoma; la desconexión real se resuelve por
+  TTL de 15 s y limpieza al salir la Sesión (Paso 5).
+- Formato del valor guardado en la clave del lock (`{"sessionId", "userId", "displayName"}`) y
+  protocolo WS (`lock_acquire`, `lock_release`, `lock_denied`, `lock_acquired`, `lock_released`,
+  `locks_snapshot`, `presence_snapshot`, `presence_joined`, `presence_left`) (fijados en Paso 5).
 - TTL y renovación de la clave de presencia, y nombre del canal de pub/sub (Paso 6).
 - Nombre de la bandera que activaría la aplicación del lock en el servidor (tarea diferida).

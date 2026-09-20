@@ -20,7 +20,8 @@ Formato obligatorio: `{contexto}:{entidad}:{id}[:{subentidad}:{id}][:{campo}]`, 
 minúsculas, sin espacios.
 
 ```text
-lock:canvas:{canvasId}:element:{elementId}   # lock pesimista de una Clase o Relación (CU5); valor: quién lo tiene
+lock:canvas:{canvasId}:element:{elementId}   # lock pesimista de una Clase o Relación (CU5); TTL 15 s
+                                             # valor JSON: {"sessionId": str, "userId": str|null, "displayName": str|null}
 presence:canvas:{canvasId}:{sessionId}       # presencia de una Sesión (conexión) en un Lienzo
 session:ws:{connectionId}                    # metadata de una conexión WebSocket, si se cachea
 ```
