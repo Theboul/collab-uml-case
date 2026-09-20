@@ -29,11 +29,85 @@ export interface NodeDragEndMessage {
   nodeId: string;
 }
 
+export interface LockHolder {
+  sessionId: string;
+  userId: string | null;
+  displayName: string | null;
+}
+
+export interface LockAcquireMessage {
+  type: 'lock_acquire';
+  elementId: string;
+}
+
+export interface LockReleaseMessage {
+  type: 'lock_release';
+  elementId: string;
+}
+
+export interface LockAcquiredMessage {
+  type: 'lock_acquired';
+  elementId: string;
+  holder: LockHolder;
+  ttlMs: number;
+}
+
+export interface LockReleasedMessage {
+  type: 'lock_released';
+  elementId: string;
+}
+
+export interface LockDeniedMessage {
+  type: 'lock_denied';
+  elementId: string;
+  reason: 'held' | 'limit';
+  holder: LockHolder | null;
+}
+
+export interface LocksSnapshotMessage {
+  type: 'locks_snapshot';
+  locks: {
+    elementId: string;
+    holder: LockHolder;
+    ttlMs: number;
+  }[];
+}
+
+export interface PresenceSession {
+  sessionId: string;
+  userId: string | null;
+  displayName: string | null;
+}
+
+export interface PresenceSnapshotMessage {
+  type: 'presence_snapshot';
+  sessions: PresenceSession[];
+}
+
+export interface PresenceJoinedMessage {
+  type: 'presence_joined';
+  session: PresenceSession;
+}
+
+export interface PresenceLeftMessage {
+  type: 'presence_left';
+  sessionId: string;
+}
+
 export type CollaborationMessage =
   | CursorPositionMessage
   | CanvasDeltaMessage
   | NodeDragMessage
-  | NodeDragEndMessage;
+  | NodeDragEndMessage
+  | LockAcquireMessage
+  | LockReleaseMessage
+  | LockAcquiredMessage
+  | LockReleasedMessage
+  | LockDeniedMessage
+  | LocksSnapshotMessage
+  | PresenceSnapshotMessage
+  | PresenceJoinedMessage
+  | PresenceLeftMessage;
 
 /** Evento crudo de arrastre remoto tal como lo entrega el gateway. */
 export interface RemoteNodeDragEvent {

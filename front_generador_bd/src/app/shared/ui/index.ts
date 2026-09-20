@@ -8,3 +8,5 @@ export * from './search-input/search-input.component';
 export * from './empty-state/empty-state.component';
 export * from './table-card/table-card.component';
 export * from './modal-shell/modal-shell.component';
+export * from './toast/toast.service';
+export * from './toast/toast-container.component';

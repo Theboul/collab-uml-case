@@ -411,4 +411,161 @@ describe('WebSocketCollaborationGateway (reconexión)', () => {
       expect(sockets().length).toBe(1);
     });
   });
+
+  describe('mensajes de locks y presencia (Paso 5)', () => {
+    beforeEach(() => {
+      gateway.connect('c1');
+      last().serverEstablishes('peer-1');
+    });
+
+    it('sendLockAcquire manda payload con type lock_acquire y elementId', () => {
+      gateway.sendLockAcquire('elem-1');
+
+      const sent = JSON.parse(last().sent[last().sent.length - 1]);
+      expect(sent).toEqual({ type: 'lock_acquire', elementId: 'elem-1' });
+    });
+
+    it('sendLockRelease manda payload con type lock_release y elementId', () => {
+      gateway.sendLockRelease('elem-1');
+
+      const sent = JSON.parse(last().sent[last().sent.length - 1]);
+      expect(sent).toEqual({ type: 'lock_release', elementId: 'elem-1' });
+    });
+
+    it('despacha locks_snapshot directo al observable locksSnapshot$', () => {
+      let recibido: unknown = null;
+      gateway.locksSnapshot$.subscribe((msg) => (recibido = msg));
+
+      last().serverSends({
+        type: 'locks_snapshot',
+        locks: [
+          {
+            elementId: 'elem-1',
+            holder: { sessionId: 'peer-2', userId: 'u2', displayName: 'Carlos' },
+            ttlMs: 15000,
+          },
+        ],
+      });
+
+      expect(recibido).toEqual({
+        type: 'locks_snapshot',
+        locks: [
+          {
+            elementId: 'elem-1',
+            holder: { sessionId: 'peer-2', userId: 'u2', displayName: 'Carlos' },
+            ttlMs: 15000,
+          },
+        ],
+      });
+    });
+
+    it('despacha lock_acquired en sobre de sala al observable lockAcquired$', () => {
+      let recibido: unknown = null;
+      gateway.lockAcquired$.subscribe((msg) => (recibido = msg));
+
+      last().serverSends({
+        from: 'peer-2',
+        fromDisplayName: 'Carlos',
+        payload: {
+          type: 'lock_acquired',
+          elementId: 'elem-1',
+          holder: { sessionId: 'peer-2', userId: 'u2', displayName: 'Carlos' },
+          ttlMs: 15000,
+        },
+      });
+
+      expect(recibido).toEqual({
+        type: 'lock_acquired',
+        elementId: 'elem-1',
+        holder: { sessionId: 'peer-2', userId: 'u2', displayName: 'Carlos' },
+        ttlMs: 15000,
+      });
+    });
+
+    it('despacha lock_released en sobre de sala al observable lockReleased$', () => {
+      let recibido: unknown = null;
+      gateway.lockReleased$.subscribe((msg) => (recibido = msg));
+
+      last().serverSends({
+        from: 'peer-2',
+        fromDisplayName: 'Carlos',
+        payload: {
+          type: 'lock_released',
+          elementId: 'elem-1',
+        },
+      });
+
+      expect(recibido).toEqual({
+        type: 'lock_released',
+        elementId: 'elem-1',
+      });
+    });
+
+    it('despacha lock_denied directo al observable lockDenied$', () => {
+      let recibido: unknown = null;
+      gateway.lockDenied$.subscribe((msg) => (recibido = msg));
+
+      last().serverSends({
+        type: 'lock_denied',
+        elementId: 'elem-1',
+        reason: 'held',
+        holder: { sessionId: 'peer-2', userId: 'u2', displayName: 'Carlos' },
+      });
+
+      expect(recibido).toEqual({
+        type: 'lock_denied',
+        elementId: 'elem-1',
+        reason: 'held',
+        holder: { sessionId: 'peer-2', userId: 'u2', displayName: 'Carlos' },
+      });
+    });
+
+    it('despacha presence_snapshot directo al observable presenceSnapshot$', () => {
+      let recibido: unknown = null;
+      gateway.presenceSnapshot$.subscribe((msg) => (recibido = msg));
+
+      last().serverSends({
+        type: 'presence_snapshot',
+        sessions: [{ sessionId: 'peer-2', userId: 'u2', displayName: 'Carlos' }],
+      });
+
+      expect(recibido).toEqual({
+        type: 'presence_snapshot',
+        sessions: [{ sessionId: 'peer-2', userId: 'u2', displayName: 'Carlos' }],
+      });
+    });
+
+    it('despacha presence_joined y presence_left en sobre de sala', () => {
+      let joined: unknown = null;
+      let left: unknown = null;
+      gateway.presenceJoined$.subscribe((msg) => (joined = msg));
+      gateway.presenceLeft$.subscribe((msg) => (left = msg));
+
+      last().serverSends({
+        from: 'peer-2',
+        fromDisplayName: 'Carlos',
+        payload: {
+          type: 'presence_joined',
+          session: { sessionId: 'peer-2', userId: 'u2', displayName: 'Carlos' },
+        },
+      });
+      expect(joined).toEqual({
+        type: 'presence_joined',
+        session: { sessionId: 'peer-2', userId: 'u2', displayName: 'Carlos' },
+      });
+
+      last().serverSends({
+        from: 'peer-2',
+        fromDisplayName: 'Carlos',
+        payload: {
+          type: 'presence_left',
+          sessionId: 'peer-2',
+        },
+      });
+      expect(left).toEqual({
+        type: 'presence_left',
+        sessionId: 'peer-2',
+      });
+    });
+  });
 });

@@ -8,7 +8,11 @@ import { Snapline } from '@antv/x6-plugin-snapline';
 import { Scroller } from '@antv/x6-plugin-scroller';
 import { Dnd } from '@antv/x6-plugin-dnd';
 import { Clipboard } from '@antv/x6-plugin-clipboard';
-import { UmlDiagramAdapterService, X6EdgeConfig, X6NodeConfig } from './uml-diagram-adapter.service';
+import {
+  UmlDiagramAdapterService,
+  X6EdgeConfig,
+  X6NodeConfig,
+} from './uml-diagram-adapter.service';
 import { UML_NODE_DIMENSIONS, UmlNodeSubElementEvent } from '../../domain/models/uml-editor.models';
 import { UmlPortService } from './uml-port.service';
 import { UmlInteractionService } from './uml-interaction.service';
@@ -18,6 +22,7 @@ import { UmlGraphReconciliationService } from './uml-graph-reconciliation.servic
 import { applyUmlClassVisual, buildUmlClassNodeVisual } from './uml-class-node-visual';
 import { UmlClassLayout } from './uml-class-node-layout';
 import { UmlAttributeRowsService } from './uml-attribute-rows.service';
+import { RemoteLocksService } from '../../application/remote-locks.service';
 
 export interface CellSelectionEvent {
   selectedNodes: string[];
@@ -76,6 +81,7 @@ export class UmlGraphService {
   private readonly adapter = inject(UmlDiagramAdapterService);
   private readonly reconciliationService = inject(UmlGraphReconciliationService);
   private readonly attributeRowsService = inject(UmlAttributeRowsService);
+  private readonly remoteLocksService = inject(RemoteLocksService);
 
   private graph: Graph | null = null;
   private scrollerPlugin: Scroller | null = null;
@@ -107,6 +113,7 @@ export class UmlGraphService {
   };
 
   readonly selectionChange$ = new Subject<CellSelectionEvent>();
+  readonly nodeDragStarted$ = new Subject<string>();
   readonly nodeMoved$ = new Subject<NodePositionChangeEvent>();
   /**
    * Posición del nodo en cada frame del arrastre (no solo al soltar, a
@@ -200,7 +207,8 @@ export class UmlGraphService {
           this.portService.validateConnection(sourceCell, targetCell, sourceMagnet),
       },
       interacting: {
-        nodeMovable: () => !this.isPanningActive,
+        nodeMovable: (cellView) =>
+          !this.isPanningActive && !this.remoteLocksService.isLockedByOther(cellView.cell.id),
         edgeMovable: () => !this.isPanningActive,
         vertexMovable: () => !this.isPanningActive,
         arrowheadMovable: () => !this.isPanningActive,
@@ -237,7 +245,7 @@ export class UmlGraphService {
           minHeight: (node: Node) => this.contentMinSize(node).height,
           orthogonal: false, // ¡Solo esquinas (nw, ne, se, sw)! Los bordes quedan libres para los puertos.
         },
-      })
+      }),
     );
 
     // 3. Snapline (Alineación magnética entre clases)
@@ -245,14 +253,14 @@ export class UmlGraphService {
       new Snapline({
         enabled: true,
         sharp: true,
-      })
+      }),
     );
 
     // 4. History (Desactivado en X6; el historial semántico de UmlEditorFacade es la única fuente)
     this.graph.use(
       new History({
         enabled: false,
-      })
+      }),
     );
 
     // 5. Scroller (Pan con espacio o botón central, permitiendo rubberband en drag vacío)
@@ -309,11 +317,18 @@ export class UmlGraphService {
 
     // Inicio del gesto: X6 dispara `node:move` una única vez por arrastre, así que
     // solo sirve para marcar el estado — la posición en vivo sale de `node:moving`.
-    this.graph.on('node:move', () => {
+    this.graph.on('node:move', (args) => {
       if (this.isPanningActive || this.isApplyingRemotePosition) {
         return;
       }
+      const node = (args as { node?: Node })?.node;
+      if (node && this.remoteLocksService.isLockedByOther(node.id)) {
+        return;
+      }
       this._isDraggingLocally = true;
+      if (node) {
+        this.nodeDragStarted$.next(node.id);
+      }
     });
 
     // Posición en vivo durante el arrastre (para el streaming a otros peers):
@@ -534,7 +549,11 @@ export class UmlGraphService {
    * Resuelve semánticamente el objetivo de interacción (clic o doble clic) dentro de un nodo UML:
    * Encabezado (Clase), Compartimento de Atributos (por attributeId), o de Operaciones (por operationId).
    */
-  resolveSemanticTarget(node: Node, clientX: number, clientY: number): UmlNodeSubElementEvent | null {
+  resolveSemanticTarget(
+    node: Node,
+    clientX: number,
+    clientY: number,
+  ): UmlNodeSubElementEvent | null {
     return this.interactionService.resolveSemanticTarget(this.graph, node, clientX, clientY);
   }
 
@@ -626,7 +645,10 @@ export class UmlGraphService {
         : Math.max(currentSize.height, visual.minHeight);
       node.setSize({ width: visual.width, height: nextHeight });
 
-      const selected = this.graph.getSelectedCells().filter((c) => c.isNode()).map((c) => c.id);
+      const selected = this.graph
+        .getSelectedCells()
+        .filter((c) => c.isNode())
+        .map((c) => c.id);
       this.updatePortsVisibility(selected);
     }
   }

@@ -1,59 +1,83 @@
 <sc-project-shell [projectName]="facade.canvasName()">
-<div class="flex flex-col h-full w-full overflow-hidden bg-neutral-100 font-sans select-none relative">
-  <!-- Toolbar Superior -->
-  <app-uml-toolbar></app-uml-toolbar>
+  <div
+    class="flex flex-col h-full w-full overflow-hidden bg-neutral-100 font-sans select-none relative"
+  >
+    <!-- Toolbar Superior -->
+    <app-uml-toolbar></app-uml-toolbar>
 
-  <!-- Área de Trabajo Principal: Paleta + Canvas + Panel Propiedades -->
-  <div class="flex flex-1 overflow-hidden relative">
-    <!-- Paleta Izquierda -->
-    <app-uml-palette></app-uml-palette>
+    <!-- Área de Trabajo Principal: Paleta + Canvas + Panel Propiedades -->
+    <div class="flex flex-1 overflow-hidden relative">
+      <!-- Paleta Izquierda -->
+      <app-uml-palette></app-uml-palette>
 
-    <!-- Canvas Central -->
-    <main class="flex-1 h-full relative overflow-hidden bg-neutral-50">
-      <app-uml-canvas></app-uml-canvas>
+      <!-- Canvas Central -->
+      <main class="flex-1 h-full relative overflow-hidden bg-neutral-50">
+        <app-uml-canvas></app-uml-canvas>
 
-      <!-- Menú Contextual Flotante de Relaciones -->
-      <app-relation-context-menu></app-relation-context-menu>
-    </main>
+        <!-- Menú Contextual Flotante de Relaciones -->
+        <app-relation-context-menu></app-relation-context-menu>
+      </main>
 
-    <!-- Panel de Propiedades Derecho (si hay clase seleccionada) -->
-    <app-properties-panel></app-properties-panel>
+      <!-- Panel de Propiedades Derecho (si hay clase seleccionada) -->
+      <app-properties-panel></app-properties-panel>
 
-    <!-- Panel de Validación CU9 (si el usuario ejecutó "Validar") -->
-    <app-uml-validation-panel></app-uml-validation-panel>
+      <!-- Panel de Validación CU9 (si el usuario ejecutó "Validar") -->
+      <app-uml-validation-panel></app-uml-validation-panel>
 
-    <!-- Panel de Asistente IA (CU6: texto/voz -> comandos reales) -->
-    <app-ai-assistant-panel></app-ai-assistant-panel>
-  </div>
-
-  <!-- Modal de Compartir Lienzo -->
-  <app-uml-share-modal></app-uml-share-modal>
-
-  <!-- Overlay de Carga de Snapshot (Protección de estado CU2) -->
-  <div *ngIf="facade.isLoading() && !facade.loadError()" class="fixed inset-0 z-40 flex items-center justify-center bg-white/75 backdrop-blur-xs">
-    <div class="flex flex-col items-center gap-3 bg-white px-6 py-5 rounded-xl shadow-lg border border-neutral-200">
-      <div class="w-8 h-8 border-3 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
-      <span class="text-xs font-semibold text-neutral-700">Recuperando snapshot del lienzo y sincronizando...</span>
+      <!-- Panel de Asistente IA (CU6: texto/voz -> comandos reales) -->
+      <app-ai-assistant-panel></app-ai-assistant-panel>
     </div>
-  </div>
 
-  <!-- Pantalla de Error de Recuperación de Snapshot (Evita modelo vacío o sobreescrituras) -->
-  <div *ngIf="facade.loadError()" class="fixed inset-0 z-50 flex items-center justify-center bg-neutral-900/80 backdrop-blur-sm p-4">
-    <div class="bg-white rounded-xl p-8 max-w-md w-full shadow-2xl text-center flex flex-col items-center gap-4 border border-neutral-200">
-      <div class="text-red-500">
-        <sc-icon name="error" [size]="48"></sc-icon>
-      </div>
-      <h2 class="text-lg font-bold text-neutral-900">No se pudo recuperar el lienzo</h2>
-      <p class="text-sm text-neutral-600 leading-relaxed">{{ facade.loadError() }}</p>
-      <div class="flex gap-3 w-full mt-2">
-        <sc-button variant="outline" customClass="flex-1" icon="arrow_back" (onClick)="goToDashboard()">
-          Dashboard
-        </sc-button>
-        <sc-button variant="primary" customClass="flex-1" icon="refresh" (onClick)="retryLoad()">
-          Reintentar
-        </sc-button>
+    <!-- Modal de Compartir Lienzo -->
+    <app-uml-share-modal></app-uml-share-modal>
+
+    <!-- Contenedor de Avisos / Toasts Flotantes -->
+    <sc-toast-container></sc-toast-container>
+
+    <!-- Overlay de Carga de Snapshot (Protección de estado CU2) -->
+    <div
+      *ngIf="facade.isLoading() && !facade.loadError()"
+      class="fixed inset-0 z-40 flex items-center justify-center bg-white/75 backdrop-blur-xs"
+    >
+      <div
+        class="flex flex-col items-center gap-3 bg-white px-6 py-5 rounded-xl shadow-lg border border-neutral-200"
+      >
+        <div
+          class="w-8 h-8 border-3 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"
+        ></div>
+        <span class="text-xs font-semibold text-neutral-700"
+          >Recuperando snapshot del lienzo y sincronizando...</span
+        >
       </div>
     </div>
+
+    <!-- Pantalla de Error de Recuperación de Snapshot (Evita modelo vacío o sobreescrituras) -->
+    <div
+      *ngIf="facade.loadError()"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-neutral-900/80 backdrop-blur-sm p-4"
+    >
+      <div
+        class="bg-white rounded-xl p-8 max-w-md w-full shadow-2xl text-center flex flex-col items-center gap-4 border border-neutral-200"
+      >
+        <div class="text-red-500">
+          <sc-icon name="error" [size]="48"></sc-icon>
+        </div>
+        <h2 class="text-lg font-bold text-neutral-900">No se pudo recuperar el lienzo</h2>
+        <p class="text-sm text-neutral-600 leading-relaxed">{{ facade.loadError() }}</p>
+        <div class="flex gap-3 w-full mt-2">
+          <sc-button
+            variant="outline"
+            customClass="flex-1"
+            icon="arrow_back"
+            (onClick)="goToDashboard()"
+          >
+            Dashboard
+          </sc-button>
+          <sc-button variant="primary" customClass="flex-1" icon="refresh" (onClick)="retryLoad()">
+            Reintentar
+          </sc-button>
+        </div>
+      </div>
+    </div>
   </div>
-</div>
 </sc-project-shell>

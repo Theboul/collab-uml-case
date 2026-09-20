@@ -6,8 +6,17 @@ import {
   CollaborationMessage,
   CursorPositionMessage,
   IncomingCursorEvent,
+  LockAcquiredMessage,
+  LockAcquireMessage,
+  LockDeniedMessage,
+  LockReleasedMessage,
+  LockReleaseMessage,
+  LocksSnapshotMessage,
   NodeDragEndMessage,
   NodeDragMessage,
+  PresenceJoinedMessage,
+  PresenceLeftMessage,
+  PresenceSnapshotMessage,
   RemoteNodeDragEvent,
 } from '../domain/models/collaboration.models';
 import { AuthService } from '../../../core/auth';
@@ -37,24 +46,40 @@ export interface CollaborationGateway {
   sendCursorPosition(x: number, y: number): void;
   sendNodeDragPosition(nodeId: string, x: number, y: number): void;
   sendNodeDragEnd(nodeId: string): void;
+  sendLockAcquire(elementId: string): void;
+  sendLockRelease(elementId: string): void;
   readonly peerId: string | null;
   remoteCommands$: Observable<EditorCommand>;
-  presence$: Observable<any>;
+  presence$: Observable<unknown>;
   remoteCursor$: Observable<IncomingCursorEvent>;
   /** Cambio confirmado por otro peer, como delta (contrato `canvas-delta.v1.json`). */
   remoteCanvasDelta$: Observable<CanvasDeltaMessage>;
   remoteNodeDrag$: Observable<RemoteNodeDragEvent>;
   remoteNodeDragEnd$: Observable<string>;
+  readonly locksSnapshot$: Observable<LocksSnapshotMessage>;
+  readonly lockAcquired$: Observable<LockAcquiredMessage>;
+  readonly lockReleased$: Observable<LockReleasedMessage>;
+  readonly lockDenied$: Observable<LockDeniedMessage>;
+  readonly presenceSnapshot$: Observable<PresenceSnapshotMessage>;
+  readonly presenceJoined$: Observable<PresenceJoinedMessage>;
+  readonly presenceLeft$: Observable<PresenceLeftMessage>;
 }
 
 export class NoOpCollaborationGateway implements CollaborationGateway {
   readonly peerId: string | null = null;
   readonly remoteCommands$: Observable<EditorCommand> = of();
-  readonly presence$: Observable<any> = of();
+  readonly presence$: Observable<unknown> = of();
   readonly remoteCursor$: Observable<IncomingCursorEvent> = of();
   readonly remoteCanvasDelta$: Observable<CanvasDeltaMessage> = of();
   readonly remoteNodeDrag$: Observable<RemoteNodeDragEvent> = of();
   readonly remoteNodeDragEnd$: Observable<string> = of();
+  readonly locksSnapshot$: Observable<LocksSnapshotMessage> = of();
+  readonly lockAcquired$: Observable<LockAcquiredMessage> = of();
+  readonly lockReleased$: Observable<LockReleasedMessage> = of();
+  readonly lockDenied$: Observable<LockDeniedMessage> = of();
+  readonly presenceSnapshot$: Observable<PresenceSnapshotMessage> = of();
+  readonly presenceJoined$: Observable<PresenceJoinedMessage> = of();
+  readonly presenceLeft$: Observable<PresenceLeftMessage> = of();
   readonly reconnected$: Observable<void> = of();
   readonly connectionState: Signal<CollaborationConnectionState> =
     signal<CollaborationConnectionState>('idle').asReadonly();
@@ -84,6 +109,14 @@ export class NoOpCollaborationGateway implements CollaborationGateway {
   }
 
   sendNodeDragEnd(_nodeId: string): void {
+    // No-op
+  }
+
+  sendLockAcquire(_elementId: string): void {
+    // No-op
+  }
+
+  sendLockRelease(_elementId: string): void {
     // No-op
   }
 }
@@ -116,13 +149,38 @@ export class WebSocketCollaborationGateway implements CollaborationGateway {
     this.remoteCanvasDeltaSubject.asObservable();
 
   private readonly remoteNodeDragSubject = new Subject<RemoteNodeDragEvent>();
-  readonly remoteNodeDrag$: Observable<RemoteNodeDragEvent> = this.remoteNodeDragSubject.asObservable();
+  readonly remoteNodeDrag$: Observable<RemoteNodeDragEvent> =
+    this.remoteNodeDragSubject.asObservable();
 
   private readonly remoteNodeDragEndSubject = new Subject<string>();
   readonly remoteNodeDragEnd$: Observable<string> = this.remoteNodeDragEndSubject.asObservable();
 
+  private readonly locksSnapshotSubject = new Subject<LocksSnapshotMessage>();
+  readonly locksSnapshot$: Observable<LocksSnapshotMessage> =
+    this.locksSnapshotSubject.asObservable();
+
+  private readonly lockAcquiredSubject = new Subject<LockAcquiredMessage>();
+  readonly lockAcquired$: Observable<LockAcquiredMessage> = this.lockAcquiredSubject.asObservable();
+
+  private readonly lockReleasedSubject = new Subject<LockReleasedMessage>();
+  readonly lockReleased$: Observable<LockReleasedMessage> = this.lockReleasedSubject.asObservable();
+
+  private readonly lockDeniedSubject = new Subject<LockDeniedMessage>();
+  readonly lockDenied$: Observable<LockDeniedMessage> = this.lockDeniedSubject.asObservable();
+
+  private readonly presenceSnapshotSubject = new Subject<PresenceSnapshotMessage>();
+  readonly presenceSnapshot$: Observable<PresenceSnapshotMessage> =
+    this.presenceSnapshotSubject.asObservable();
+
+  private readonly presenceJoinedSubject = new Subject<PresenceJoinedMessage>();
+  readonly presenceJoined$: Observable<PresenceJoinedMessage> =
+    this.presenceJoinedSubject.asObservable();
+
+  private readonly presenceLeftSubject = new Subject<PresenceLeftMessage>();
+  readonly presenceLeft$: Observable<PresenceLeftMessage> = this.presenceLeftSubject.asObservable();
+
   readonly remoteCommands$: Observable<EditorCommand> = of();
-  readonly presence$: Observable<any> = of();
+  readonly presence$: Observable<unknown> = of();
 
   private readonly state = signal<CollaborationConnectionState>('idle');
   readonly connectionState: Signal<CollaborationConnectionState> = this.state.asReadonly();
@@ -280,6 +338,18 @@ export class WebSocketCollaborationGateway implements CollaborationGateway {
     this.socket.send(JSON.stringify(message));
   }
 
+  sendLockAcquire(elementId: string): void {
+    if (this.socket?.readyState !== WebSocket.OPEN) return;
+    const message: LockAcquireMessage = { type: 'lock_acquire', elementId };
+    this.socket.send(JSON.stringify(message));
+  }
+
+  sendLockRelease(elementId: string): void {
+    if (this.socket?.readyState !== WebSocket.OPEN) return;
+    const message: LockReleaseMessage = { type: 'lock_release', elementId };
+    this.socket.send(JSON.stringify(message));
+  }
+
   private handleMessage(event: MessageEvent<string>): void {
     let parsed: unknown;
     try {
@@ -296,6 +366,38 @@ export class WebSocketCollaborationGateway implements CollaborationGateway {
       this._peerId = (parsed as { peerId?: string }).peerId ?? null;
       this.handleEstablished();
       return;
+    }
+
+    if (typeof parsed === 'object' && parsed !== null) {
+      const direct = parsed as { type?: string };
+      if (direct.type === 'locks_snapshot') {
+        this.locksSnapshotSubject.next(parsed as LocksSnapshotMessage);
+        return;
+      }
+      if (direct.type === 'presence_snapshot') {
+        this.presenceSnapshotSubject.next(parsed as PresenceSnapshotMessage);
+        return;
+      }
+      if (direct.type === 'lock_denied') {
+        this.lockDeniedSubject.next(parsed as LockDeniedMessage);
+        return;
+      }
+      if (direct.type === 'lock_acquired') {
+        this.lockAcquiredSubject.next(parsed as LockAcquiredMessage);
+        return;
+      }
+      if (direct.type === 'lock_released') {
+        this.lockReleasedSubject.next(parsed as LockReleasedMessage);
+        return;
+      }
+      if (direct.type === 'presence_joined') {
+        this.presenceJoinedSubject.next(parsed as PresenceJoinedMessage);
+        return;
+      }
+      if (direct.type === 'presence_left') {
+        this.presenceLeftSubject.next(parsed as PresenceLeftMessage);
+        return;
+      }
     }
 
     const envelope = parsed as {
@@ -327,6 +429,14 @@ export class WebSocketCollaborationGateway implements CollaborationGateway {
       });
     } else if (envelope.payload?.type === 'node_drag_end') {
       this.remoteNodeDragEndSubject.next(envelope.payload.nodeId);
+    } else if (envelope.payload?.type === 'lock_acquired') {
+      this.lockAcquiredSubject.next(envelope.payload);
+    } else if (envelope.payload?.type === 'lock_released') {
+      this.lockReleasedSubject.next(envelope.payload);
+    } else if (envelope.payload?.type === 'presence_joined') {
+      this.presenceJoinedSubject.next(envelope.payload);
+    } else if (envelope.payload?.type === 'presence_left') {
+      this.presenceLeftSubject.next(envelope.payload);
     }
   }
 }
@@ -341,5 +451,5 @@ export const COLLABORATION_GATEWAY = new InjectionToken<CollaborationGateway>(
   {
     providedIn: 'root',
     factory: () => new WebSocketCollaborationGateway(inject(AuthService)),
-  }
+  },
 );

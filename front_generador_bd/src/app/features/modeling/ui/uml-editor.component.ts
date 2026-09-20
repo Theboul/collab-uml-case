@@ -10,9 +10,8 @@ import { UmlValidationPanelComponent } from './uml-validation-panel/uml-validati
 import { UmlShareModalComponent } from './uml-share-modal/uml-share-modal.component';
 import { AiAssistantPanelComponent } from './ai-assistant-panel/ai-assistant-panel.component';
 import { UmlEditorFacade } from '../application/uml-editor.facade';
-import { ScButtonComponent, ScIconComponent } from '../../../shared/ui';
+import { ScButtonComponent, ScIconComponent, ScToastContainerComponent } from '../../../shared/ui';
 import { ProjectShellComponent } from '../../../layout/project-shell/project-shell.component';
-
 
 @Component({
   selector: 'app-uml-editor',
@@ -30,6 +29,7 @@ import { ProjectShellComponent } from '../../../layout/project-shell/project-she
     AiAssistantPanelComponent,
     ScButtonComponent,
     ScIconComponent,
+    ScToastContainerComponent,
   ],
   templateUrl: './uml-editor.component.html',
   styleUrl: './uml-editor.component.css',
@@ -65,4 +65,3 @@ export class UmlEditorComponent implements OnInit {
     this.router.navigate(['/dashboard']);
   }
 }
-

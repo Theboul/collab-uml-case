@@ -1,5 +1,6 @@
 import { Injectable, inject } from '@angular/core';
-import { Observable, merge, tap, throttleTime } from 'rxjs';
+import { toObservable } from '@angular/core/rxjs-interop';
+import { Observable, merge, pairwise, startWith, tap, throttleTime } from 'rxjs';
 import {
   DiagramLayout,
   EditorMode,
@@ -23,6 +24,7 @@ import { COLLABORATION_GATEWAY } from './collaboration-gateway.service';
 import { RemoteCursorsService } from './remote-cursors.service';
 import { RemoteCanvasSyncService } from './remote-canvas-sync.service';
 import { RemoteNodeDragService } from './remote-node-drag.service';
+import { RemoteLocksService } from './remote-locks.service';
 import { NODE_DRAG_BROADCAST_THROTTLE_MS } from './collaboration-tuning';
 import { EditorStateService } from './editor-state.service';
 import { EditorHistoryService } from './editor-history.service';
@@ -53,6 +55,7 @@ export class UmlEditorFacade {
   private readonly remoteCursorsService = inject(RemoteCursorsService);
   private readonly remoteCanvasSyncService = inject(RemoteCanvasSyncService);
   private readonly remoteNodeDragService = inject(RemoteNodeDragService);
+  private readonly remoteLocksService = inject(RemoteLocksService);
 
   // Re-export reactive signals from specialized services (no API breaking changes)
   readonly canvasId = this.state.canvasId;
@@ -99,14 +102,44 @@ export class UmlEditorFacade {
   }
 
   private setupGraphSubscriptions(): void {
+    this.graphService.nodeDragStarted$.subscribe((nodeId) => {
+      const clsName = this.state.model().classes.find((c) => c.id === nodeId)?.name || 'elemento';
+      this.remoteLocksService.acquireLock(nodeId, clsName, 'drag');
+    });
+
     this.graphService.nodeMoved$.subscribe(({ nodeId, x, y }) => {
       this.moveElement(nodeId, x, y);
       this.collabGateway.sendNodeDragEnd(nodeId);
+      const isSelected = this.selectedClass()?.id === nodeId;
+      this.remoteLocksService.onNodeDragEnded(nodeId, isSelected);
     });
+
+    toObservable(this.selectedClass)
+      .pipe(startWith(null), pairwise())
+      .subscribe(([prev, curr]) => {
+        if (prev && (!curr || prev.id !== curr.id)) {
+          this.remoteLocksService.onPanelClosed(prev.id);
+        }
+        if (curr && (!prev || prev.id !== curr.id)) {
+          this.remoteLocksService.acquireLock(curr.id, curr.name, 'panel');
+        }
+      });
+
+    toObservable(this.contextMenu)
+      .pipe(startWith(null), pairwise())
+      .subscribe(([prev, curr]) => {
+        if (prev && (!curr || prev.edgeId !== curr.edgeId)) {
+          this.remoteLocksService.onPanelClosed(prev.edgeId);
+        }
+        if (curr && (!prev || prev.edgeId !== curr.edgeId)) {
+          const rel = this.state.model().relations.find((r) => r.id === curr.edgeId);
+          this.remoteLocksService.acquireLock(curr.edgeId, rel?.name || 'relación', 'panel');
+        }
+      });
 
     this.graphService.nodeDragging$
       .pipe(
-        throttleTime(NODE_DRAG_BROADCAST_THROTTLE_MS, undefined, { leading: true, trailing: true })
+        throttleTime(NODE_DRAG_BROADCAST_THROTTLE_MS, undefined, { leading: true, trailing: true }),
       )
       .subscribe(({ nodeId, x, y }) => {
         this.collabGateway.sendNodeDragPosition(nodeId, x, y);
@@ -116,24 +149,40 @@ export class UmlEditorFacade {
       this.resizeElement(nodeId, width, height, x, y);
     });
 
-    this.graphService.edgeConnected$.subscribe(({ edgeId, sourceId, targetId, sourcePort, targetPort }) => {
-      this.createRelation(sourceId, targetId, this.defaultRelationType(), edgeId, sourcePort, targetPort);
-    });
+    this.graphService.edgeConnected$.subscribe(
+      ({ edgeId, sourceId, targetId, sourcePort, targetPort }) => {
+        this.createRelation(
+          sourceId,
+          targetId,
+          this.defaultRelationType(),
+          edgeId,
+          sourcePort,
+          targetPort,
+        );
+      },
+    );
 
-    this.graphService.edgeReconnected$.subscribe(({ edgeId, sourceId, targetId, sourcePort, targetPort }) => {
-      const currentRel = this.state.model().relations.find((r) => r.id === edgeId);
-      if (currentRel && (currentRel.sourceClassId !== sourceId || currentRel.targetClassId !== targetId)) {
-        this.updateRelation(edgeId, { sourceClassId: sourceId, targetClassId: targetId });
-      }
-      this.updateRelationLayout(edgeId, sourcePort, targetPort);
-    });
+    this.graphService.edgeReconnected$.subscribe(
+      ({ edgeId, sourceId, targetId, sourcePort, targetPort }) => {
+        const currentRel = this.state.model().relations.find((r) => r.id === edgeId);
+        if (
+          currentRel &&
+          (currentRel.sourceClassId !== sourceId || currentRel.targetClassId !== targetId)
+        ) {
+          this.updateRelation(edgeId, { sourceClassId: sourceId, targetClassId: targetId });
+        }
+        this.updateRelationLayout(edgeId, sourcePort, targetPort);
+      },
+    );
 
     this.graphService.edgeVerticesChanged$.subscribe(({ edgeId, vertices }) => {
       this.updateRelationVertices(edgeId, vertices);
     });
 
     this.graphService.localPointerMove$
-      .pipe(throttleTime(CURSOR_BROADCAST_THROTTLE_MS, undefined, { leading: true, trailing: true }))
+      .pipe(
+        throttleTime(CURSOR_BROADCAST_THROTTLE_MS, undefined, { leading: true, trailing: true }),
+      )
       .subscribe(({ x, y }) => {
         this.collabGateway.sendCursorPosition(x, y);
       });
@@ -154,7 +203,10 @@ export class UmlEditorFacade {
       this.selectedNodes.set(selectedNodes);
       this.selectedEdges.set(selectedEdges);
       const currentSub = this.selectedSubElement();
-      if (currentSub && (!selectedNodes.includes(currentSub.classId) || selectedNodes.length !== 1)) {
+      if (
+        currentSub &&
+        (!selectedNodes.includes(currentSub.classId) || selectedNodes.length !== 1)
+      ) {
         this.clearSubElement();
       }
     });
@@ -176,7 +228,7 @@ export class UmlEditorFacade {
             });
           }
         }
-      }
+      },
     );
 
     this.attributeRowsService.deleteRequested$.subscribe(({ classId, attributeId }) => {
@@ -264,7 +316,7 @@ export class UmlEditorFacade {
           const msg = err?.error?.message || 'Error al recuperar el snapshot del lienzo.';
           this.loadError.set(msg);
         },
-      })
+      }),
     );
   }
 
@@ -329,8 +381,9 @@ export class UmlEditorFacade {
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = this.filenameFromContentDisposition(response.headers.get('Content-Disposition'))
-          ?? `${this.canvasName() || 'backend'}-spring-boot.zip`;
+        a.download =
+          this.filenameFromContentDisposition(response.headers.get('Content-Disposition')) ??
+          `${this.canvasName() || 'backend'}-spring-boot.zip`;
         a.click();
         window.URL.revokeObjectURL(url);
       },
@@ -380,7 +433,9 @@ export class UmlEditorFacade {
   }
 
   /** CU8: importa un archivo XMI delegando al ApiService. */
-  importXmi(file: File): Observable<{ canvas: LienzoDetailDto; validation: ValidationResponseDto }> {
+  importXmi(
+    file: File,
+  ): Observable<{ canvas: LienzoDetailDto; validation: ValidationResponseDto }> {
     return this.api.importXmi(file);
   }
 
@@ -512,7 +567,7 @@ export class UmlEditorFacade {
     this.commandService.updateRelationLayout(relationId, sourcePort, targetPort);
   }
 
-  updateRelationVertices(relationId: string, vertices: Array<{ x: number; y: number }>): void {
+  updateRelationVertices(relationId: string, vertices: { x: number; y: number }[]): void {
     this.commandService.updateRelationVertices(relationId, vertices);
   }
 
@@ -533,10 +588,7 @@ export class UmlEditorFacade {
     this.commandService.deleteSelected();
   }
 
-  addAttribute(
-    classId: string,
-    attr?: { name?: string; type?: string; visibility?: any; isStatic?: boolean }
-  ): void {
+  addAttribute(classId: string, attr?: Partial<UmlAttribute>): void {
     this.memberService.addAttribute(classId, attr);
   }
 
@@ -548,10 +600,7 @@ export class UmlEditorFacade {
     this.memberService.deleteAttribute(classId, attributeId);
   }
 
-  addOperation(
-    classId: string,
-    op?: { name?: string; returnType?: string; visibility?: any; isStatic?: boolean; isAbstract?: boolean }
-  ): void {
+  addOperation(classId: string, op?: Partial<UmlOperation>): void {
     this.memberService.addOperation(classId, op);
   }
 
@@ -571,7 +620,7 @@ export class UmlEditorFacade {
     classId: string,
     operationId: string,
     parameterId: string,
-    updates: Partial<UmlParameter>
+    updates: Partial<UmlParameter>,
   ): void {
     this.memberService.updateParameter(classId, operationId, parameterId, updates);
   }
@@ -586,7 +635,7 @@ export class UmlEditorFacade {
     type: UmlRelationType = 'ASSOCIATION',
     existingEdgeId?: string,
     sourcePort?: string,
-    targetPort?: string
+    targetPort?: string,
   ): void {
     this.commandService.createRelation(
       sourceClassId,
@@ -594,7 +643,7 @@ export class UmlEditorFacade {
       type,
       existingEdgeId,
       sourcePort,
-      targetPort
+      targetPort,
     );
   }
 
@@ -605,12 +654,12 @@ export class UmlEditorFacade {
   updateMultiplicity(
     relationId: string,
     sourceMultiplicity?: UmlMultiplicity | string,
-    targetMultiplicity?: UmlMultiplicity | string
+    targetMultiplicity?: UmlMultiplicity | string,
   ): void {
     this.commandService.updateMultiplicity(
       relationId,
       sourceMultiplicity as string,
-      targetMultiplicity as string
+      targetMultiplicity as string,
     );
   }
 
@@ -618,7 +667,19 @@ export class UmlEditorFacade {
     this.commandService.deleteRelation(relationId);
   }
 
-  dispatchCommand<T>(type: any, payload: T): void {
+  dispatchCommand<T>(type: string, payload: T): void {
     this.commandService.dispatchCommand(type, payload);
+  }
+
+  isElementLockedByOther(elementId: string): boolean {
+    return this.remoteLocksService.isLockedByOther(elementId);
+  }
+
+  getLockHolderName(elementId: string): string | null {
+    return this.remoteLocksService.getLockHolderName(elementId);
+  }
+
+  recordActivity(elementId?: string, elementName?: string): void {
+    this.remoteLocksService.recordActivity(elementId, elementName);
   }
 }
