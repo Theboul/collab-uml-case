@@ -9,10 +9,10 @@ de TypeScript).
 import copy
 import json
 import os
-from pathlib import Path
 from typing import Any
 
 import pytest
+from jsonschema import ValidationError
 
 from backend_case.app.modeling.application.canvas_delta import (
     MODEL_KINDS,
@@ -21,6 +21,11 @@ from backend_case.app.modeling.application.canvas_delta import (
 )
 from backend_case.app.modeling.application.commands.dispatcher import CommandDispatcher
 from backend_case.app.schemas.canvas import to_detail_schema
+from backend_case.tests.canvas_delta_contract import (
+    SCHEMA_FILE,
+    schema_validator,
+    validate_canvas_delta_message,
+)
 from backend_case.tests.canvas_delta_scenarios import (
     CLIENTE,
     PEDIDO,
@@ -29,9 +34,7 @@ from backend_case.tests.canvas_delta_scenarios import (
     run_scenario,
 )
 
-CONTRACTS = Path(__file__).resolve().parents[2] / "contracts"
-SCHEMA_FILE = CONTRACTS / "canvas-delta.v1.json"
-EXAMPLES_FILE = CONTRACTS / "canvas-delta.examples.json"
+EXAMPLES_FILE = SCHEMA_FILE.with_name("canvas-delta.examples.json")
 
 
 def apply_delta(state: dict[str, Any], delta: dict[str, Any]) -> dict[str, Any]:
@@ -224,27 +227,6 @@ def test_todos_los_deltas_son_serializables_a_json():
 # --------------------------------------------------------------------------------------------
 
 
-def validate_message(message: dict[str, Any]) -> None:
-    """Comprobación estructural equivalente a `contracts/canvas-delta.v1.json` (sin librerías)."""
-    assert set(message) == {"type", "fromVersion", "toVersion", "delta"}
-    assert message["type"] == "canvas_delta"
-    assert isinstance(message["fromVersion"], int) and message["fromVersion"] >= 1
-    assert message["toVersion"] == message["fromVersion"] + 1
-    delta = message["delta"]
-    assert set(delta) <= {"model", "layout"}
-    for kind, change in delta.get("model", {}).items():
-        assert kind in MODEL_KINDS
-        assert change and set(change) <= {"upsert", "remove"}
-        assert all(isinstance(e["id"], str) for e in change.get("upsert", []))
-        assert all(isinstance(i, str) for i in change.get("remove", []))
-    layout = delta.get("layout", {})
-    assert set(layout) <= {"nodes", "links", "viewport"}
-    for section in ("nodes", "links"):
-        if section in layout:
-            assert layout[section] and set(layout[section]) <= {"set", "remove"}
-    assert layout.get("viewport", {}) is None or isinstance(layout.get("viewport", {}), dict)
-
-
 def _examples_document() -> dict[str, Any]:
     initial, steps = run_scenario()
     return {
@@ -288,7 +270,7 @@ def test_cada_mensaje_de_ejemplo_cumple_el_contrato_y_encadena_con_el_siguiente(
     estado = documento["initial"]
 
     for paso in documento["steps"]:
-        validate_message(paso["message"])
+        validate_canvas_delta_message(paso["message"])
         estado = apply_delta(estado, paso["message"]["delta"])
         assert estado == paso["after"], paso["name"]
 
@@ -302,9 +284,46 @@ def test_el_esquema_lista_las_mismas_clases_de_elemento_que_el_codigo():
     assert esquema["properties"]["type"] == {"const": "canvas_delta"}
 
 
-@pytest.mark.parametrize(
-    "malo", [{}, {"type": "canvas_update"}, {"type": "canvas_delta", "fromVersion": 1}]
-)
-def test_el_validador_rechaza_mensajes_que_no_cumplen(malo):
-    with pytest.raises(AssertionError):
-        validate_message(malo)
+def _mensaje(**cambios: Any) -> dict[str, Any]:
+    return {"type": "canvas_delta", "fromVersion": 1, "toVersion": 2, "delta": {}, **cambios}
+
+
+MENSAJES_QUE_NO_CUMPLEN = {
+    "vacío": {},
+    "el canvas_update que ya no existe": {"type": "canvas_update", "canvas": {}},
+    "sin delta": {"type": "canvas_delta", "fromVersion": 1, "toVersion": 2},
+    "sin fromVersion": {"type": "canvas_delta", "toVersion": 2, "delta": {}},
+    "un campo de más": _mensaje(canvas={}),
+    "fromVersion como texto": _mensaje(fromVersion="1"),
+    "fromVersion 0": _mensaje(fromVersion=0, toVersion=1),
+    "las versiones no son consecutivas": _mensaje(fromVersion=1, toVersion=3),
+    "delta que no es un objeto": _mensaje(delta=[]),
+    "tipo de elemento desconocido": _mensaje(delta={"model": {"interfaces": {"remove": ["x"]}}}),
+    "cambio de elementos vacío": _mensaje(delta={"model": {"classes": {}}}),
+    "upsert vacío": _mensaje(delta={"model": {"classes": {"upsert": []}}}),
+    "upsert sin id": _mensaje(delta={"model": {"classes": {"upsert": [{"name": "A"}]}}}),
+    "remove con un id que no es texto": _mensaje(delta={"model": {"classes": {"remove": [1]}}}),
+    "clave de más en un cambio": _mensaje(delta={"model": {"classes": {"replace": ["a"]}}}),
+    "sección de layout desconocida": _mensaje(delta={"layout": {"grid": {}}}),
+    "cambio de layout vacío": _mensaje(delta={"layout": {"nodes": {}}}),
+    "clave de más en el delta": _mensaje(delta={"extras": {}}),
+}
+
+
+@pytest.mark.parametrize("malo", MENSAJES_QUE_NO_CUMPLEN.values(), ids=MENSAJES_QUE_NO_CUMPLEN)
+def test_el_contrato_rechaza_mensajes_que_no_cumplen(malo):
+    with pytest.raises(ValidationError):
+        validate_canvas_delta_message(malo)
+
+
+def test_el_esquema_por_si_solo_exige_versiones_positivas():
+    """Un consumidor que solo use el JSON Schema (sin la regla de versiones consecutivas) sigue
+    rechazando versiones que no existen."""
+    assert not schema_validator().is_valid(_mensaje(fromVersion=0, toVersion=2))
+    assert not schema_validator().is_valid(_mensaje(fromVersion=1, toVersion=1))
+    assert schema_validator().is_valid(_mensaje(fromVersion=1, toVersion=2))
+
+
+def test_el_contrato_acepta_el_delta_vacio_y_el_viewport_nulo():
+    validate_canvas_delta_message(_mensaje())
+    validate_canvas_delta_message(_mensaje(delta={"layout": {"viewport": None}}))

@@ -15,6 +15,7 @@ from starlette.websockets import WebSocketDisconnect
 
 from backend_case.app.main import app
 from backend_case.app.shared.security.tokens import create_access_token
+from backend_case.tests.canvas_delta_contract import validate_canvas_delta_message
 
 client = TestClient(app)
 
@@ -177,6 +178,7 @@ def test_http_command_broadcast_excludes_sender_via_peer_id():
             assert (mensaje["fromVersion"], mensaje["toVersion"]) == (1, 2)
             (clase,) = mensaje["delta"]["model"]["classes"]["upsert"]
             assert clase["name"] == "Cliente"
+            validate_canvas_delta_message(mensaje)  # lo que viaja de verdad cumple el contrato
 
 
 def _register_and_get_token(client_: TestClient, email_prefix: str) -> str:
