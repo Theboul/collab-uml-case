@@ -436,3 +436,73 @@ def test_ws_el_exceso_de_frecuencia_se_descarta_sin_cerrar_la_conexion(monkeypat
         tercero.send_json({"type": "cursor", "x": 3, "y": 3})  # otra Sesión, otro bucket
         assert receptor.receive_json()["payload"]["x"] == 3.0
         assert len(_rooms()[canvas_id]) == 3  # el emisor sigue conectado
+
+def test_si_el_commit_falla_el_cambio_no_se_difunde(monkeypatch):
+    """
+    Publicar solo tras el commit: un commit fallido no deja a los demás con un cambio fantasma.
+    Prueba determinista: el primer mensaje que ve el receptor es el del SEGUNDO comando (versión 2);
+    si el primero hubiera publicado, llegaría antes y traería "Fantasma".
+    """
+    from backend_case.app.modeling.infrastructure.canvas_repository import CanvasRepository
+
+    def comando(nombre: str) -> dict:
+        payload = {"name": nombre, "x": 0, "y": 0, "width": 180, "height": 100}
+        return {"expectedVersion": 1, "type": "CREATE_CLASS", "payload": payload}
+
+    with TestClient(app) as scoped_client:
+        canvas_id = scoped_client.post(
+            "/api/v2/canvases", json={"name": "Lienzo Commit Falla"}
+        ).json()["id"]
+
+        with (
+            scoped_client.websocket_connect(_url(canvas_id)) as emisor,
+            scoped_client.websocket_connect(_url(canvas_id)) as receptor,
+        ):
+            emisor.receive_json()
+            receptor.receive_json()
+
+            commit_real = CanvasRepository.commit
+
+            async def commit_que_falla(self):
+                raise RuntimeError("commit fallido")
+
+            monkeypatch.setattr(CanvasRepository, "commit", commit_que_falla)
+            with pytest.raises(RuntimeError, match="commit fallido"):
+                scoped_client.post(
+                    f"/api/v2/canvases/{canvas_id}/commands", json=comando("Fantasma")
+                )
+            monkeypatch.setattr(CanvasRepository, "commit", commit_real)
+
+            res = scoped_client.post(f"/api/v2/canvases/{canvas_id}/commands", json=comando("Real"))
+            assert res.status_code == 200
+
+            canvas = receptor.receive_json()["payload"]["canvas"]
+            assert canvas["version"] == 2
+            assert [c["name"] for c in canvas["model"]["classes"]] == ["Real"]
+
+
+def test_un_fallo_al_publicar_no_falla_el_comando_ni_lo_revierte(monkeypatch):
+    """Publicar es un aviso posterior al commit: si falla (p. ej. Redis caído) el cambio ya está
+    guardado y la petición responde bien; los clientes se ponen al día por resync."""
+    from backend_case.app.collaboration.infrastructure.memory_room import InMemoryCollaborationRoom
+
+    async def publish_que_falla(self, canvas_id, sender_session_id, payload):
+        raise RuntimeError("redis caído")
+
+    monkeypatch.setattr(InMemoryCollaborationRoom, "publish", publish_que_falla)
+
+    with TestClient(app) as scoped_client:
+        canvas_id = scoped_client.post(
+            "/api/v2/canvases", json={"name": "Lienzo Publicar Falla"}
+        ).json()["id"]
+        payload = {"name": "Cliente", "x": 0, "y": 0, "width": 180, "height": 100}
+
+        res = scoped_client.post(
+            f"/api/v2/canvases/{canvas_id}/commands",
+            json={"expectedVersion": 1, "type": "CREATE_CLASS", "payload": payload},
+        )
+
+        assert res.status_code == 200
+        guardado = scoped_client.get(f"/api/v2/canvases/{canvas_id}").json()
+        assert guardado["version"] == 2
+        assert [c["name"] for c in guardado["model"]["classes"]] == ["Cliente"]

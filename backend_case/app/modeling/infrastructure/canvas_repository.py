@@ -166,6 +166,10 @@ class CanvasRepository:
             room_name=room_name,
         )
 
+    async def commit(self) -> None:
+        """Confirma la transacción en curso (el servicio decide cuándo, para publicar después)."""
+        await self.session.commit()
+
     async def _asegurar_normalizacion_parametros(self, canvas_orm: CanvasORM) -> CanvasORM:
         if not isinstance(canvas_orm.semantic_model, dict):
             return canvas_orm

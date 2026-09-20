@@ -4,6 +4,7 @@ from typing import Any
 
 from fastapi import HTTPException, status
 
+from backend_case.app.modeling.application.change_publisher import ChangePublisher
 from backend_case.app.modeling.application.commands.dispatcher import (
     CommandDispatcher,
 )
@@ -32,9 +33,33 @@ class CanvasService:
     Servicio de aplicación para la gestión de lienzos UML y sus elementos (CU1 - CU4).
     """
 
-    def __init__(self, repository: CanvasRepository) -> None:
+    def __init__(
+        self, repository: CanvasRepository, publisher: ChangePublisher | None = None
+    ) -> None:
         self.repository = repository
+        self.publisher = publisher
         self.command_dispatcher = CommandDispatcher()
+
+    async def _confirmar_y_publicar(
+        self,
+        canvas_id: str,
+        result: CanvasResult,
+        eventos: list[DomainEvent | None],
+        origin_session_id: str = "",
+    ) -> None:
+        """
+        Confirma la transacción y solo entonces avisa a los demás. Si el commit falla, la excepción
+        sube y no se publica nada. Si publicar falla ya no hay vuelta atrás (el cambio está
+        guardado): se registra y el cliente repara por resync.
+        """
+        await self.repository.commit()
+        self._registrar_eventos(canvas_id, eventos)
+        if self.publisher is None:
+            return
+        try:
+            await self.publisher.canvas_changed(canvas_id, result, origin_session_id)
+        except Exception:
+            logger.exception("No se pudo publicar el cambio del lienzo %s", canvas_id)
 
     @staticmethod
     def _registrar_eventos(canvas_id: str, eventos: list[DomainEvent | None]) -> None:
@@ -265,10 +290,13 @@ class CanvasService:
         cmd_type: str,
         payload: dict[str, Any],
         user_id: str | None = None,
+        origin_session_id: str = "",
     ) -> tuple[CanvasResult, dict[str, Any] | None]:
         """
         Ejecuta un comando del editor sobre el lienzo delegándolo al despachador modular
         y persistiendo el cambio de manera atómica con verificación optimista de versión.
+        Confirma la transacción y luego avisa a los demás (`origin_session_id`: Sesión que originó
+        el cambio, para no devolverle el eco).
         """
         res = await self.repository.obtener(canvas_id)
         await self._verificar_acceso_edicion(canvas_id, res.owner_id, user_id)
@@ -288,7 +316,7 @@ class CanvasService:
             expected_version=expected_version,
             lienzo=res.lienzo,
         )
-        self._registrar_eventos(canvas_id, [evento])
+        await self._confirmar_y_publicar(canvas_id, saved_result, [evento], origin_session_id)
 
         return saved_result, undo_payload
 
@@ -325,7 +353,7 @@ class CanvasService:
             expected_version=expected_version,
             lienzo=res.lienzo,
         )
-        self._registrar_eventos(canvas_id, eventos)
+        await self._confirmar_y_publicar(canvas_id, saved_result, eventos)
         return saved_result
 
     async def ejecutar_resolviendo_secuencial(
@@ -390,7 +418,7 @@ class CanvasService:
             expected_version=expected_version,
             lienzo=res.lienzo,
         )
-        self._registrar_eventos(canvas_id, eventos)
+        await self._confirmar_y_publicar(canvas_id, saved_result, eventos)
         return saved_result
 
     async def listar_lienzos(self, user_id: str | None = None) -> list[dict[str, Any]]:

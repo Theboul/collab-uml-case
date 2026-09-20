@@ -4,17 +4,15 @@ Rutas API v2 para el módulo de modelado UML (CU1 - CU4).
 import uuid
 from typing import Annotated, Any
 
-from backend_case.app.application.mappers import DomainToPydanticMapper, ValidationResultMapper
-from backend_case.app.collaboration.dependencies import CollaborationRoomDep
+from backend_case.app.application.mappers import ValidationResultMapper
 from backend_case.app.modeling.application.canvas_service import CanvasService
-from backend_case.app.schemas.uml import UmlModelSchema, ValidationResponseSchema
+from backend_case.app.schemas.canvas import CanvasDetailSchema, to_detail_schema
+from backend_case.app.schemas.uml import ValidationResponseSchema
 from backend_case.app.shared.deps import get_canvas_service
 from backend_case.app.shared.security.dependencies import get_current_user_optional
 from backend_case.app.shared.security.models import UserORM
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
-
-from core.uml_domain.model import Lienzo
 
 router = APIRouter(prefix="/canvases", tags=["modeling"])
 
@@ -100,22 +98,6 @@ class CanvasSummarySchema(BaseModel):
     updated_at: str | None = None
 
 
-class CanvasDetailSchema(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    id: str
-    name: str
-    description: str | None = None
-    version: int
-    ownerId: str | None = None
-    roomName: str | None = None
-    owner_id: str | None = None
-    room_name: str | None = None
-    role: str = "ANFITRION"
-    visualLayout: dict[str, Any] = Field(default_factory=dict)
-    model: UmlModelSchema
-
-
 class CommandResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -124,30 +106,6 @@ class CommandResponse(BaseModel):
     operationId: str | None = None
     canvas: CanvasDetailSchema | None = None
     undoPayload: dict[str, Any] | None = None
-
-
-def to_detail_schema(
-    lienzo: Lienzo,
-    version: int,
-    owner_id: str | None = None,
-    room_name: str | None = None,
-    role: str = "ANFITRION",
-) -> CanvasDetailSchema:
-    model_schema = DomainToPydanticMapper.to_pydantic_schema(lienzo.modelo)
-    return CanvasDetailSchema(
-        id=lienzo.id,
-        name=lienzo.modelo.name,
-        description=lienzo.modelo.description,
-        version=version,
-        ownerId=owner_id,
-        roomName=room_name,
-        owner_id=owner_id,
-        room_name=room_name,
-        role=role,
-        visualLayout=lienzo.visual_layout,
-        model=model_schema,
-    )
-
 
 
 # ---------------------------------------------------------------------------
@@ -276,11 +234,12 @@ async def execute_editor_command(
     canvas_id: str,
     command: EditorCommandRequest,
     service: CanvasServiceDep,
-    room: CollaborationRoomDep,
     current_user: CurrentUserOptionalDep = None,
 ):
     """
-    Ejecuta un comando del editor sobre el lienzo con control de versión optimista.
+    Ejecuta un comando del editor sobre el lienzo con control de versión optimista. El servicio
+    confirma la transacción y luego avisa a los demás; `peerId` (la Sesión del emisor) evita
+    devolverle el eco.
     """
     res, undo_payload = await service.ejecutar_comando(
         canvas_id=canvas_id,
@@ -289,20 +248,9 @@ async def execute_editor_command(
         cmd_type=command.type,
         payload=command.payload,
         user_id=current_user.id if current_user else None,
+        origin_session_id=command.peerId or "",
     )
     canvas_schema = to_detail_schema(res.lienzo, res.version, res.owner_id, res.room_name)
-    # command.peerId es el peer_id de la conexión WS activa del emisor (si mandó uno):
-    # lo excluye del broadcast para que no compita con la actualización de versión que
-    # trae esta misma respuesta HTTP (root cause del ciclo node:move/node:moved en drag,
-    # ver [DIAG] de la investigación). Sin peerId (cliente sin WS activo), "" no matchea
-    # ningún peer real y el broadcast llega a toda la sala como antes — el guard de
-    # versión en RemoteCanvasSyncService sigue como red de seguridad para ese caso y
-    # cualquier otro desfasaje real.
-    await room.publish(
-        canvas_id,
-        command.peerId or "",
-        {"type": "canvas_update", "canvas": canvas_schema.model_dump(mode="json")},
-    )
     return CommandResponse(
         accepted=True,
         version=res.version,

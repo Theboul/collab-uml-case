@@ -42,9 +42,9 @@ mypy contra un `git worktree` limpio de `HEAD`, y E2E con uvicorn real en los pa
 |---|---|---|
 | 0 | Addendum del ADR-0003 y actualización de `redis.md` | Hecho |
 | 1 | Puerto `CollaborationRoom` (`join`, `leave`, `publish`) con adaptador en memoria; sustituye a `CollaborationRoomRegistry` sin cambiar el comportamiento | Hecho |
-| 2 | Publicar `canvas_update` tras el commit, desde la capa de aplicación (puerto `ChangePublisher`), fuera de las rutas HTTP y del asistente | Pendiente |
+| 2 | Publicar `canvas_update` tras el commit, desde la capa de aplicación (puerto `ChangePublisher`), fuera de las rutas HTTP y del asistente | Hecho |
 | 3 | Reconexión del gateway: aceptar y cerrar con 4403, backoff 1 s a 30 s con jitter y máximo de reintentos, resync al reabrir | Pendiente |
-| 4 | Deltas por diferencia antes/después con `fromVersion`/`toVersion`; snapshot solo como respaldo si hay hueco | Pendiente |
+| 4 | Deltas por diferencia antes/después con `fromVersion`/`toVersion`; snapshot solo como respaldo si hay hueco. Incluye que **todas** las rutas de mutación emitan deltas: hoy `POST /classes`, `POST /associations` y la importación XMI no publican nada | Pendiente |
 | 5 | `LockStore` (puerto y adaptador en memoria), mensajes de lock, presencia y UX del frontend | Pendiente |
 | 6 | Adaptadores Redis (fan-out, presencia, `LockStore`); `fakeredis` como dependencia de desarrollo; 2 workers y `--ws-max-size 8192` en compose | Pendiente |
 | 7 | `code-review`, docs (ADR, `requirements-matrix`, `redis.md`, este plan) y E2E con 2 workers | Pendiente |
