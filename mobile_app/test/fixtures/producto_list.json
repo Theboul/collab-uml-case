@@ -1,0 +1,1 @@
+[{"id":1,"nombre":"Camisa","precio":19.9,"pedidoproducto":[{"id":1,"pedido":{"id":1,"fecha":"2026-09-01"}}]},{"id":2,"nombre":"Zapato","precio":40.0,"pedidoproducto":[{"id":2,"pedido":1}]},{"id":3,"nombre":"Gorra","precio":8.5,"pedidoproducto":[{"id":3,"pedido":{"id":2,"fecha":"2026-09-15"}}]}]
