@@ -346,7 +346,7 @@ Reglas duras:
 | Angular + FastAPI integrados | E2E smoke tests |
 | Generadores Spring / Flutter | Compilación + análisis estático del output generado |
 
-**Meta real:** toda regla crítica tiene prueba — especialmente validación UML, conflicto de colaboración, mapeo XMI, generación, sync offline (cuando se resuelva el ADR-0004).
+**Meta real:** toda regla crítica tiene prueba — especialmente validación UML, conflicto de colaboración, mapeo XMI, generación, sync offline (proyecto móvil `mobile_app/`, ver nota sobre ADR-0004 abajo).
 
 ---
 
@@ -359,7 +359,7 @@ Ubicación: `docs/architecture/adr/`. Formato: Context / Decision / Alternatives
 | 0001 | Modular monolith + FastAPI | Por transcribir |
 | 0002 | `core/uml_domain` como librería aislada | Por transcribir |
 | 0003 | Estrategia de colaboración concurrente (CU5) | **Pendiente — bloquea implementación de CU5** |
-| 0004 | Estrategia de sync offline (CU13) | **Pendiente — CU13 congelado hasta resolverlo** |
+| 0004 | Estrategia de sync offline (CU13) | **Nunca se escribió.** Si existió una restricción, era del CASE web; el proyecto móvil (`mobile_app/`, carpeta separada) no está sujeto a ella y documenta sus decisiones en `mobile_app/docs/` |
 | 0005 | Autenticación/autorización (Anfitrión vs. Colaborador) | **Aprobado** (ver `ADR-0005-autenticacion-identidad-sesiones.md`) |
 | 0006 | Formato de contratos versionados (JSON Schema) | Por transcribir |
 
