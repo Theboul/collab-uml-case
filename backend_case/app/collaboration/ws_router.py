@@ -8,7 +8,7 @@ sesión puede enviar (tipos, campos, tamaño, frecuencia) está en `schemas.py` 
 Antes de aceptar el handshake se resuelve el rol del solicitante sobre el
 lienzo (mismo `resolver_rol` que usa la API HTTP) — si no es ANFITRION ni
 COLABORADOR, la conexión se cierra sin llegar a `accept()` ni asignarle
-peer_id (nunca entra a la sala).
+una Sesión (nunca entra a la sala).
 
 La sesión de DB para ese chequeo se abre y cierra manualmente en un bloque
 acotado (`async with async_session_factory()`) en vez de inyectarse vía
@@ -33,8 +33,9 @@ from fastapi import APIRouter, Query, WebSocket
 
 from core.uml_domain.exceptions import CanvasNoEncontrado
 
+from .application.ports.collaboration_room import CollaborationRoom, Session
+from .dependencies import CollaborationRoomDep
 from .rate_limit import MAX_MESSAGES_PER_SECOND, TokenBucket
-from .room_registry import collaboration_room_registry
 from .schemas import InvalidClientMessageError, InvalidMessageFieldsError, parse_client_message
 
 collaboration_ws_router = APIRouter(tags=["Collaboration"])
@@ -47,6 +48,7 @@ WS_POLICY_VIOLATION_CLOSE_CODE = 1008
 async def canvas_collaboration_websocket(
     websocket: WebSocket,
     canvas_id: str,
+    room: CollaborationRoomDep,
     display_name: str | None = Query(default=None),
 ) -> None:
     async with async_session_factory() as session:
@@ -64,18 +66,19 @@ async def canvas_collaboration_websocket(
         await websocket.close(code=WS_FORBIDDEN_CLOSE_CODE)
         return
 
-    peer_id = await collaboration_room_registry.connect(
-        websocket, canvas_id, display_name, subprotocol=ws_accept_subprotocol(websocket)
-    )
-    await websocket.send_text(json.dumps({"type": "connected", "peerId": peer_id}))
+    await websocket.accept(subprotocol=ws_accept_subprotocol(websocket))
+    room_session = await room.join(canvas_id, websocket, display_name)
+    await websocket.send_text(json.dumps({"type": "connected", "peerId": room_session.id}))
     try:
         with contextlib.suppress(Exception):  # desconexión o falla de transporte: fin de la Sesión
-            await _relay_messages(websocket, canvas_id, peer_id)
+            await _relay_messages(websocket, room, canvas_id, room_session)
     finally:
-        await collaboration_room_registry.disconnect(canvas_id, peer_id)
+        await room.leave(canvas_id, room_session)
 
 
-async def _relay_messages(websocket: WebSocket, canvas_id: str, peer_id: str) -> None:
+async def _relay_messages(
+    websocket: WebSocket, room: CollaborationRoom, canvas_id: str, room_session: Session
+) -> None:
     """
     Reenvía a la Sala solo mensajes válidos. El exceso de frecuencia y los campos inválidos de un
     tipo permitido se descartan sin cerrar (cursor y arrastre son flujos con pérdida); una violación
@@ -93,4 +96,4 @@ async def _relay_messages(websocket: WebSocket, canvas_id: str, peer_id: str) ->
         except InvalidClientMessageError:
             await websocket.close(code=WS_POLICY_VIOLATION_CLOSE_CODE)
             return
-        await collaboration_room_registry.broadcast(canvas_id, peer_id, payload)
+        await room.publish(canvas_id, room_session.id, payload)

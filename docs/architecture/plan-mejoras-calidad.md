@@ -41,7 +41,7 @@ mypy contra un `git worktree` limpio de `HEAD`, y E2E con uvicorn real en los pa
 | Paso | Qué | Estado |
 |---|---|---|
 | 0 | Addendum del ADR-0003 y actualización de `redis.md` | Hecho |
-| 1 | Puerto `CollaborationRoom` (`join`, `leave`, `publish`) con adaptador en memoria; sustituye a `CollaborationRoomRegistry` sin cambiar el comportamiento | Pendiente |
+| 1 | Puerto `CollaborationRoom` (`join`, `leave`, `publish`) con adaptador en memoria; sustituye a `CollaborationRoomRegistry` sin cambiar el comportamiento | Hecho |
 | 2 | Publicar `canvas_update` tras el commit, desde la capa de aplicación (puerto `ChangePublisher`), fuera de las rutas HTTP y del asistente | Pendiente |
 | 3 | Reconexión del gateway: aceptar y cerrar con 4403, backoff 1 s a 30 s con jitter y máximo de reintentos, resync al reabrir | Pendiente |
 | 4 | Deltas por diferencia antes/después con `fromVersion`/`toVersion`; snapshot solo como respaldo si hay hueco | Pendiente |

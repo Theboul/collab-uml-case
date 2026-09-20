@@ -5,7 +5,7 @@ import uuid
 from typing import Annotated, Any
 
 from backend_case.app.application.mappers import DomainToPydanticMapper, ValidationResultMapper
-from backend_case.app.collaboration.room_registry import collaboration_room_registry
+from backend_case.app.collaboration.dependencies import CollaborationRoomDep
 from backend_case.app.modeling.application.canvas_service import CanvasService
 from backend_case.app.schemas.uml import UmlModelSchema, ValidationResponseSchema
 from backend_case.app.shared.deps import get_canvas_service
@@ -276,6 +276,7 @@ async def execute_editor_command(
     canvas_id: str,
     command: EditorCommandRequest,
     service: CanvasServiceDep,
+    room: CollaborationRoomDep,
     current_user: CurrentUserOptionalDep = None,
 ):
     """
@@ -297,7 +298,7 @@ async def execute_editor_command(
     # ningún peer real y el broadcast llega a toda la sala como antes — el guard de
     # versión en RemoteCanvasSyncService sigue como red de seguridad para ese caso y
     # cualquier otro desfasaje real.
-    await collaboration_room_registry.broadcast(
+    await room.publish(
         canvas_id,
         command.peerId or "",
         {"type": "canvas_update", "canvas": canvas_schema.model_dump(mode="json")},

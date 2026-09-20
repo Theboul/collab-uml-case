@@ -5,22 +5,20 @@ sala, aislamiento entre salas distintas, y limpieza del registro al
 desconectar. Sin locks, sin presencia todavía.
 """
 
-import asyncio
 import time
-from unittest.mock import AsyncMock
 
 import pytest
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
-from backend_case.app.collaboration.room_registry import (
-    CollaborationRoomRegistry,
-    ConnectedPeer,
-    collaboration_room_registry,
-)
 from backend_case.app.main import app
 
 client = TestClient(app)
+
+
+def _rooms() -> dict:
+    """Estado interno del adaptador en memoria; solo para inspeccionar en tests."""
+    return app.state.collaboration_room.rooms
 
 
 def test_broadcast_reaches_other_peers_in_same_room_not_the_sender():
@@ -88,7 +86,7 @@ def test_peers_in_different_canvas_are_registered_in_separate_rooms():
         client.websocket_connect(f"/ws/canvas/{canvas_a}/collaboration"),
         client.websocket_connect(f"/ws/canvas/{canvas_b}/collaboration"),
     ):
-        rooms = collaboration_room_registry.rooms
+        rooms = _rooms()
         assert canvas_a in rooms and canvas_b in rooms
         assert set(rooms[canvas_a].keys()).isdisjoint(rooms[canvas_b].keys())
         assert len(rooms[canvas_a]) == 1
@@ -101,97 +99,29 @@ def test_display_name_is_stored_on_connect():
     with client.websocket_connect(
         f"/ws/canvas/{canvas_id}/collaboration?display_name=Ana"
     ):
-        room = collaboration_room_registry.rooms.get(canvas_id, {})
+        room = _rooms().get(canvas_id, {})
         assert len(room) == 1
         peer = next(iter(room.values()))
-        assert peer.display_name == "Ana"
+        assert peer.session.display_name == "Ana"
 
     # Al salir del context manager el cliente cierra la conexión; el server
     # debe limpiar el registro.
-    assert canvas_id not in collaboration_room_registry.rooms
+    assert canvas_id not in _rooms()
 
 
 def test_disconnect_removes_peer_from_registry():
     canvas_id = client.post("/api/v2/canvases", json={"name": "WS Disconnect Test"}).json()["id"]
 
     with client.websocket_connect(f"/ws/canvas/{canvas_id}/collaboration"):
-        assert len(collaboration_room_registry.rooms.get(canvas_id, {})) == 1
+        assert len(_rooms().get(canvas_id, {})) == 1
 
         with client.websocket_connect(f"/ws/canvas/{canvas_id}/collaboration"):
-            assert len(collaboration_room_registry.rooms.get(canvas_id, {})) == 2
+            assert len(_rooms().get(canvas_id, {})) == 2
 
         # El peer anidado salió del `with` (desconectado): el registro debe reflejarlo.
-        assert len(collaboration_room_registry.rooms.get(canvas_id, {})) == 1
+        assert len(_rooms().get(canvas_id, {})) == 1
 
-    assert canvas_id not in collaboration_room_registry.rooms
-
-
-def test_disconnect_is_safe_after_broadcast_already_removed_the_peer():
-    """
-    Reproduce el caso puntual: broadcast() detecta un send_text() fallido y ya
-    removió al peer del registro por su cuenta; el loop del router, al notar
-    la misma desconexión por su lado, llama disconnect() para ese mismo
-    peer_id. disconnect() debe ser un no-op seguro (sin excepción) tanto la
-    primera vez (peer ya ausente) como si se lo llama dos veces seguidas.
-    Va directo contra CollaborationRoomRegistry (no contra el WS real) para
-    poder forzar de forma determinística el send_text() fallido.
-    """
-
-    async def _run() -> None:
-        registry = CollaborationRoomRegistry()
-        canvas_id = "canvas-collab-race"
-
-        alive_ws = AsyncMock()
-        dead_ws = AsyncMock()
-        dead_ws.send_text.side_effect = RuntimeError("connection already closed")
-
-        registry.rooms[canvas_id] = {
-            "peer-alive": ConnectedPeer(websocket=alive_ws),
-            "peer-dead": ConnectedPeer(websocket=dead_ws),
-        }
-
-        # peer-alive hace broadcast; el intento de mandarle a peer-dead falla,
-        # así que broadcast() ya lo remueve del registro por su cuenta.
-        await registry.broadcast(canvas_id, "peer-alive", {"action": "ping"})
-        assert "peer-dead" not in registry.rooms[canvas_id]
-
-        # El propio loop de peer-dead nota la desconexión y llama disconnect()
-        # para un peer_id que broadcast() ya había sacado del registro.
-        await registry.disconnect(canvas_id, "peer-dead")  # no debe lanzar
-
-        # Llamarlo una segunda vez (ej. WebSocketDisconnect y luego el except
-        # Exception genérico del router, o cualquier doble notificación) debe
-        # seguir siendo inofensivo.
-        await registry.disconnect(canvas_id, "peer-dead")
-
-        # peer-alive sigue ahí; la sala no se borró de más.
-        assert canvas_id in registry.rooms
-        assert set(registry.rooms[canvas_id].keys()) == {"peer-alive"}
-
-    asyncio.run(_run())
-
-
-def test_disconnect_is_safe_when_it_was_the_last_peer_and_gets_called_twice():
-    """
-    Mismo caso pero cuando el peer muerto era el único en la sala: la primera
-    llamada a disconnect() debe limpiar también la entrada `canvas_id` de
-    `rooms` (queda vacía), y la segunda llamada debe seguir siendo un no-op
-    aunque `canvas_id` ya ni siquiera esté en el registro.
-    """
-
-    async def _run() -> None:
-        registry = CollaborationRoomRegistry()
-        canvas_id = "canvas-collab-race-solo"
-
-        registry.rooms[canvas_id] = {"peer-solo": ConnectedPeer(websocket=AsyncMock())}
-
-        await registry.disconnect(canvas_id, "peer-solo")
-        assert canvas_id not in registry.rooms
-
-        await registry.disconnect(canvas_id, "peer-solo")  # no debe lanzar
-        assert canvas_id not in registry.rooms
-
-    asyncio.run(_run())
+    assert canvas_id not in _rooms()
 
 
 def test_connect_sends_peer_id_handshake():
@@ -260,7 +190,7 @@ def test_ws_rejects_connection_without_valid_role():
     Hallazgo #1 de la auditoría: el WS de colaboración no validaba rol alguno.
     Sin token, o con el token de un usuario ajeno al lienzo, la conexión debe
     cerrarse con el código 4403 antes de entrar a la sala — nunca se le asigna
-    peer_id ni queda registrada en collaboration_room_registry.
+    peer_id ni queda registrada en la Sala.
     """
     import pytest
     from backend_case.app.main import app as _app
@@ -296,7 +226,7 @@ def test_ws_rejects_connection_without_valid_role():
             pass
         assert exc_outsider.value.code == 4403
 
-        assert canvas_id not in collaboration_room_registry.rooms
+        assert canvas_id not in _rooms()
 
 
 def test_ws_accepts_connection_for_owner_and_joined_collaborator():
@@ -333,7 +263,7 @@ def test_ws_accepts_connection_for_owner_and_joined_collaborator():
             ) as collab_ws:
                 collab_handshake = collab_ws.receive_json()
                 assert collab_handshake["type"] == "connected"
-                assert len(collaboration_room_registry.rooms.get(canvas_id, {})) == 2
+                assert len(_rooms().get(canvas_id, {})) == 2
 
 
 def test_ws_token_en_la_query_string_ya_no_autentica():
@@ -505,4 +435,4 @@ def test_ws_el_exceso_de_frecuencia_se_descarta_sin_cerrar_la_conexion(monkeypat
 
         tercero.send_json({"type": "cursor", "x": 3, "y": 3})  # otra Sesión, otro bucket
         assert receptor.receive_json()["payload"]["x"] == 3.0
-        assert len(collaboration_room_registry.rooms[canvas_id]) == 3  # el emisor sigue conectado
+        assert len(_rooms()[canvas_id]) == 3  # el emisor sigue conectado

@@ -31,7 +31,8 @@ from backend_case.app.assistant.application.gemini_command_mapper import (
     resolve_operation,
     validate_operations_shape,
 )
-from backend_case.app.collaboration.room_registry import collaboration_room_registry
+from backend_case.app.collaboration.application.ports.collaboration_room import CollaborationRoom
+from backend_case.app.collaboration.dependencies import CollaborationRoomDep
 from backend_case.app.legacy.services_gemini import call_gemini, call_gemini_from_image
 from backend_case.app.modeling.api.routes import (
     CanvasDetailSchema,
@@ -64,11 +65,13 @@ def _strip_markdown_fences(text: str) -> str:
     return re.sub(r"^```json\s*|\s*```$", "", text.strip(), flags=re.MULTILINE)
 
 
-async def _broadcast_and_build_response(canvas_id: str, result: CanvasResult) -> CommandResponse:
+async def _broadcast_and_build_response(
+    room: CollaborationRoom, canvas_id: str, result: CanvasResult
+) -> CommandResponse:
     canvas_schema: CanvasDetailSchema = to_detail_schema(
         result.lienzo, result.version, result.owner_id, result.room_name
     )
-    await collaboration_room_registry.broadcast(
+    await room.publish(
         canvas_id,
         "",
         {"type": "canvas_update", "canvas": canvas_schema.model_dump(mode="json")},
@@ -85,6 +88,7 @@ async def execute_text_command(
     canvas_id: str,
     payload: TextCommandRequest,
     service: CanvasServiceDep,
+    room: CollaborationRoomDep,
     current_user: CurrentUserOptionalDep = None,
 ) -> CommandResponse:
     """
@@ -129,7 +133,7 @@ async def execute_text_command(
             user_id=user_id,
         )
 
-    return await _broadcast_and_build_response(canvas_id, result)
+    return await _broadcast_and_build_response(room, canvas_id, result)
 
 
 @router.post("/{canvas_id}/assistant/image-command", response_model=CommandResponse)
@@ -138,6 +142,7 @@ async def execute_image_command(
     service: CanvasServiceDep,
     image: Annotated[UploadFile, File()],
     expected_version: Annotated[int, Form(alias="expectedVersion")],
+    room: CollaborationRoomDep,
     current_user: CurrentUserOptionalDep = None,
 ) -> CommandResponse:
     """
@@ -187,4 +192,4 @@ async def execute_image_command(
         user_id=user_id,
     )
 
-    return await _broadcast_and_build_response(canvas_id, result)
+    return await _broadcast_and_build_response(room, canvas_id, result)

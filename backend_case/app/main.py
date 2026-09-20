@@ -26,7 +26,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .api import api_router
 from .assistant.api.routes import router as assistant_router
-from .collaboration import collaboration_ws_router
+from .collaboration import collaboration_ws_router, create_collaboration_room
 from .generation.api.routes import router as generation_router
 from .interoperability.api.routes import router as interoperability_router
 from .legacy.api_router import legacy_api_router
@@ -61,6 +61,9 @@ app = FastAPI(
     redoc_url="/redoc",
     lifespan=lifespan,
 )
+
+# Sala de colaboración del proceso; se inyecta con `CollaborationRoomDep`.
+app.state.collaboration_room = create_collaboration_room()
 
 # Configuración de CORS con soporte para cookies y credenciales
 app.add_middleware(
