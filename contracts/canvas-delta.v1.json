@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://diagramador-uml.org/contracts/canvas-delta.v1.json",
+  "title": "CanvasDeltaMessageV1",
+  "description": "Mensaje que el servidor difunde a la Sala tras confirmar un cambio en un Lienzo (ADR-0003, Addendum). Lleva solo lo que cambió, por elemento: un elemento nuevo o modificado viaja completo (`upsert`, con la forma de `uml-model.v2.json`) y uno borrado viaja como id (`remove`). Se aplica a un cliente que esté exactamente en `fromVersion`; si está en otra versión debe pedir el Lienzo completo. Llega envuelto en el sobre de la Sala: {from, fromDisplayName, payload}, donde `payload` es este mensaje.",
+  "type": "object",
+  "required": ["type", "fromVersion", "toVersion", "delta"],
+  "additionalProperties": false,
+  "properties": {
+    "type": { "const": "canvas_delta" },
+    "fromVersion": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Versión del Lienzo sobre la que se calculó el delta."
+    },
+    "toVersion": {
+      "type": "integer",
+      "minimum": 2,
+      "description": "Versión resultante (siempre fromVersion + 1: cada guardado la incrementa en uno)."
+    },
+    "delta": { "$ref": "#/$defs/CanvasDelta" }
+  },
+  "$defs": {
+    "CanvasDelta": {
+      "type": "object",
+      "description": "Vacío ({}) cuando el comando no cambió nada observable; igualmente se publica para mantener la continuidad de versiones.",
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "classes": { "$ref": "#/$defs/ElementChange" },
+            "associations": { "$ref": "#/$defs/ElementChange" },
+            "generalizations": { "$ref": "#/$defs/ElementChange" },
+            "realizations": { "$ref": "#/$defs/ElementChange" },
+            "dependencies": { "$ref": "#/$defs/ElementChange" }
+          }
+        },
+        "layout": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "nodes": { "$ref": "#/$defs/KeyedChange" },
+            "links": { "$ref": "#/$defs/KeyedChange" },
+            "viewport": { "type": ["object", "null"] }
+          }
+        }
+      }
+    },
+    "ElementChange": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "properties": {
+        "upsert": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "object", "required": ["id"], "properties": { "id": { "type": "string" } } }
+        },
+        "remove": { "type": "array", "minItems": 1, "items": { "type": "string" } }
+      }
+    },
+    "KeyedChange": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "properties": {
+        "set": { "type": "object", "description": "Diseño visual por id de elemento: se reemplaza entero." },
+        "remove": { "type": "array", "minItems": 1, "items": { "type": "string" } }
+      }
+    }
+  }
+}

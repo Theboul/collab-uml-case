@@ -1,5 +1,6 @@
 import { InjectionToken, Signal, inject, signal } from '@angular/core';
 import { Observable, Subject, of } from 'rxjs';
+import { CanvasDeltaMessage, isCanvasDeltaMessage } from '../domain/canvas-delta';
 import { EditorCommand } from '../domain/commands/editor-commands';
 import {
   CollaborationMessage,
@@ -40,7 +41,8 @@ export interface CollaborationGateway {
   remoteCommands$: Observable<EditorCommand>;
   presence$: Observable<any>;
   remoteCursor$: Observable<IncomingCursorEvent>;
-  remoteCanvasUpdate$: Observable<unknown>;
+  /** Cambio confirmado por otro peer, como delta (contrato `canvas-delta.v1.json`). */
+  remoteCanvasDelta$: Observable<CanvasDeltaMessage>;
   remoteNodeDrag$: Observable<RemoteNodeDragEvent>;
   remoteNodeDragEnd$: Observable<string>;
 }
@@ -50,7 +52,7 @@ export class NoOpCollaborationGateway implements CollaborationGateway {
   readonly remoteCommands$: Observable<EditorCommand> = of();
   readonly presence$: Observable<any> = of();
   readonly remoteCursor$: Observable<IncomingCursorEvent> = of();
-  readonly remoteCanvasUpdate$: Observable<unknown> = of();
+  readonly remoteCanvasDelta$: Observable<CanvasDeltaMessage> = of();
   readonly remoteNodeDrag$: Observable<RemoteNodeDragEvent> = of();
   readonly remoteNodeDragEnd$: Observable<string> = of();
   readonly reconnected$: Observable<void> = of();
@@ -109,8 +111,9 @@ export class WebSocketCollaborationGateway implements CollaborationGateway {
   private readonly remoteCursorSubject = new Subject<IncomingCursorEvent>();
   readonly remoteCursor$: Observable<IncomingCursorEvent> = this.remoteCursorSubject.asObservable();
 
-  private readonly remoteCanvasUpdateSubject = new Subject<unknown>();
-  readonly remoteCanvasUpdate$: Observable<unknown> = this.remoteCanvasUpdateSubject.asObservable();
+  private readonly remoteCanvasDeltaSubject = new Subject<CanvasDeltaMessage>();
+  readonly remoteCanvasDelta$: Observable<CanvasDeltaMessage> =
+    this.remoteCanvasDeltaSubject.asObservable();
 
   private readonly remoteNodeDragSubject = new Subject<RemoteNodeDragEvent>();
   readonly remoteNodeDrag$: Observable<RemoteNodeDragEvent> = this.remoteNodeDragSubject.asObservable();
@@ -308,8 +311,14 @@ export class WebSocketCollaborationGateway implements CollaborationGateway {
         x: envelope.payload.x,
         y: envelope.payload.y,
       });
-    } else if (envelope.payload?.type === 'canvas_update') {
-      this.remoteCanvasUpdateSubject.next(envelope.payload.canvas);
+    } else if (envelope.payload?.type === 'canvas_delta') {
+      // Un delta malformado no se puede aplicar ni encadenar: se descarta, y el hueco de versión
+      // que deja lo detecta RemoteCanvasSyncService en el siguiente delta (y resincroniza).
+      if (isCanvasDeltaMessage(envelope.payload)) {
+        this.remoteCanvasDeltaSubject.next(envelope.payload);
+      } else {
+        console.warn('[Collaboration] canvas_delta malformado, se descarta.');
+      }
     } else if (envelope.payload?.type === 'node_drag') {
       this.remoteNodeDragSubject.next({
         nodeId: envelope.payload.nodeId,

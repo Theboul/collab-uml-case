@@ -217,10 +217,15 @@ export class EditorCommandService {
       links: {},
     };
 
-    this.state.setSnapshot(loadedModel, loadedLayout);
-    this.state.setVersion(dto.version);
+    this.applyCanvasContent(loadedModel, loadedLayout, dto.version);
+  }
+
+  /** Contenido del lienzo ya resuelto (de un snapshot o de aplicar un delta) a estado y grafo. */
+  applyCanvasContent(model: ModeloUML, layout: DiagramLayout, version: number): void {
+    this.state.setSnapshot(model, layout);
+    this.state.setVersion(version);
     if (this.graphService.isInitialized) {
-      const cells = this.adapter.modelToCells(loadedModel, loadedLayout);
+      const cells = this.adapter.modelToCells(model, layout);
       this.graphService.renderCells(cells.nodes, cells.edges);
     }
   }

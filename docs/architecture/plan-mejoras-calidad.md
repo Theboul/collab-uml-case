@@ -44,7 +44,7 @@ mypy contra un `git worktree` limpio de `HEAD`, y E2E con uvicorn real en los pa
 | 1 | Puerto `CollaborationRoom` (`join`, `leave`, `publish`) con adaptador en memoria; sustituye a `CollaborationRoomRegistry` sin cambiar el comportamiento | Hecho |
 | 2 | Publicar `canvas_update` tras el commit, desde la capa de aplicación (puerto `ChangePublisher`), fuera de las rutas HTTP y del asistente | Hecho |
 | 3 | Reconexión del gateway: aceptar y cerrar con 4401/4403, backoff 1 s a 30 s con jitter, máximo de 8 reintentos, resync al reabrir, indicador y botón "Reintentar". Verificado en Karma (Nivel A), en un navegador real contra un servidor real con proxy cortable (Nivel B, `scripts/collab-e2e/`) y en la app real (Nivel C, manual asistido) | Hecho |
-| 4 | Deltas por diferencia antes/después con `fromVersion`/`toVersion`; snapshot solo como respaldo si hay hueco. Incluye que **todas** las rutas que mutan un Lienzo existente emitan deltas: hoy `POST /classes` y `POST /associations` no publican nada. La importación XMI queda fuera: siempre crea un Lienzo nuevo, sin Sala a la que avisar | Pendiente |
+| 4 | Deltas por elemento (clase o relación completa, no por campo) calculados como diferencia antes/después en la capa de aplicación, con `fromVersion`/`toVersion`; el cliente los aplica solo si está exactamente en `fromVersion` y, si hay hueco, descarga el lienzo entero (`resync`). Cambio directo: el servidor ya no envía `canvas_update`. Contrato compartido en `contracts/canvas-delta.v1.json` con ejemplos generados por el backend (`contracts/canvas-delta.examples.json`) que consume el spec del frontend. `POST /classes` y `POST /associations` ahora publican. La importación XMI queda fuera: siempre crea un Lienzo nuevo, sin Sala a la que avisar. Nombre y descripción del Lienzo quedan fuera del delta (un cambio ahí solo produce un hueco de versión y un resync). Verificado en unitarios (propiedad `aplicar(delta, antes) == después` sobre 18 comandos reales, servicio, adaptador, WS), en el Nivel B (3 casos nuevos: convergencia, hueco por mensaje perdido, corte de red real) y en la app real (Nivel C) | Hecho |
 | 5 | `LockStore` (puerto y adaptador en memoria), mensajes de lock, presencia y UX del frontend | Pendiente |
 | 6 | Adaptadores Redis (fan-out, presencia, `LockStore`); `fakeredis` como dependencia de desarrollo; 2 workers y `--ws-max-size 8192` en compose | Pendiente |
 | 7 | `code-review`, docs (ADR, `requirements-matrix`, `redis.md`, este plan) y E2E con 2 workers | Pendiente |
@@ -107,6 +107,21 @@ glosario de `CONTEXT.md` en código, API y eventos.
 - **Lienzos sin dueño:** `resolver_rol` devuelve ANFITRION a cualquiera cuando `owner_id` es nulo, y
   `POST /api/v2/canvases` los crea de forma anónima. Los chequeos de rol no protegen esos Lienzos.
   Varios tests dependen de este comportamiento.
+
+## Límites conocidos de los deltas (Paso 4)
+
+- **El cliente aplica el delta sobre su estado local, que se edita de forma optimista.** Un elemento
+  que el servidor normaliza distinto de como lo dejó la edición local (por ejemplo, un id generado
+  en el servidor) solo se corrige cuando un delta posterior lo vuelve a enviar completo o en el
+  siguiente `resync`; el `snapshot` de antes lo sobrescribía todo en cada cambio ajeno.
+- **Aplicar un delta sigue re-renderizando el grafo completo** (`applyCanvasContent` →
+  `renderCells`, que reconcilia por id): el ahorro es de tráfico, no de trabajo del cliente.
+- **La cola durante un arrastre local guarda todos los deltas en orden** (no se pueden colapsar como
+  los snapshots) y se limita a 200 (`MAX_QUEUED_DELTAS`): si se desborda, se descarta y se resincroniza.
+- **`tests/fixtures/legacy/` está en `.gitignore` (línea 86, `legacy/`):** en un clon limpio la suite
+  completa falla en 33 tests de caracterización que necesitan esos ficheros. No depende de este
+  trabajo (idéntico en todos los commits de la rama); hay que versionarlos con `git add -f` o mover
+  la regla de `.gitignore`.
 
 ## Autenticación (después de la Prioridad 1)
 

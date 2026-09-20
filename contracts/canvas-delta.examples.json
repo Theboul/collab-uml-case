@@ -1,0 +1,2496 @@
+{
+  "description": "Generado por backend_case/tests/test_canvas_delta.py con comandos reales del despachador. `initial` es el estado de partida; cada paso trae el mensaje `canvas_delta` completo y el estado resultante (`after`). Regenerar: UPDATE_CONTRACTS=1 pytest backend_case/tests/test_canvas_delta.py",
+  "initial": {
+    "model": {
+      "classes": [],
+      "associations": [],
+      "generalizations": [],
+      "realizations": [],
+      "dependencies": []
+    },
+    "layout": {
+      "viewport": {
+        "zoom": 1.0,
+        "panX": 0.0,
+        "panY": 0.0
+      },
+      "nodes": {},
+      "links": {}
+    }
+  },
+  "steps": [
+    {
+      "name": "crear la clase Cliente",
+      "command": "CREATE_CLASS",
+      "message": {
+        "type": "canvas_delta",
+        "fromVersion": 1,
+        "toVersion": 2,
+        "delta": {
+          "model": {
+            "classes": {
+              "upsert": [
+                {
+                  "id": "c-cliente",
+                  "name": "Cliente",
+                  "visibility": "+",
+                  "isAbstract": false,
+                  "isInterface": false,
+                  "stereotype": null,
+                  "attributes": [],
+                  "operations": []
+                }
+              ]
+            }
+          },
+          "layout": {
+            "nodes": {
+              "set": {
+                "c-cliente": {
+                  "x": 100.0,
+                  "y": 80.0,
+                  "width": 190.0,
+                  "height": 130.0
+                }
+              }
+            }
+          }
+        }
+      },
+      "after": {
+        "model": {
+          "classes": [
+            {
+              "id": "c-cliente",
+              "name": "Cliente",
+              "visibility": "+",
+              "isAbstract": false,
+              "isInterface": false,
+              "stereotype": null,
+              "attributes": [],
+              "operations": []
+            }
+          ],
+          "associations": [],
+          "generalizations": [],
+          "realizations": [],
+          "dependencies": []
+        },
+        "layout": {
+          "viewport": {
+            "zoom": 1.0,
+            "panX": 0.0,
+            "panY": 0.0
+          },
+          "nodes": {
+            "c-cliente": {
+              "x": 100.0,
+              "y": 80.0,
+              "width": 190.0,
+              "height": 130.0
+            }
+          },
+          "links": {}
+        }
+      }
+    },
+    {
+      "name": "crear la clase Pedido",
+      "command": "CREATE_CLASS",
+      "message": {
+        "type": "canvas_delta",
+        "fromVersion": 2,
+        "toVersion": 3,
+        "delta": {
+          "model": {
+            "classes": {
+              "upsert": [
+                {
+                  "id": "c-pedido",
+                  "name": "Pedido",
+                  "visibility": "+",
+                  "isAbstract": false,
+                  "isInterface": false,
+                  "stereotype": null,
+                  "attributes": [],
+                  "operations": []
+                }
+              ]
+            }
+          },
+          "layout": {
+            "nodes": {
+              "set": {
+                "c-pedido": {
+                  "x": 400.0,
+                  "y": 80.0,
+                  "width": 190.0,
+                  "height": 130.0
+                }
+              }
+            }
+          }
+        }
+      },
+      "after": {
+        "model": {
+          "classes": [
+            {
+              "id": "c-cliente",
+              "name": "Cliente",
+              "visibility": "+",
+              "isAbstract": false,
+              "isInterface": false,
+              "stereotype": null,
+              "attributes": [],
+              "operations": []
+            },
+            {
+              "id": "c-pedido",
+              "name": "Pedido",
+              "visibility": "+",
+              "isAbstract": false,
+              "isInterface": false,
+              "stereotype": null,
+              "attributes": [],
+              "operations": []
+            }
+          ],
+          "associations": [],
+          "generalizations": [],
+          "realizations": [],
+          "dependencies": []
+        },
+        "layout": {
+          "viewport": {
+            "zoom": 1.0,
+            "panX": 0.0,
+            "panY": 0.0
+          },
+          "nodes": {
+            "c-cliente": {
+              "x": 100.0,
+              "y": 80.0,
+              "width": 190.0,
+              "height": 130.0
+            },
+            "c-pedido": {
+              "x": 400.0,
+              "y": 80.0,
+              "width": 190.0,
+              "height": 130.0
+            }
+          },
+          "links": {}
+        }
+      }
+    },
+    {
+      "name": "agregar un atributo",
+      "command": "ADD_ATTRIBUTE",
+      "message": {
+        "type": "canvas_delta",
+        "fromVersion": 3,
+        "toVersion": 4,
+        "delta": {
+          "model": {
+            "classes": {
+              "upsert": [
+                {
+                  "id": "c-cliente",
+                  "name": "Cliente",
+                  "visibility": "+",
+                  "isAbstract": false,
+                  "isInterface": false,
+                  "stereotype": null,
+                  "attributes": [
+                    {
+                      "id": "a-nombre",
+                      "name": "nombre",
+                      "type": "String",
+                      "visibility": "-",
+                      "defaultValue": null,
+                      "isStatic": false,
+                      "isReadOnly": false,
+                      "multiplicity": {
+                        "lowerBound": 1,
+                        "upperBound": 1
+                      }
+                    }
+                  ],
+                  "operations": []
+                }
+              ]
+            }
+          }
+        }
+      },
+      "after": {
+        "model": {
+          "classes": [
+            {
+              "id": "c-cliente",
+              "name": "Cliente",
+              "visibility": "+",
+              "isAbstract": false,
+              "isInterface": false,
+              "stereotype": null,
+              "attributes": [
+                {
+                  "id": "a-nombre",
+                  "name": "nombre",
+                  "type": "String",
+                  "visibility": "-",
+                  "defaultValue": null,
+                  "isStatic": false,
+                  "isReadOnly": false,
+                  "multiplicity": {
+                    "lowerBound": 1,
+                    "upperBound": 1
+                  }
+                }
+              ],
+              "operations": []
+            },
+            {
+              "id": "c-pedido",
+              "name": "Pedido",
+              "visibility": "+",
+              "isAbstract": false,
+              "isInterface": false,
+              "stereotype": null,
+              "attributes": [],
+              "operations": []
+            }
+          ],
+          "associations": [],
+          "generalizations": [],
+          "realizations": [],
+          "dependencies": []
+        },
+        "layout": {
+          "viewport": {
+            "zoom": 1.0,
+            "panX": 0.0,
+            "panY": 0.0
+          },
+          "nodes": {
+            "c-cliente": {
+              "x": 100.0,
+              "y": 80.0,
+              "width": 190.0,
+              "height": 130.0
+            },
+            "c-pedido": {
+              "x": 400.0,
+              "y": 80.0,
+              "width": 190.0,
+              "height": 130.0
+            }
+          },
+          "links": {}
+        }
+      }
+    },
+    {
+      "name": "renombrar el atributo",
+      "command": "UPDATE_ATTRIBUTE",
+      "message": {
+        "type": "canvas_delta",
+        "fromVersion": 4,
+        "toVersion": 5,
+        "delta": {
+          "model": {
+            "classes": {
+              "upsert": [
+                {
+                  "id": "c-cliente",
+                  "name": "Cliente",
+                  "visibility": "+",
+                  "isAbstract": false,
+                  "isInterface": false,
+                  "stereotype": null,
+                  "attributes": [
+                    {
+                      "id": "a-nombre",
+                      "name": "nombreCompleto",
+                      "type": "String",
+                      "visibility": "-",
+                      "defaultValue": null,
+                      "isStatic": false,
+                      "isReadOnly": false,
+                      "multiplicity": {
+                        "lowerBound": 1,
+                        "upperBound": 1
+                      }
+                    }
+                  ],
+                  "operations": []
+                }
+              ]
+            }
+          }
+        }
+      },
+      "after": {
+        "model": {
+          "classes": [
+            {
+              "id": "c-cliente",
+              "name": "Cliente",
+              "visibility": "+",
+              "isAbstract": false,
+              "isInterface": false,
+              "stereotype": null,
+              "attributes": [
+                {
+                  "id": "a-nombre",
+                  "name": "nombreCompleto",
+                  "type": "String",
+                  "visibility": "-",
+                  "defaultValue": null,
+                  "isStatic": false,
+                  "isReadOnly": false,
+                  "multiplicity": {
+                    "lowerBound": 1,
+                    "upperBound": 1
+                  }
+                }
+              ],
+              "operations": []
+            },
+            {
+              "id": "c-pedido",
+              "name": "Pedido",
+              "visibility": "+",
+              "isAbstract": false,
+              "isInterface": false,
+              "stereotype": null,
+              "attributes": [],
+              "operations": []
+            }
+          ],
+          "associations": [],
+          "generalizations": [],
+          "realizations": [],
+          "dependencies": []
+        },
+        "layout": {
+          "viewport": {
+            "zoom": 1.0,
+            "panX": 0.0,
+            "panY": 0.0
+          },
+          "nodes": {
+            "c-cliente": {
+              "x": 100.0,
+              "y": 80.0,
+              "width": 190.0,
+              "height": 130.0
+            },
+            "c-pedido": {
+              "x": 400.0,
+              "y": 80.0,
+              "width": 190.0,
+              "height": 130.0
+            }
+          },
+          "links": {}
+        }
+      }
+    },
+    {
+      "name": "agregar una operación",
+      "command": "ADD_OPERATION",
+      "message": {
+        "type": "canvas_delta",
+        "fromVersion": 5,
+        "toVersion": 6,
+        "delta": {
+          "model": {
+            "classes": {
+              "upsert": [
+                {
+                  "id": "c-pedido",
+                  "name": "Pedido",
+                  "visibility": "+",
+                  "isAbstract": false,
+                  "isInterface": false,
+                  "stereotype": null,
+                  "attributes": [],
+                  "operations": [
+                    {
+                      "id": "o-total",
+                      "name": "total",
+                      "visibility": "+",
+                      "returnType": "float",
+                      "isStatic": false,
+                      "isAbstract": false,
+                      "parameters": []
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      },
+      "after": {
+        "model": {
+          "classes": [
+            {
+              "id": "c-cliente",
+              "name": "Cliente",
+              "visibility": "+",
+              "isAbstract": false,
+              "isInterface": false,
+              "stereotype": null,
+              "attributes": [
+                {
+                  "id": "a-nombre",
+                  "name": "nombreCompleto",
+                  "type": "String",
+                  "visibility": "-",
+                  "defaultValue": null,
+                  "isStatic": false,
+                  "isReadOnly": false,
+                  "multiplicity": {
+                    "lowerBound": 1,
+                    "upperBound": 1
+                  }
+                }
+              ],
+              "operations": []
+            },
+            {
+              "id": "c-pedido",
+              "name": "Pedido",
+              "visibility": "+",
+              "isAbstract": false,
+              "isInterface": false,
+              "stereotype": null,
+              "attributes": [],
+              "operations": [
+                {
+                  "id": "o-total",
+                  "name": "total",
+                  "visibility": "+",
+                  "returnType": "float",
+                  "isStatic": false,
+                  "isAbstract": false,
+                  "parameters": []
+                }
+              ]
+            }
+          ],
+          "associations": [],
+          "generalizations": [],
+          "realizations": [],
+          "dependencies": []
+        },
+        "layout": {
+          "viewport": {
+            "zoom": 1.0,
+            "panX": 0.0,
+            "panY": 0.0
+          },
+          "nodes": {
+            "c-cliente": {
+              "x": 100.0,
+              "y": 80.0,
+              "width": 190.0,
+              "height": 130.0
+            },
+            "c-pedido": {
+              "x": 400.0,
+              "y": 80.0,
+              "width": 190.0,
+              "height": 130.0
+            }
+          },
+          "links": {}
+        }
+      }
+    },
+    {
+      "name": "agregar un parámetro",
+      "command": "ADD_PARAMETER",
+      "message": {
+        "type": "canvas_delta",
+        "fromVersion": 6,
+        "toVersion": 7,
+        "delta": {
+          "model": {
+            "classes": {
+              "upsert": [
+                {
+                  "id": "c-pedido",
+                  "name": "Pedido",
+                  "visibility": "+",
+                  "isAbstract": false,
+                  "isInterface": false,
+                  "stereotype": null,
+                  "attributes": [],
+                  "operations": [
+                    {
+                      "id": "o-total",
+                      "name": "total",
+                      "visibility": "+",
+                      "returnType": "float",
+                      "isStatic": false,
+                      "isAbstract": false,
+                      "parameters": [
+                        {
+                          "id": "p-iva",
+                          "name": "iva",
+                          "type": "float",
+                          "direction": "in",
+                          "defaultValue": null
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      },
+      "after": {
+        "model": {
+          "classes": [
+            {
+              "id": "c-cliente",
+              "name": "Cliente",
+              "visibility": "+",
+              "isAbstract": false,
+              "isInterface": false,
+              "stereotype": null,
+              "attributes": [
+                {
+                  "id": "a-nombre",
+                  "name": "nombreCompleto",
+                  "type": "String",
+                  "visibility": "-",
+                  "defaultValue": null,
+                  "isStatic": false,
+                  "isReadOnly": false,
+                  "multiplicity": {
+                    "lowerBound": 1,
+                    "upperBound": 1
+                  }
+                }
+              ],
+              "operations": []
+            },
+            {
+              "id": "c-pedido",
+              "name": "Pedido",
+              "visibility": "+",
+              "isAbstract": false,
+              "isInterface": false,
+              "stereotype": null,
+              "attributes": [],
+              "operations": [
+                {
+                  "id": "o-total",
+                  "name": "total",
+                  "visibility": "+",
+                  "returnType": "float",
+                  "isStatic": false,
+                  "isAbstract": false,
+                  "parameters": [
+                    {
+                      "id": "p-iva",
+                      "name": "iva",
+                      "type": "float",
+                      "direction": "in",
+                      "defaultValue": null
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "associations": [],
+          "generalizations": [],
+          "realizations": [],
+          "dependencies": []
+        },
+        "layout": {
+          "viewport": {
+            "zoom": 1.0,
+            "panX": 0.0,
+            "panY": 0.0
+          },
+          "nodes": {
+            "c-cliente": {
+              "x": 100.0,
+              "y": 80.0,
+              "width": 190.0,
+              "height": 130.0
+            },
+            "c-pedido": {
+              "x": 400.0,
+              "y": 80.0,
+              "width": 190.0,
+              "height": 130.0
+            }
+          },
+          "links": {}
+        }
+      }
+    },
+    {
+      "name": "crear una asociación",
+      "command": "CREATE_RELATION",
+      "message": {
+        "type": "canvas_delta",
+        "fromVersion": 7,
+        "toVersion": 8,
+        "delta": {
+          "model": {
+            "associations": {
+              "upsert": [
+                {
+                  "id": "r-cp",
+                  "name": "realiza",
+                  "memberEnds": [
+                    {
+                      "classId": "c-cliente",
+                      "roleName": null,
+                      "isNavigable": true,
+                      "aggregationKind": "none",
+                      "multiplicity": {
+                        "lowerBound": 1,
+                        "upperBound": 1
+                      }
+                    },
+                    {
+                      "classId": "c-pedido",
+                      "roleName": null,
+                      "isNavigable": true,
+                      "aggregationKind": "none",
+                      "multiplicity": {
+                        "lowerBound": 0,
+                        "upperBound": null
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      },
+      "after": {
+        "model": {
+          "classes": [
+            {
+              "id": "c-cliente",
+              "name": "Cliente",
+              "visibility": "+",
+              "isAbstract": false,
+              "isInterface": false,
+              "stereotype": null,
+              "attributes": [
+                {
+                  "id": "a-nombre",
+                  "name": "nombreCompleto",
+                  "type": "String",
+                  "visibility": "-",
+                  "defaultValue": null,
+                  "isStatic": false,
+                  "isReadOnly": false,
+                  "multiplicity": {
+                    "lowerBound": 1,
+                    "upperBound": 1
+                  }
+                }
+              ],
+              "operations": []
+            },
+            {
+              "id": "c-pedido",
+              "name": "Pedido",
+              "visibility": "+",
+              "isAbstract": false,
+              "isInterface": false,
+              "stereotype": null,
+              "attributes": [],
+              "operations": [
+                {
+                  "id": "o-total",
+                  "name": "total",
+                  "visibility": "+",
+                  "returnType": "float",
+                  "isStatic": false,
+                  "isAbstract": false,
+                  "parameters": [
+                    {
+                      "id": "p-iva",
+                      "name": "iva",
+                      "type": "float",
+                      "direction": "in",
+                      "defaultValue": null
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "associations": [
+            {
+              "id": "r-cp",
+              "name": "realiza",
+              "memberEnds": [
+                {
+                  "classId": "c-cliente",
+                  "roleName": null,
+                  "isNavigable": true,
+                  "aggregationKind": "none",
+                  "multiplicity": {
+                    "lowerBound": 1,
+                    "upperBound": 1
+                  }
+                },
+                {
+                  "classId": "c-pedido",
+                  "roleName": null,
+                  "isNavigable": true,
+                  "aggregationKind": "none",
+                  "multiplicity": {
+                    "lowerBound": 0,
+                    "upperBound": null
+                  }
+                }
+              ]
+            }
+          ],
+          "generalizations": [],
+          "realizations": [],
+          "dependencies": []
+        },
+        "layout": {
+          "viewport": {
+            "zoom": 1.0,
+            "panX": 0.0,
+            "panY": 0.0
+          },
+          "nodes": {
+            "c-cliente": {
+              "x": 100.0,
+              "y": 80.0,
+              "width": 190.0,
+              "height": 130.0
+            },
+            "c-pedido": {
+              "x": 400.0,
+              "y": 80.0,
+              "width": 190.0,
+              "height": 130.0
+            }
+          },
+          "links": {}
+        }
+      }
+    },
+    {
+      "name": "crear la clase Factura",
+      "command": "CREATE_CLASS",
+      "message": {
+        "type": "canvas_delta",
+        "fromVersion": 8,
+        "toVersion": 9,
+        "delta": {
+          "model": {
+            "classes": {
+              "upsert": [
+                {
+                  "id": "c-factura",
+                  "name": "Factura",
+                  "visibility": "+",
+                  "isAbstract": false,
+                  "isInterface": false,
+                  "stereotype": null,
+                  "attributes": [],
+                  "operations": []
+                }
+              ]
+            }
+          },
+          "layout": {
+            "nodes": {
+              "set": {
+                "c-factura": {
+                  "x": 400.0,
+                  "y": 300.0,
+                  "width": 190.0,
+                  "height": 130.0
+                }
+              }
+            }
+          }
+        }
+      },
+      "after": {
+        "model": {
+          "classes": [
+            {
+              "id": "c-cliente",
+              "name": "Cliente",
+              "visibility": "+",
+              "isAbstract": false,
+              "isInterface": false,
+              "stereotype": null,
+              "attributes": [
+                {
+                  "id": "a-nombre",
+                  "name": "nombreCompleto",
+                  "type": "String",
+                  "visibility": "-",
+                  "defaultValue": null,
+                  "isStatic": false,
+                  "isReadOnly": false,
+                  "multiplicity": {
+                    "lowerBound": 1,
+                    "upperBound": 1
+                  }
+                }
+              ],
+              "operations": []
+            },
+            {
+              "id": "c-pedido",
+              "name": "Pedido",
+              "visibility": "+",
+              "isAbstract": false,
+              "isInterface": false,
+              "stereotype": null,
+              "attributes": [],
+              "operations": [
+                {
+                  "id": "o-total",
+                  "name": "total",
+                  "visibility": "+",
+                  "returnType": "float",
+                  "isStatic": false,
+                  "isAbstract": false,
+                  "parameters": [
+                    {
+                      "id": "p-iva",
+                      "name": "iva",
+                      "type": "float",
+                      "direction": "in",
+                      "defaultValue": null
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "c-factura",
+              "name": "Factura",
+              "visibility": "+",
+              "isAbstract": false,
+              "isInterface": false,
+              "stereotype": null,
+              "attributes": [],
+              "operations": []
+            }
+          ],
+          "associations": [
+            {
+              "id": "r-cp",
+              "name": "realiza",
+              "memberEnds": [
+                {
+                  "classId": "c-cliente",
+                  "roleName": null,
+                  "isNavigable": true,
+                  "aggregationKind": "none",
+                  "multiplicity": {
+                    "lowerBound": 1,
+                    "upperBound": 1
+                  }
+                },
+                {
+                  "classId": "c-pedido",
+                  "roleName": null,
+                  "isNavigable": true,
+                  "aggregationKind": "none",
+                  "multiplicity": {
+                    "lowerBound": 0,
+                    "upperBound": null
+                  }
+                }
+              ]
+            }
+          ],
+          "generalizations": [],
+          "realizations": [],
+          "dependencies": []
+        },
+        "layout": {
+          "viewport": {
+            "zoom": 1.0,
+            "panX": 0.0,
+            "panY": 0.0
+          },
+          "nodes": {
+            "c-cliente": {
+              "x": 100.0,
+              "y": 80.0,
+              "width": 190.0,
+              "height": 130.0
+            },
+            "c-pedido": {
+              "x": 400.0,
+              "y": 80.0,
+              "width": 190.0,
+              "height": 130.0
+            },
+            "c-factura": {
+              "x": 400.0,
+              "y": 300.0,
+              "width": 190.0,
+              "height": 130.0
+            }
+          },
+          "links": {}
+        }
+      }
+    },
+    {
+      "name": "crear una generalización",
+      "command": "CREATE_RELATION",
+      "message": {
+        "type": "canvas_delta",
+        "fromVersion": 9,
+        "toVersion": 10,
+        "delta": {
+          "model": {
+            "generalizations": {
+              "upsert": [
+                {
+                  "id": "r-fp",
+                  "specificClassId": "c-factura",
+                  "generalClassId": "c-pedido"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "after": {
+        "model": {
+          "classes": [
+            {
+              "id": "c-cliente",
+              "name": "Cliente",
+              "visibility": "+",
+              "isAbstract": false,
+              "isInterface": false,
+              "stereotype": null,
+              "attributes": [
+                {
+                  "id": "a-nombre",
+                  "name": "nombreCompleto",
+                  "type": "String",
+                  "visibility": "-",
+                  "defaultValue": null,
+                  "isStatic": false,
+                  "isReadOnly": false,
+                  "multiplicity": {
+                    "lowerBound": 1,
+                    "upperBound": 1
+                  }
+                }
+              ],
+              "operations": []
+            },
+            {
+              "id": "c-pedido",
+              "name": "Pedido",
+              "visibility": "+",
+              "isAbstract": false,
+              "isInterface": false,
+              "stereotype": null,
+              "attributes": [],
+              "operations": [
+                {
+                  "id": "o-total",
+                  "name": "total",
+                  "visibility": "+",
+                  "returnType": "float",
+                  "isStatic": false,
+                  "isAbstract": false,
+                  "parameters": [
+                    {
+                      "id": "p-iva",
+                      "name": "iva",
+                      "type": "float",
+                      "direction": "in",
+                      "defaultValue": null
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "c-factura",
+              "name": "Factura",
+              "visibility": "+",
+              "isAbstract": false,
+              "isInterface": false,
+              "stereotype": null,
+              "attributes": [],
+              "operations": []
+            }
+          ],
+          "associations": [
+            {
+              "id": "r-cp",
+              "name": "realiza",
+              "memberEnds": [
+                {
+                  "classId": "c-cliente",
+                  "roleName": null,
+                  "isNavigable": true,
+                  "aggregationKind": "none",
+                  "multiplicity": {
+                    "lowerBound": 1,
+                    "upperBound": 1
+                  }
+                },
+                {
+                  "classId": "c-pedido",
+                  "roleName": null,
+                  "isNavigable": true,
+                  "aggregationKind": "none",
+                  "multiplicity": {
+                    "lowerBound": 0,
+                    "upperBound": null
+                  }
+                }
+              ]
+            }
+          ],
+          "generalizations": [
+            {
+              "id": "r-fp",
+              "specificClassId": "c-factura",
+              "generalClassId": "c-pedido"
+            }
+          ],
+          "realizations": [],
+          "dependencies": []
+        },
+        "layout": {
+          "viewport": {
+            "zoom": 1.0,
+            "panX": 0.0,
+            "panY": 0.0
+          },
+          "nodes": {
+            "c-cliente": {
+              "x": 100.0,
+              "y": 80.0,
+              "width": 190.0,
+              "height": 130.0
+            },
+            "c-pedido": {
+              "x": 400.0,
+              "y": 80.0,
+              "width": 190.0,
+              "height": 130.0
+            },
+            "c-factura": {
+              "x": 400.0,
+              "y": 300.0,
+              "width": 190.0,
+              "height": 130.0
+            }
+          },
+          "links": {}
+        }
+      }
+    },
+    {
+      "name": "crear una dependencia",
+      "command": "CREATE_RELATION",
+      "message": {
+        "type": "canvas_delta",
+        "fromVersion": 10,
+        "toVersion": 11,
+        "delta": {
+          "model": {
+            "dependencies": {
+              "upsert": [
+                {
+                  "id": "r-cf",
+                  "clientClassId": "c-cliente",
+                  "supplierClassId": "c-factura"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "after": {
+        "model": {
+          "classes": [
+            {
+              "id": "c-cliente",
+              "name": "Cliente",
+              "visibility": "+",
+              "isAbstract": false,
+              "isInterface": false,
+              "stereotype": null,
+              "attributes": [
+                {
+                  "id": "a-nombre",
+                  "name": "nombreCompleto",
+                  "type": "String",
+                  "visibility": "-",
+                  "defaultValue": null,
+                  "isStatic": false,
+                  "isReadOnly": false,
+                  "multiplicity": {
+                    "lowerBound": 1,
+                    "upperBound": 1
+                  }
+                }
+              ],
+              "operations": []
+            },
+            {
+              "id": "c-pedido",
+              "name": "Pedido",
+              "visibility": "+",
+              "isAbstract": false,
+              "isInterface": false,
+              "stereotype": null,
+              "attributes": [],
+              "operations": [
+                {
+                  "id": "o-total",
+                  "name": "total",
+                  "visibility": "+",
+                  "returnType": "float",
+                  "isStatic": false,
+                  "isAbstract": false,
+                  "parameters": [
+                    {
+                      "id": "p-iva",
+                      "name": "iva",
+                      "type": "float",
+                      "direction": "in",
+                      "defaultValue": null
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "c-factura",
+              "name": "Factura",
+              "visibility": "+",
+              "isAbstract": false,
+              "isInterface": false,
+              "stereotype": null,
+              "attributes": [],
+              "operations": []
+            }
+          ],
+          "associations": [
+            {
+              "id": "r-cp",
+              "name": "realiza",
+              "memberEnds": [
+                {
+                  "classId": "c-cliente",
+                  "roleName": null,
+                  "isNavigable": true,
+                  "aggregationKind": "none",
+                  "multiplicity": {
+                    "lowerBound": 1,
+                    "upperBound": 1
+                  }
+                },
+                {
+                  "classId": "c-pedido",
+                  "roleName": null,
+                  "isNavigable": true,
+                  "aggregationKind": "none",
+                  "multiplicity": {
+                    "lowerBound": 0,
+                    "upperBound": null
+                  }
+                }
+              ]
+            }
+          ],
+          "generalizations": [
+            {
+              "id": "r-fp",
+              "specificClassId": "c-factura",
+              "generalClassId": "c-pedido"
+            }
+          ],
+          "realizations": [],
+          "dependencies": [
+            {
+              "id": "r-cf",
+              "clientClassId": "c-cliente",
+              "supplierClassId": "c-factura"
+            }
+          ]
+        },
+        "layout": {
+          "viewport": {
+            "zoom": 1.0,
+            "panX": 0.0,
+            "panY": 0.0
+          },
+          "nodes": {
+            "c-cliente": {
+              "x": 100.0,
+              "y": 80.0,
+              "width": 190.0,
+              "height": 130.0
+            },
+            "c-pedido": {
+              "x": 400.0,
+              "y": 80.0,
+              "width": 190.0,
+              "height": 130.0
+            },
+            "c-factura": {
+              "x": 400.0,
+              "y": 300.0,
+              "width": 190.0,
+              "height": 130.0
+            }
+          },
+          "links": {}
+        }
+      }
+    },
+    {
+      "name": "renombrar una clase",
+      "command": "UPDATE_CLASS_NAME",
+      "message": {
+        "type": "canvas_delta",
+        "fromVersion": 11,
+        "toVersion": 12,
+        "delta": {
+          "model": {
+            "classes": {
+              "upsert": [
+                {
+                  "id": "c-cliente",
+                  "name": "Persona",
+                  "visibility": "+",
+                  "isAbstract": false,
+                  "isInterface": false,
+                  "stereotype": null,
+                  "attributes": [
+                    {
+                      "id": "a-nombre",
+                      "name": "nombreCompleto",
+                      "type": "String",
+                      "visibility": "-",
+                      "defaultValue": null,
+                      "isStatic": false,
+                      "isReadOnly": false,
+                      "multiplicity": {
+                        "lowerBound": 1,
+                        "upperBound": 1
+                      }
+                    }
+                  ],
+                  "operations": []
+                }
+              ]
+            }
+          }
+        }
+      },
+      "after": {
+        "model": {
+          "classes": [
+            {
+              "id": "c-cliente",
+              "name": "Persona",
+              "visibility": "+",
+              "isAbstract": false,
+              "isInterface": false,
+              "stereotype": null,
+              "attributes": [
+                {
+                  "id": "a-nombre",
+                  "name": "nombreCompleto",
+                  "type": "String",
+                  "visibility": "-",
+                  "defaultValue": null,
+                  "isStatic": false,
+                  "isReadOnly": false,
+                  "multiplicity": {
+                    "lowerBound": 1,
+                    "upperBound": 1
+                  }
+                }
+              ],
+              "operations": []
+            },
+            {
+              "id": "c-pedido",
+              "name": "Pedido",
+              "visibility": "+",
+              "isAbstract": false,
+              "isInterface": false,
+              "stereotype": null,
+              "attributes": [],
+              "operations": [
+                {
+                  "id": "o-total",
+                  "name": "total",
+                  "visibility": "+",
+                  "returnType": "float",
+                  "isStatic": false,
+                  "isAbstract": false,
+                  "parameters": [
+                    {
+                      "id": "p-iva",
+                      "name": "iva",
+                      "type": "float",
+                      "direction": "in",
+                      "defaultValue": null
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "c-factura",
+              "name": "Factura",
+              "visibility": "+",
+              "isAbstract": false,
+              "isInterface": false,
+              "stereotype": null,
+              "attributes": [],
+              "operations": []
+            }
+          ],
+          "associations": [
+            {
+              "id": "r-cp",
+              "name": "realiza",
+              "memberEnds": [
+                {
+                  "classId": "c-cliente",
+                  "roleName": null,
+                  "isNavigable": true,
+                  "aggregationKind": "none",
+                  "multiplicity": {
+                    "lowerBound": 1,
+                    "upperBound": 1
+                  }
+                },
+                {
+                  "classId": "c-pedido",
+                  "roleName": null,
+                  "isNavigable": true,
+                  "aggregationKind": "none",
+                  "multiplicity": {
+                    "lowerBound": 0,
+                    "upperBound": null
+                  }
+                }
+              ]
+            }
+          ],
+          "generalizations": [
+            {
+              "id": "r-fp",
+              "specificClassId": "c-factura",
+              "generalClassId": "c-pedido"
+            }
+          ],
+          "realizations": [],
+          "dependencies": [
+            {
+              "id": "r-cf",
+              "clientClassId": "c-cliente",
+              "supplierClassId": "c-factura"
+            }
+          ]
+        },
+        "layout": {
+          "viewport": {
+            "zoom": 1.0,
+            "panX": 0.0,
+            "panY": 0.0
+          },
+          "nodes": {
+            "c-cliente": {
+              "x": 100.0,
+              "y": 80.0,
+              "width": 190.0,
+              "height": 130.0
+            },
+            "c-pedido": {
+              "x": 400.0,
+              "y": 80.0,
+              "width": 190.0,
+              "height": 130.0
+            },
+            "c-factura": {
+              "x": 400.0,
+              "y": 300.0,
+              "width": 190.0,
+              "height": 130.0
+            }
+          },
+          "links": {}
+        }
+      }
+    },
+    {
+      "name": "mover una clase",
+      "command": "MOVE_ELEMENT",
+      "message": {
+        "type": "canvas_delta",
+        "fromVersion": 12,
+        "toVersion": 13,
+        "delta": {
+          "layout": {
+            "nodes": {
+              "set": {
+                "c-pedido": {
+                  "x": 420.0,
+                  "y": 95.0,
+                  "width": 190.0,
+                  "height": 130.0
+                }
+              }
+            }
+          }
+        }
+      },
+      "after": {
+        "model": {
+          "classes": [
+            {
+              "id": "c-cliente",
+              "name": "Persona",
+              "visibility": "+",
+              "isAbstract": false,
+              "isInterface": false,
+              "stereotype": null,
+              "attributes": [
+                {
+                  "id": "a-nombre",
+                  "name": "nombreCompleto",
+                  "type": "String",
+                  "visibility": "-",
+                  "defaultValue": null,
+                  "isStatic": false,
+                  "isReadOnly": false,
+                  "multiplicity": {
+                    "lowerBound": 1,
+                    "upperBound": 1
+                  }
+                }
+              ],
+              "operations": []
+            },
+            {
+              "id": "c-pedido",
+              "name": "Pedido",
+              "visibility": "+",
+              "isAbstract": false,
+              "isInterface": false,
+              "stereotype": null,
+              "attributes": [],
+              "operations": [
+                {
+                  "id": "o-total",
+                  "name": "total",
+                  "visibility": "+",
+                  "returnType": "float",
+                  "isStatic": false,
+                  "isAbstract": false,
+                  "parameters": [
+                    {
+                      "id": "p-iva",
+                      "name": "iva",
+                      "type": "float",
+                      "direction": "in",
+                      "defaultValue": null
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "c-factura",
+              "name": "Factura",
+              "visibility": "+",
+              "isAbstract": false,
+              "isInterface": false,
+              "stereotype": null,
+              "attributes": [],
+              "operations": []
+            }
+          ],
+          "associations": [
+            {
+              "id": "r-cp",
+              "name": "realiza",
+              "memberEnds": [
+                {
+                  "classId": "c-cliente",
+                  "roleName": null,
+                  "isNavigable": true,
+                  "aggregationKind": "none",
+                  "multiplicity": {
+                    "lowerBound": 1,
+                    "upperBound": 1
+                  }
+                },
+                {
+                  "classId": "c-pedido",
+                  "roleName": null,
+                  "isNavigable": true,
+                  "aggregationKind": "none",
+                  "multiplicity": {
+                    "lowerBound": 0,
+                    "upperBound": null
+                  }
+                }
+              ]
+            }
+          ],
+          "generalizations": [
+            {
+              "id": "r-fp",
+              "specificClassId": "c-factura",
+              "generalClassId": "c-pedido"
+            }
+          ],
+          "realizations": [],
+          "dependencies": [
+            {
+              "id": "r-cf",
+              "clientClassId": "c-cliente",
+              "supplierClassId": "c-factura"
+            }
+          ]
+        },
+        "layout": {
+          "viewport": {
+            "zoom": 1.0,
+            "panX": 0.0,
+            "panY": 0.0
+          },
+          "nodes": {
+            "c-cliente": {
+              "x": 100.0,
+              "y": 80.0,
+              "width": 190.0,
+              "height": 130.0
+            },
+            "c-pedido": {
+              "x": 420.0,
+              "y": 95.0,
+              "width": 190.0,
+              "height": 130.0
+            },
+            "c-factura": {
+              "x": 400.0,
+              "y": 300.0,
+              "width": 190.0,
+              "height": 130.0
+            }
+          },
+          "links": {}
+        }
+      }
+    },
+    {
+      "name": "redimensionar una clase",
+      "command": "RESIZE_ELEMENT",
+      "message": {
+        "type": "canvas_delta",
+        "fromVersion": 13,
+        "toVersion": 14,
+        "delta": {
+          "layout": {
+            "nodes": {
+              "set": {
+                "c-pedido": {
+                  "x": 420.0,
+                  "y": 95.0,
+                  "width": 260.0,
+                  "height": 170.0
+                }
+              }
+            }
+          }
+        }
+      },
+      "after": {
+        "model": {
+          "classes": [
+            {
+              "id": "c-cliente",
+              "name": "Persona",
+              "visibility": "+",
+              "isAbstract": false,
+              "isInterface": false,
+              "stereotype": null,
+              "attributes": [
+                {
+                  "id": "a-nombre",
+                  "name": "nombreCompleto",
+                  "type": "String",
+                  "visibility": "-",
+                  "defaultValue": null,
+                  "isStatic": false,
+                  "isReadOnly": false,
+                  "multiplicity": {
+                    "lowerBound": 1,
+                    "upperBound": 1
+                  }
+                }
+              ],
+              "operations": []
+            },
+            {
+              "id": "c-pedido",
+              "name": "Pedido",
+              "visibility": "+",
+              "isAbstract": false,
+              "isInterface": false,
+              "stereotype": null,
+              "attributes": [],
+              "operations": [
+                {
+                  "id": "o-total",
+                  "name": "total",
+                  "visibility": "+",
+                  "returnType": "float",
+                  "isStatic": false,
+                  "isAbstract": false,
+                  "parameters": [
+                    {
+                      "id": "p-iva",
+                      "name": "iva",
+                      "type": "float",
+                      "direction": "in",
+                      "defaultValue": null
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "c-factura",
+              "name": "Factura",
+              "visibility": "+",
+              "isAbstract": false,
+              "isInterface": false,
+              "stereotype": null,
+              "attributes": [],
+              "operations": []
+            }
+          ],
+          "associations": [
+            {
+              "id": "r-cp",
+              "name": "realiza",
+              "memberEnds": [
+                {
+                  "classId": "c-cliente",
+                  "roleName": null,
+                  "isNavigable": true,
+                  "aggregationKind": "none",
+                  "multiplicity": {
+                    "lowerBound": 1,
+                    "upperBound": 1
+                  }
+                },
+                {
+                  "classId": "c-pedido",
+                  "roleName": null,
+                  "isNavigable": true,
+                  "aggregationKind": "none",
+                  "multiplicity": {
+                    "lowerBound": 0,
+                    "upperBound": null
+                  }
+                }
+              ]
+            }
+          ],
+          "generalizations": [
+            {
+              "id": "r-fp",
+              "specificClassId": "c-factura",
+              "generalClassId": "c-pedido"
+            }
+          ],
+          "realizations": [],
+          "dependencies": [
+            {
+              "id": "r-cf",
+              "clientClassId": "c-cliente",
+              "supplierClassId": "c-factura"
+            }
+          ]
+        },
+        "layout": {
+          "viewport": {
+            "zoom": 1.0,
+            "panX": 0.0,
+            "panY": 0.0
+          },
+          "nodes": {
+            "c-cliente": {
+              "x": 100.0,
+              "y": 80.0,
+              "width": 190.0,
+              "height": 130.0
+            },
+            "c-pedido": {
+              "x": 420.0,
+              "y": 95.0,
+              "width": 260.0,
+              "height": 170.0
+            },
+            "c-factura": {
+              "x": 400.0,
+              "y": 300.0,
+              "width": 190.0,
+              "height": 130.0
+            }
+          },
+          "links": {}
+        }
+      }
+    },
+    {
+      "name": "cambiar los vértices de una relación",
+      "command": "UPDATE_RELATION_VERTICES",
+      "message": {
+        "type": "canvas_delta",
+        "fromVersion": 14,
+        "toVersion": 15,
+        "delta": {
+          "layout": {
+            "links": {
+              "set": {
+                "r-cp": {
+                  "vertices": [
+                    {
+                      "x": 300.0,
+                      "y": 200.0
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "after": {
+        "model": {
+          "classes": [
+            {
+              "id": "c-cliente",
+              "name": "Persona",
+              "visibility": "+",
+              "isAbstract": false,
+              "isInterface": false,
+              "stereotype": null,
+              "attributes": [
+                {
+                  "id": "a-nombre",
+                  "name": "nombreCompleto",
+                  "type": "String",
+                  "visibility": "-",
+                  "defaultValue": null,
+                  "isStatic": false,
+                  "isReadOnly": false,
+                  "multiplicity": {
+                    "lowerBound": 1,
+                    "upperBound": 1
+                  }
+                }
+              ],
+              "operations": []
+            },
+            {
+              "id": "c-pedido",
+              "name": "Pedido",
+              "visibility": "+",
+              "isAbstract": false,
+              "isInterface": false,
+              "stereotype": null,
+              "attributes": [],
+              "operations": [
+                {
+                  "id": "o-total",
+                  "name": "total",
+                  "visibility": "+",
+                  "returnType": "float",
+                  "isStatic": false,
+                  "isAbstract": false,
+                  "parameters": [
+                    {
+                      "id": "p-iva",
+                      "name": "iva",
+                      "type": "float",
+                      "direction": "in",
+                      "defaultValue": null
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "c-factura",
+              "name": "Factura",
+              "visibility": "+",
+              "isAbstract": false,
+              "isInterface": false,
+              "stereotype": null,
+              "attributes": [],
+              "operations": []
+            }
+          ],
+          "associations": [
+            {
+              "id": "r-cp",
+              "name": "realiza",
+              "memberEnds": [
+                {
+                  "classId": "c-cliente",
+                  "roleName": null,
+                  "isNavigable": true,
+                  "aggregationKind": "none",
+                  "multiplicity": {
+                    "lowerBound": 1,
+                    "upperBound": 1
+                  }
+                },
+                {
+                  "classId": "c-pedido",
+                  "roleName": null,
+                  "isNavigable": true,
+                  "aggregationKind": "none",
+                  "multiplicity": {
+                    "lowerBound": 0,
+                    "upperBound": null
+                  }
+                }
+              ]
+            }
+          ],
+          "generalizations": [
+            {
+              "id": "r-fp",
+              "specificClassId": "c-factura",
+              "generalClassId": "c-pedido"
+            }
+          ],
+          "realizations": [],
+          "dependencies": [
+            {
+              "id": "r-cf",
+              "clientClassId": "c-cliente",
+              "supplierClassId": "c-factura"
+            }
+          ]
+        },
+        "layout": {
+          "viewport": {
+            "zoom": 1.0,
+            "panX": 0.0,
+            "panY": 0.0
+          },
+          "nodes": {
+            "c-cliente": {
+              "x": 100.0,
+              "y": 80.0,
+              "width": 190.0,
+              "height": 130.0
+            },
+            "c-pedido": {
+              "x": 420.0,
+              "y": 95.0,
+              "width": 260.0,
+              "height": 170.0
+            },
+            "c-factura": {
+              "x": 400.0,
+              "y": 300.0,
+              "width": 190.0,
+              "height": 130.0
+            }
+          },
+          "links": {
+            "r-cp": {
+              "vertices": [
+                {
+                  "x": 300.0,
+                  "y": 200.0
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "mover el viewport",
+      "command": "UPDATE_VIEWPORT",
+      "message": {
+        "type": "canvas_delta",
+        "fromVersion": 15,
+        "toVersion": 16,
+        "delta": {
+          "layout": {
+            "viewport": {
+              "zoom": 1.5,
+              "panX": 40.0,
+              "panY": -10.0
+            }
+          }
+        }
+      },
+      "after": {
+        "model": {
+          "classes": [
+            {
+              "id": "c-cliente",
+              "name": "Persona",
+              "visibility": "+",
+              "isAbstract": false,
+              "isInterface": false,
+              "stereotype": null,
+              "attributes": [
+                {
+                  "id": "a-nombre",
+                  "name": "nombreCompleto",
+                  "type": "String",
+                  "visibility": "-",
+                  "defaultValue": null,
+                  "isStatic": false,
+                  "isReadOnly": false,
+                  "multiplicity": {
+                    "lowerBound": 1,
+                    "upperBound": 1
+                  }
+                }
+              ],
+              "operations": []
+            },
+            {
+              "id": "c-pedido",
+              "name": "Pedido",
+              "visibility": "+",
+              "isAbstract": false,
+              "isInterface": false,
+              "stereotype": null,
+              "attributes": [],
+              "operations": [
+                {
+                  "id": "o-total",
+                  "name": "total",
+                  "visibility": "+",
+                  "returnType": "float",
+                  "isStatic": false,
+                  "isAbstract": false,
+                  "parameters": [
+                    {
+                      "id": "p-iva",
+                      "name": "iva",
+                      "type": "float",
+                      "direction": "in",
+                      "defaultValue": null
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "c-factura",
+              "name": "Factura",
+              "visibility": "+",
+              "isAbstract": false,
+              "isInterface": false,
+              "stereotype": null,
+              "attributes": [],
+              "operations": []
+            }
+          ],
+          "associations": [
+            {
+              "id": "r-cp",
+              "name": "realiza",
+              "memberEnds": [
+                {
+                  "classId": "c-cliente",
+                  "roleName": null,
+                  "isNavigable": true,
+                  "aggregationKind": "none",
+                  "multiplicity": {
+                    "lowerBound": 1,
+                    "upperBound": 1
+                  }
+                },
+                {
+                  "classId": "c-pedido",
+                  "roleName": null,
+                  "isNavigable": true,
+                  "aggregationKind": "none",
+                  "multiplicity": {
+                    "lowerBound": 0,
+                    "upperBound": null
+                  }
+                }
+              ]
+            }
+          ],
+          "generalizations": [
+            {
+              "id": "r-fp",
+              "specificClassId": "c-factura",
+              "generalClassId": "c-pedido"
+            }
+          ],
+          "realizations": [],
+          "dependencies": [
+            {
+              "id": "r-cf",
+              "clientClassId": "c-cliente",
+              "supplierClassId": "c-factura"
+            }
+          ]
+        },
+        "layout": {
+          "viewport": {
+            "zoom": 1.5,
+            "panX": 40.0,
+            "panY": -10.0
+          },
+          "nodes": {
+            "c-cliente": {
+              "x": 100.0,
+              "y": 80.0,
+              "width": 190.0,
+              "height": 130.0
+            },
+            "c-pedido": {
+              "x": 420.0,
+              "y": 95.0,
+              "width": 260.0,
+              "height": 170.0
+            },
+            "c-factura": {
+              "x": 400.0,
+              "y": 300.0,
+              "width": 190.0,
+              "height": 130.0
+            }
+          },
+          "links": {
+            "r-cp": {
+              "vertices": [
+                {
+                  "x": 300.0,
+                  "y": 200.0
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "borrar un atributo",
+      "command": "DELETE_ATTRIBUTE",
+      "message": {
+        "type": "canvas_delta",
+        "fromVersion": 16,
+        "toVersion": 17,
+        "delta": {
+          "model": {
+            "classes": {
+              "upsert": [
+                {
+                  "id": "c-cliente",
+                  "name": "Persona",
+                  "visibility": "+",
+                  "isAbstract": false,
+                  "isInterface": false,
+                  "stereotype": null,
+                  "attributes": [],
+                  "operations": []
+                }
+              ]
+            }
+          }
+        }
+      },
+      "after": {
+        "model": {
+          "classes": [
+            {
+              "id": "c-cliente",
+              "name": "Persona",
+              "visibility": "+",
+              "isAbstract": false,
+              "isInterface": false,
+              "stereotype": null,
+              "attributes": [],
+              "operations": []
+            },
+            {
+              "id": "c-pedido",
+              "name": "Pedido",
+              "visibility": "+",
+              "isAbstract": false,
+              "isInterface": false,
+              "stereotype": null,
+              "attributes": [],
+              "operations": [
+                {
+                  "id": "o-total",
+                  "name": "total",
+                  "visibility": "+",
+                  "returnType": "float",
+                  "isStatic": false,
+                  "isAbstract": false,
+                  "parameters": [
+                    {
+                      "id": "p-iva",
+                      "name": "iva",
+                      "type": "float",
+                      "direction": "in",
+                      "defaultValue": null
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "c-factura",
+              "name": "Factura",
+              "visibility": "+",
+              "isAbstract": false,
+              "isInterface": false,
+              "stereotype": null,
+              "attributes": [],
+              "operations": []
+            }
+          ],
+          "associations": [
+            {
+              "id": "r-cp",
+              "name": "realiza",
+              "memberEnds": [
+                {
+                  "classId": "c-cliente",
+                  "roleName": null,
+                  "isNavigable": true,
+                  "aggregationKind": "none",
+                  "multiplicity": {
+                    "lowerBound": 1,
+                    "upperBound": 1
+                  }
+                },
+                {
+                  "classId": "c-pedido",
+                  "roleName": null,
+                  "isNavigable": true,
+                  "aggregationKind": "none",
+                  "multiplicity": {
+                    "lowerBound": 0,
+                    "upperBound": null
+                  }
+                }
+              ]
+            }
+          ],
+          "generalizations": [
+            {
+              "id": "r-fp",
+              "specificClassId": "c-factura",
+              "generalClassId": "c-pedido"
+            }
+          ],
+          "realizations": [],
+          "dependencies": [
+            {
+              "id": "r-cf",
+              "clientClassId": "c-cliente",
+              "supplierClassId": "c-factura"
+            }
+          ]
+        },
+        "layout": {
+          "viewport": {
+            "zoom": 1.5,
+            "panX": 40.0,
+            "panY": -10.0
+          },
+          "nodes": {
+            "c-cliente": {
+              "x": 100.0,
+              "y": 80.0,
+              "width": 190.0,
+              "height": 130.0
+            },
+            "c-pedido": {
+              "x": 420.0,
+              "y": 95.0,
+              "width": 260.0,
+              "height": 170.0
+            },
+            "c-factura": {
+              "x": 400.0,
+              "y": 300.0,
+              "width": 190.0,
+              "height": 130.0
+            }
+          },
+          "links": {
+            "r-cp": {
+              "vertices": [
+                {
+                  "x": 300.0,
+                  "y": 200.0
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "borrar una relación",
+      "command": "DELETE_RELATION",
+      "message": {
+        "type": "canvas_delta",
+        "fromVersion": 17,
+        "toVersion": 18,
+        "delta": {
+          "model": {
+            "associations": {
+              "remove": [
+                "r-cp"
+              ]
+            }
+          },
+          "layout": {
+            "links": {
+              "remove": [
+                "r-cp"
+              ]
+            }
+          }
+        }
+      },
+      "after": {
+        "model": {
+          "classes": [
+            {
+              "id": "c-cliente",
+              "name": "Persona",
+              "visibility": "+",
+              "isAbstract": false,
+              "isInterface": false,
+              "stereotype": null,
+              "attributes": [],
+              "operations": []
+            },
+            {
+              "id": "c-pedido",
+              "name": "Pedido",
+              "visibility": "+",
+              "isAbstract": false,
+              "isInterface": false,
+              "stereotype": null,
+              "attributes": [],
+              "operations": [
+                {
+                  "id": "o-total",
+                  "name": "total",
+                  "visibility": "+",
+                  "returnType": "float",
+                  "isStatic": false,
+                  "isAbstract": false,
+                  "parameters": [
+                    {
+                      "id": "p-iva",
+                      "name": "iva",
+                      "type": "float",
+                      "direction": "in",
+                      "defaultValue": null
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "c-factura",
+              "name": "Factura",
+              "visibility": "+",
+              "isAbstract": false,
+              "isInterface": false,
+              "stereotype": null,
+              "attributes": [],
+              "operations": []
+            }
+          ],
+          "associations": [],
+          "generalizations": [
+            {
+              "id": "r-fp",
+              "specificClassId": "c-factura",
+              "generalClassId": "c-pedido"
+            }
+          ],
+          "realizations": [],
+          "dependencies": [
+            {
+              "id": "r-cf",
+              "clientClassId": "c-cliente",
+              "supplierClassId": "c-factura"
+            }
+          ]
+        },
+        "layout": {
+          "viewport": {
+            "zoom": 1.5,
+            "panX": 40.0,
+            "panY": -10.0
+          },
+          "nodes": {
+            "c-cliente": {
+              "x": 100.0,
+              "y": 80.0,
+              "width": 190.0,
+              "height": 130.0
+            },
+            "c-pedido": {
+              "x": 420.0,
+              "y": 95.0,
+              "width": 260.0,
+              "height": 170.0
+            },
+            "c-factura": {
+              "x": 400.0,
+              "y": 300.0,
+              "width": 190.0,
+              "height": 130.0
+            }
+          },
+          "links": {}
+        }
+      }
+    },
+    {
+      "name": "borrar una clase con sus relaciones",
+      "command": "DELETE_ELEMENTS",
+      "message": {
+        "type": "canvas_delta",
+        "fromVersion": 18,
+        "toVersion": 19,
+        "delta": {
+          "model": {
+            "classes": {
+              "remove": [
+                "c-pedido"
+              ]
+            },
+            "generalizations": {
+              "remove": [
+                "r-fp"
+              ]
+            }
+          },
+          "layout": {
+            "nodes": {
+              "remove": [
+                "c-pedido"
+              ]
+            }
+          }
+        }
+      },
+      "after": {
+        "model": {
+          "classes": [
+            {
+              "id": "c-cliente",
+              "name": "Persona",
+              "visibility": "+",
+              "isAbstract": false,
+              "isInterface": false,
+              "stereotype": null,
+              "attributes": [],
+              "operations": []
+            },
+            {
+              "id": "c-factura",
+              "name": "Factura",
+              "visibility": "+",
+              "isAbstract": false,
+              "isInterface": false,
+              "stereotype": null,
+              "attributes": [],
+              "operations": []
+            }
+          ],
+          "associations": [],
+          "generalizations": [],
+          "realizations": [],
+          "dependencies": [
+            {
+              "id": "r-cf",
+              "clientClassId": "c-cliente",
+              "supplierClassId": "c-factura"
+            }
+          ]
+        },
+        "layout": {
+          "viewport": {
+            "zoom": 1.5,
+            "panX": 40.0,
+            "panY": -10.0
+          },
+          "nodes": {
+            "c-cliente": {
+              "x": 100.0,
+              "y": 80.0,
+              "width": 190.0,
+              "height": 130.0
+            },
+            "c-factura": {
+              "x": 400.0,
+              "y": 300.0,
+              "width": 190.0,
+              "height": 130.0
+            }
+          },
+          "links": {}
+        }
+      }
+    }
+  ]
+}

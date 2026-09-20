@@ -35,3 +35,10 @@ export const RECONNECT_MAX_ATTEMPTS = 8;
  * contador en cada apertura y reintentaría cada ~1 s para siempre.
  */
 export const RECONNECT_STABLE_AFTER_MS = 10_000;
+
+/**
+ * Deltas ajenos que se retienen, en orden, mientras hay un arrastre local o una resincronización
+ * en curso. Si se supera (un arrastre larguísimo con mucha actividad ajena) se descarta la cola y
+ * se pide el lienzo completo al terminar: es más barato que acumular sin límite.
+ */
+export const MAX_QUEUED_DELTAS = 200;

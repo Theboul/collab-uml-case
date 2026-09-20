@@ -38,7 +38,7 @@ export function computeIdDiff(
  * Reconcilia el grafo X6 contra un modelo nuevo por id, en vez de destruirlo y
  * reconstruirlo (`clearCells()+addNode()×N`). Ese enfoque anterior era la causa raíz
  * de dos bugs: tools de edición (vértices de arista) huérfanos tras un
- * `canvas_update` ajeno, y duplicados visuales al restaurar una pestaña minimizada
+ * cambio ajeno (`canvas_delta`), y duplicados visuales al restaurar una pestaña minimizada
  * — `clearCells()` programa la remoción de vistas a través del scheduler interno de
  * X6, y volver a crear celdas con el mismo id en el mismo tick podía adelantarse a
  * esa remoción. Al mutar in-place las celdas que sobreviven, además se preserva

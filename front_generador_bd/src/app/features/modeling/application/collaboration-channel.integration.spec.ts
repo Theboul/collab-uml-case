@@ -13,28 +13,16 @@ import {
   WebSocketCollaborationGateway,
 } from './collaboration-gateway.service';
 
-const ADMIN = 'http://127.0.0.1:8941';
-
-interface HarnessConfig {
-  wsBase: string;
-  httpBase: string;
-  canvasId: string;
-  collaboratorUserId: string;
-  tokens: { owner: string; outsider: string; collaborator: string; expiredOwner: string };
-}
-
-let config: HarnessConfig | null = null;
-
-function backend(): HarnessConfig {
-  if (!config) {
-    pending('arnés de integración no disponible (ver scripts/collab-e2e/README.md)');
-  }
-  return config as HarnessConfig;
-}
-
-async function admin(path: string): Promise<void> {
-  await fetch(`${ADMIN}${path}`);
-}
+import {
+  admin,
+  backend,
+  HarnessConfig,
+  loadHarnessConfig,
+  resetHarness,
+  sleep,
+  stats,
+  waitFor,
+} from './collaboration-integration.harness.spec';
 
 interface RawResult {
   opened: boolean;
@@ -74,27 +62,6 @@ function connectRaw(
   });
 }
 
-interface ProxyStats {
-  accepted: number;
-  refused: number;
-  open: number;
-  cut: boolean;
-}
-
-async function stats(): Promise<ProxyStats> {
-  return (await (await fetch(`${ADMIN}/stats`)).json()) as ProxyStats;
-}
-
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-
-async function waitFor(condition: () => boolean, timeoutMs: number, what: string): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (!condition()) {
-    if (Date.now() > deadline) throw new Error(`Tiempo agotado esperando: ${what}`);
-    await sleep(50);
-  }
-}
-
 /** Gateway REAL apuntando al proxy, con un AuthService de mentira (el refresco real es del Nivel C). */
 function realGateway(initialToken: string, tokenAfterRefresh?: string) {
   const token: WritableSignal<string | null> = signal(initialToken);
@@ -110,7 +77,7 @@ function realGateway(initialToken: string, tokenAfterRefresh?: string) {
       });
     },
   } as unknown as AuthService;
-  const gateway = new WebSocketCollaborationGateway(auth, (config as HarnessConfig).wsBase);
+  const gateway = new WebSocketCollaborationGateway(auth, backend().wsBase);
   const state = (): CollaborationConnectionState => gateway.connectionState();
   const untilState = (expected: CollaborationConnectionState, ms: number) =>
     waitFor(() => state() === expected, ms, `estado '${expected}' (actual: '${state()}')`);
@@ -118,21 +85,9 @@ function realGateway(initialToken: string, tokenAfterRefresh?: string) {
 }
 
 describe('Canal de colaboración en navegador real (Nivel B)', () => {
-  beforeAll(async () => {
-    try {
-      const res = await fetch(`${ADMIN}/config`);
-      config = res.ok ? ((await res.json()) as HarnessConfig) : null;
-    } catch {
-      config = null;
-    }
-  });
+  beforeAll(loadHarnessConfig);
 
-  afterEach(async () => {
-    if (config) {
-      await admin('/restore');
-      await admin('/reset');
-    }
-  });
+  afterEach(resetHarness);
 
   describe('handshake y códigos de cierre que el navegador realmente ve', () => {
     const url = (c: HarnessConfig) => `${c.wsBase}/ws/canvas/${c.canvasId}/collaboration`;

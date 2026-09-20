@@ -12,6 +12,7 @@ import {
   ValidationResponseDto,
 } from '../domain/models/uml-editor.models';
 import { EditorCommand } from '../domain/commands/editor-commands';
+import { WireRelations } from '../domain/canvas-delta';
 
 interface RawMultiplicity {
   lowerBound: number;
@@ -159,12 +160,19 @@ export class UmlApiService {
   }
 
   private normalizeModel(rawModel: any): ModeloUML {
-    const relations: UmlRelationDto[] = [
-      ...(rawModel?.associations || []).map((a: RawAssociation) => this.associationToRelation(a)),
-      ...(rawModel?.generalizations || []).map((g: RawGeneralization) => this.generalizationToRelation(g)),
-      ...(rawModel?.dependencies || []).map((d: RawDependency) => this.dependencyToRelation(d)),
+    return { classes: rawModel?.classes || [], relations: this.normalizeRelationsPart(rawModel ?? {}) };
+  }
+
+  /**
+   * Relaciones del cable (asociaciones, generalizaciones, dependencias) a `UmlRelationDto`, en ese
+   * orden. Público: RemoteCanvasSyncService lo usa para las relaciones que traen los deltas.
+   */
+  normalizeRelationsPart(wire: WireRelations): UmlRelationDto[] {
+    return [
+      ...(wire.associations || []).map((a) => this.associationToRelation(a as RawAssociation)),
+      ...(wire.generalizations || []).map((g) => this.generalizationToRelation(g as RawGeneralization)),
+      ...(wire.dependencies || []).map((d) => this.dependencyToRelation(d as RawDependency)),
     ];
-    return { classes: rawModel?.classes || [], relations };
   }
 
   private associationToRelation(a: RawAssociation): UmlRelationDto {

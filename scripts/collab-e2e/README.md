@@ -15,11 +15,15 @@ en las rutas habituales, define `CHROME_BIN`).
 ## Qué hace
 
 1. Levanta el backend con una base SQLite temporal (`:8939`) y siembra usuarios (dueño, ajeno,
-   colaborador), un Lienzo y un token vencido.
+   colaborador, un segundo colaborador `peer` que ningún test revoca), un Lienzo y un token
+   vencido.
 2. Arranca `harness.py`: un proxy TCP (`:8940`) delante del backend y una API de administración
    (`:8941`).
 3. Ejecuta solo los specs `*.integration.spec.ts` del frontend
-   (`collaboration-channel.integration.spec.ts`).
+   (`collaboration-channel.integration.spec.ts`: canal, reconexión y códigos de cierre;
+   `canvas-delta-sync.integration.spec.ts`: los cambios de otro usuario llegan como `canvas_delta`
+   y el estado converge con el del servidor, incluido un hueco y un corte de red real). Las
+   utilidades comunes están en `collaboration-integration.harness.spec.ts`.
 
 Sin el arnés, esos specs quedan **pendientes** (no fallan) y `ng test` sigue verde.
 

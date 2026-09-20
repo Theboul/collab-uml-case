@@ -7,7 +7,7 @@ import { NODE_DRAG_STALE_TTL_MS } from './collaboration-tuning';
 /**
  * Aplica en vivo la posición de un nodo que un peer remoto está arrastrando
  * (streaming efímero, sin persistencia — el resultado final llega por su
- * lado vía `canvas_update`, ya con guard de versión en RemoteCanvasSyncService).
+ * lado vía `canvas_delta`, ya con guard de versión en RemoteCanvasSyncService).
  *
  * Solo toca el grafo X6 (vía UmlGraphService.setNodePositionSilent) — nunca
  * el modelo de dominio, ni dispara comando ni historial local.
@@ -62,7 +62,7 @@ export class RemoteNodeDragService {
     this.staleTimers.delete(nodeId);
   }
 
-  /** Cancela todo el tracking en curso — se llama tras aplicar cada `canvas_update` (ver RemoteCanvasSyncService) y al salir del lienzo. */
+  /** Cancela todo el tracking en curso — se llama tras aplicar cada `canvas_delta` (ver RemoteCanvasSyncService) y al salir del lienzo. */
   clearAll(): void {
     for (const timer of this.staleTimers.values()) clearTimeout(timer);
     this.staleTimers.clear();

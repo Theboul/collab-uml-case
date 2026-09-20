@@ -93,7 +93,7 @@ export class UmlGraphService {
    * True entre el `node:move` real de inicio de un arrastre local y el
    * `node:moved` de fin (contrato de X6 confirmado en node.ts: cada uno
    * dispara una única vez por gesto). Lo consulta RemoteCanvasSyncService
-   * para diferir un `canvas_update` entrante mientras el usuario tiene el
+   * para diferir un `canvas_delta` entrante mientras el usuario tiene el
    * mouse apretado sobre un nodo — aplicarlo de inmediato dispara
    * clearCells()+renderCells(), que destruye y recrea el nodo arrastrado a
    * mitad de gesto y corta el drag físico.

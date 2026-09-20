@@ -1,21 +1,18 @@
 /**
  * Contrato de mensajes del canal de colaboración en tiempo real (ADR-0003).
- * El backend (`collaboration/room_registry.py`) es un relay opaco: no conoce
- * `type`, sólo reenvía el JSON tal cual. La unión de tipos vive acá para que
- * emisor y receptor (ambos en el frontend) se pongan de acuerdo, y para que
- * los mensajes de pasos futuros (lock, etc.) puedan sumarse sin ambigüedad.
+ * El backend valida los mensajes del cliente (`cursor`, `node_drag`, `node_drag_end`) y los
+ * reenvía a la Sala; `canvas_delta` solo lo emite el servidor tras confirmar un cambio
+ * (contrato `contracts/canvas-delta.v1.json`). La unión de tipos vive acá para que emisor y
+ * receptor se pongan de acuerdo, y para que los mensajes de pasos futuros (lock, etc.) puedan
+ * sumarse sin ambigüedad.
  */
+
+import type { CanvasDeltaMessage } from '../canvas-delta';
 
 export interface CursorPositionMessage {
   type: 'cursor';
   x: number;
   y: number;
-}
-
-/** Snapshot completo del lienzo tras un comando exitoso de otro peer (Problema B). */
-export interface CanvasUpdateMessage {
-  type: 'canvas_update';
-  canvas: unknown;
 }
 
 /** Posición en vivo de un nodo siendo arrastrado por un peer, efímera y sin persistir. */
@@ -26,7 +23,7 @@ export interface NodeDragMessage {
   y: number;
 }
 
-/** Fin del arrastre en vivo — el resultado final llega por su lado vía `canvas_update`. */
+/** Fin del arrastre en vivo — el resultado final llega por su lado vía `canvas_delta`. */
 export interface NodeDragEndMessage {
   type: 'node_drag_end';
   nodeId: string;
@@ -34,7 +31,7 @@ export interface NodeDragEndMessage {
 
 export type CollaborationMessage =
   | CursorPositionMessage
-  | CanvasUpdateMessage
+  | CanvasDeltaMessage
   | NodeDragMessage
   | NodeDragEndMessage;
 

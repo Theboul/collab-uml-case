@@ -129,7 +129,7 @@ def test_disconnect_removes_peer_from_registry():
 
 def test_connect_sends_peer_id_handshake():
     """El cliente necesita su propio peer_id para poder excluirse del broadcast
-    de sus propios canvas_update (ver EditorCommandService/routes.py)."""
+    de sus propios cambios (ver EditorCommandService/routes.py)."""
     canvas_id = client.post("/api/v2/canvases", json={"name": "WS Handshake Test"}).json()["id"]
 
     with client.websocket_connect(f"/ws/canvas/{canvas_id}/collaboration") as ws:
@@ -171,8 +171,12 @@ def test_http_command_broadcast_excludes_sender_via_peer_id():
             assert cmd_res.status_code == 200
 
             received = ws2.receive_json()
-            assert received["payload"]["type"] == "canvas_update"
             assert received["from"] == ws1_peer_id
+            mensaje = received["payload"]
+            assert mensaje["type"] == "canvas_delta"
+            assert (mensaje["fromVersion"], mensaje["toVersion"]) == (1, 2)
+            (clase,) = mensaje["delta"]["model"]["classes"]["upsert"]
+            assert clase["name"] == "Cliente"
 
 
 def _register_and_get_token(client_: TestClient, email_prefix: str) -> str:
@@ -300,7 +304,8 @@ def _url(canvas_id: str) -> str:
 @pytest.mark.parametrize(
     "texto",
     [
-        '{"type": "canvas_update", "canvas": {}}',  # solo el servidor emite canvas_update
+        '{"type": "canvas_delta", "delta": {}}',  # solo el servidor emite canvas_delta
+        '{"type": "canvas_update", "canvas": {}}',  # el mensaje que ya no existe
         '{"type": "desconocido"}',
         '{"action": "ping"}',  # forma legacy sin `type`
         "esto no es json",
@@ -458,9 +463,11 @@ def test_si_el_commit_falla_el_cambio_no_se_difunde(monkeypatch):
             res = scoped_client.post(f"/api/v2/canvases/{canvas_id}/commands", json=comando("Real"))
             assert res.status_code == 200
 
-            canvas = receptor.receive_json()["payload"]["canvas"]
-            assert canvas["version"] == 2
-            assert [c["name"] for c in canvas["model"]["classes"]] == ["Real"]
+            mensaje = receptor.receive_json()["payload"]
+            assert mensaje["type"] == "canvas_delta"
+            assert (mensaje["fromVersion"], mensaje["toVersion"]) == (1, 2)
+            nombres = [c["name"] for c in mensaje["delta"]["model"]["classes"]["upsert"]]
+            assert nombres == ["Real"]  # sin "Fantasma"
 
 
 def test_un_fallo_al_publicar_no_falla_el_comando_ni_lo_revierte(monkeypatch):
@@ -540,3 +547,31 @@ def test_ws_el_rechazo_devuelve_el_subprotocolo_bearer():
             assert ws.accepted_subprotocol == "bearer"
             with pytest.raises(WebSocketDisconnect):
                 ws.receive_json()
+
+
+def test_agregar_clase_y_asociacion_por_http_llegan_a_los_demas_como_delta():
+    """POST /classes y POST /associations antes no difundían nada: ahora publican."""
+    with TestClient(app) as scoped_client:
+        creado = scoped_client.post("/api/v2/canvases", json={"name": "Lienzo Dedicados"})
+        canvas_id = creado.json()["id"]
+
+        with scoped_client.websocket_connect(_url(canvas_id)) as observador:
+            observador.receive_json()  # handshake
+
+            base = f"/api/v2/canvases/{canvas_id}"
+            a = scoped_client.post(f"{base}/classes", json={"name": "A"})
+            assert a.status_code == 201
+            b = scoped_client.post(f"{base}/classes", json={"name": "B"})
+            ids = [c["id"] for c in b.json()["model"]["classes"]]
+            asociacion = scoped_client.post(
+                f"{base}/associations", json={"sourceClassId": ids[0], "targetClassId": ids[1]}
+            )
+            assert asociacion.status_code == 201
+
+            mensajes = [observador.receive_json()["payload"] for _ in range(3)]
+
+    assert [(m["fromVersion"], m["toVersion"]) for m in mensajes] == [(1, 2), (2, 3), (3, 4)]
+    assert all(m["type"] == "canvas_delta" for m in mensajes)
+    assert [c["name"] for c in mensajes[0]["delta"]["model"]["classes"]["upsert"]] == ["A"]
+    assert [c["name"] for c in mensajes[1]["delta"]["model"]["classes"]["upsert"]] == ["B"]
+    assert set(mensajes[2]["delta"]["model"]) == {"associations"}

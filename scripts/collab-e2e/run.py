@@ -91,10 +91,15 @@ def seed(secret: str) -> dict:
     owner_token, owner = register("owner")
     outsider_token, _ = register("outsider")
     collaborator_token, collaborator = register("collaborator")
+    peer_token, _ = register("peer")
     status, canvas = http("POST", "/api/v2/canvases", {"name": "Collab E2E"}, owner_token)
     assert status == 201, (status, canvas)
     status, joined = http(
         "POST", "/api/v2/canvases/join", {"accessCode": canvas["roomName"]}, collaborator_token
+    )
+    assert status == 200, (status, joined)
+    status, joined = http(
+        "POST", "/api/v2/canvases/join", {"accessCode": canvas["roomName"]}, peer_token
     )
     assert status == 200, (status, joined)
     expired = create_access_token(
@@ -109,6 +114,9 @@ def seed(secret: str) -> dict:
             "owner": owner_token,
             "outsider": outsider_token,
             "collaborator": collaborator_token,
+            # Segundo Colaborador que NINGÚN test revoca (la escena 4 revoca al anterior): es el
+            # "Beto" de los tests de sincronización, cuyo orden de ejecución es aleatorio.
+            "peer": peer_token,
             "expiredOwner": expired,
         },
     }

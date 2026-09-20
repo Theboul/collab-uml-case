@@ -127,9 +127,9 @@ describe('WebSocketCollaborationGateway (reconexión)', () => {
 
   it('entrega los mensajes remotos como antes de la reconexión', () => {
     const cursores: unknown[] = [];
-    const lienzos: unknown[] = [];
+    const deltas: unknown[] = [];
     gateway.remoteCursor$.subscribe((c) => cursores.push(c));
-    gateway.remoteCanvasUpdate$.subscribe((c) => lienzos.push(c));
+    gateway.remoteCanvasDelta$.subscribe((d) => deltas.push(d));
     gateway.connect('c1');
     last().serverEstablishes();
 
@@ -138,10 +138,44 @@ describe('WebSocketCollaborationGateway (reconexión)', () => {
       fromDisplayName: 'Bea',
       payload: { type: 'cursor', x: 1, y: 2 },
     });
-    last().serverSends({ from: 'p2', payload: { type: 'canvas_update', canvas: { version: 7 } } });
+    const delta = { type: 'canvas_delta', fromVersion: 6, toVersion: 7, delta: { layout: {} } };
+    last().serverSends({ from: 'p2', payload: delta });
 
     expect(cursores).toEqual([{ peerId: 'p2', displayName: 'Bea', x: 1, y: 2 }]);
-    expect(lienzos).toEqual([{ version: 7 }]);
+    expect(deltas).toEqual([delta]);
+  });
+
+  describe('canvas_delta', () => {
+    let deltas: unknown[];
+
+    beforeEach(() => {
+      deltas = [];
+      gateway.remoteCanvasDelta$.subscribe((d) => deltas.push(d));
+      gateway.connect('c1');
+      last().serverEstablishes();
+    });
+
+    it('un delta malformado se descarta con un aviso y no llega a quien aplica', () => {
+      const aviso = spyOn(console, 'warn');
+
+      last().serverSends({ from: 'p2', payload: { type: 'canvas_delta', fromVersion: 1 } });
+      last().serverSends({
+        from: 'p2',
+        payload: { type: 'canvas_delta', fromVersion: '1', toVersion: 2, delta: {} },
+      });
+
+      expect(deltas).toEqual([]);
+      expect(aviso).toHaveBeenCalledTimes(2);
+    });
+
+    it('el mensaje canvas_update ya no existe: se ignora sin emitir nada', () => {
+      last().serverSends({
+        from: 'p2',
+        payload: { type: 'canvas_update', canvas: { version: 7 } },
+      });
+
+      expect(deltas).toEqual([]);
+    });
   });
 
   describe('caídas de red', () => {

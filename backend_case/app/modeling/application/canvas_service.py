@@ -4,7 +4,12 @@ from typing import Any
 
 from fastapi import HTTPException, status
 
-from backend_case.app.modeling.application.change_publisher import ChangePublisher
+from backend_case.app.modeling.application.canvas_delta import (
+    CanvasState,
+    canvas_state,
+    compute_delta,
+)
+from backend_case.app.modeling.application.change_publisher import CanvasChange, ChangePublisher
 from backend_case.app.modeling.application.commands.dispatcher import (
     CommandDispatcher,
 )
@@ -40,24 +45,47 @@ class CanvasService:
         self.publisher = publisher
         self.command_dispatcher = CommandDispatcher()
 
+    def _estado_previo(self, canvas_id: str, lienzo: Lienzo) -> CanvasState | None:
+        """
+        Foto del Lienzo ANTES de despachar los comandos, de la que saldrá el delta. Solo se toma si
+        hay a quién avisar. Si no se puede tomar no se aborta la edición: no se publica y los
+        demás lo detectan como hueco de versión y piden el Lienzo completo.
+        """
+        if self.publisher is None:
+            return None
+        try:
+            return canvas_state(lienzo)
+        except Exception:
+            logger.exception("No se pudo capturar el estado previo del lienzo %s", canvas_id)
+            return None
+
     async def _confirmar_y_publicar(
         self,
         canvas_id: str,
         result: CanvasResult,
         eventos: list[DomainEvent | None],
+        antes: CanvasState | None,
         origin_session_id: str = "",
     ) -> None:
         """
-        Confirma la transacción y solo entonces avisa a los demás. Si el commit falla, la excepción
-        sube y no se publica nada. Si publicar falla ya no hay vuelta atrás (el cambio está
-        guardado): se registra y el cliente repara por resync.
+        Confirma la transacción y solo entonces avisa a los demás con el delta entre `antes` y el
+        Lienzo guardado. Si el commit falla, la excepción sube y no se publica nada. Si calcular o
+        publicar falla ya no hay vuelta atrás (el cambio está guardado): se registra y los demás
+        reparan por resync al notar el hueco de versión.
         """
         await self.repository.commit()
         self._registrar_eventos(canvas_id, eventos)
-        if self.publisher is None:
+        if self.publisher is None or antes is None:
             return
         try:
-            await self.publisher.canvas_changed(canvas_id, result, origin_session_id)
+            # Cada guardado sube la versión en uno, así que el delta parte de la anterior. Un
+            # delta vacío también se publica: sin él, los demás verían un hueco y recargarían.
+            change = CanvasChange(
+                from_version=result.version - 1,
+                to_version=result.version,
+                delta=compute_delta(antes, canvas_state(result.lienzo)),
+            )
+            await self.publisher.canvas_changed(canvas_id, change, origin_session_id)
         except Exception:
             logger.exception("No se pudo publicar el cambio del lienzo %s", canvas_id)
 
@@ -216,10 +244,12 @@ class CanvasService:
         res = await self.repository.obtener(canvas_id)
         await self._verificar_acceso_edicion(canvas_id, res.owner_id, user_id)
         lienzo = res.lienzo
+        antes = self._estado_previo(canvas_id, lienzo)
         clase, evento = lienzo.modelo.agregar_clase(nombre=nombre, is_abstract=is_abstract)
         saved = await self.repository.guardar_atomico(
             canvas_id=canvas_id, expected_version=res.version, lienzo=lienzo
         )
+        await self._confirmar_y_publicar(canvas_id, saved, [evento], antes)
         return saved.lienzo, saved.version, clase, evento
 
     async def agregar_asociacion(
@@ -265,6 +295,7 @@ class CanvasService:
             else AggregationKind.NONE
         )
 
+        antes = self._estado_previo(canvas_id, lienzo)
         asociacion, evento = lienzo.modelo.agregar_asociacion(
             origen_id=origen_id,
             destino_id=destino_id,
@@ -280,6 +311,7 @@ class CanvasService:
         saved = await self.repository.guardar_atomico(
             canvas_id=canvas_id, expected_version=res.version, lienzo=lienzo
         )
+        await self._confirmar_y_publicar(canvas_id, saved, [evento], antes)
         return saved.lienzo, saved.version, asociacion, evento
 
     async def ejecutar_comando(
@@ -307,6 +339,8 @@ class CanvasService:
                 "links": {},
             }
 
+        antes = self._estado_previo(canvas_id, res.lienzo)
+
         # Despachar comando semántico al handler correspondiente
         evento, undo_payload = self.command_dispatcher.dispatch(res.lienzo, cmd_type, payload)
 
@@ -316,7 +350,9 @@ class CanvasService:
             expected_version=expected_version,
             lienzo=res.lienzo,
         )
-        await self._confirmar_y_publicar(canvas_id, saved_result, [evento], origin_session_id)
+        await self._confirmar_y_publicar(
+            canvas_id, saved_result, [evento], antes, origin_session_id
+        )
 
         return saved_result, undo_payload
 
@@ -343,6 +379,7 @@ class CanvasService:
                 "links": {},
             }
 
+        antes = self._estado_previo(canvas_id, res.lienzo)
         eventos: list[DomainEvent | None] = []
         for cmd_type, payload in commands:
             evento, _ = self.command_dispatcher.dispatch(res.lienzo, cmd_type, payload)
@@ -353,7 +390,7 @@ class CanvasService:
             expected_version=expected_version,
             lienzo=res.lienzo,
         )
-        await self._confirmar_y_publicar(canvas_id, saved_result, eventos)
+        await self._confirmar_y_publicar(canvas_id, saved_result, eventos, antes)
         return saved_result
 
     async def ejecutar_resolviendo_secuencial(
@@ -388,6 +425,7 @@ class CanvasService:
                 "links": {},
             }
 
+        antes = self._estado_previo(canvas_id, res.lienzo)
         failures: list[str] = []
         eventos: list[DomainEvent | None] = []
         for index, raw_item in enumerate(raw_items):
@@ -418,7 +456,7 @@ class CanvasService:
             expected_version=expected_version,
             lienzo=res.lienzo,
         )
-        await self._confirmar_y_publicar(canvas_id, saved_result, eventos)
+        await self._confirmar_y_publicar(canvas_id, saved_result, eventos, antes)
         return saved_result
 
     async def listar_lienzos(self, user_id: str | None = None) -> list[dict[str, Any]]:
