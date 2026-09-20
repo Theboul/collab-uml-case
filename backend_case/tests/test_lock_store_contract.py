@@ -137,6 +137,76 @@ async def test_liberar_elemento_inexistente_devuelve_false(store: LockStore) -> 
 
 
 @pytest.mark.anyio
+async def test_force_release_libera_lock_sin_importar_titular(
+    store: LockStore, clock: ControllableClock
+) -> None:
+    """force_release libera el lock independientemente de quién sea el titular."""
+    ana = LockHolder(session_id="s1", user_id="u1", display_name="Ana")
+    await store.acquire("canvas-1", "elem-1", ana)
+
+    # force_release no requiere session_id: lo libera directamente
+    libero = await store.force_release("canvas-1", "elem-1")
+    assert libero is True
+
+    # El elemento ya no aparece en el listado
+    assert len(await store.list("canvas-1")) == 0
+
+    # Ahora otra sesión puede adquirirlo de inmediato
+    beto = LockHolder(session_id="s2", user_id="u2", display_name="Beto")
+    res = await store.acquire("canvas-1", "elem-1", beto)
+    assert res.granted is True
+
+
+@pytest.mark.anyio
+async def test_force_release_elemento_sin_lock_es_noop_devuelve_false(store: LockStore) -> None:
+    """force_release sobre elemento o lienzo inexistente es un no-op que devuelve False."""
+    assert await store.force_release("canvas-1", "elem-inexistente") is False
+    assert await store.force_release("canvas-inexistente", "elem-1") is False
+
+
+@pytest.mark.anyio
+async def test_force_release_no_afecta_otros_elementos_ni_otros_lienzos(
+    store: LockStore, clock: ControllableClock
+) -> None:
+    """
+    force_release solo remueve el elemento indicado sin tocar otros locks en el
+    mismo o diferente lienzo.
+    """
+    s1 = LockHolder(session_id="s1")
+    s2 = LockHolder(session_id="s2")
+
+    await store.acquire("canvas-1", "elem-1", s1)
+    await store.acquire("canvas-1", "elem-2", s1)
+    await store.acquire("canvas-2", "elem-1", s2)
+
+    libero = await store.force_release("canvas-1", "elem-1")
+    assert libero is True
+
+    # En canvas-1 solo queda elem-2
+    locks_1 = await store.list("canvas-1")
+    assert len(locks_1) == 1
+    assert locks_1[0].element_id == "elem-2"
+
+    # En canvas-2 elem-1 sigue intacto
+    locks_2 = await store.list("canvas-2")
+    assert len(locks_2) == 1
+    assert locks_2[0].element_id == "elem-1"
+
+
+@pytest.mark.anyio
+async def test_force_release_elemento_vencido_descarta_y_devuelve_false(
+    store: LockStore, clock: ControllableClock
+) -> None:
+    """force_release sobre un lock expirado lo descarta limpiamente y devuelve False."""
+    s1 = LockHolder(session_id="s1")
+    await store.acquire("canvas-1", "elem-1", s1)
+
+    # Avanza 15.1 s -> vencido
+    clock.advance(15.1)
+    assert await store.force_release("canvas-1", "elem-1") is False
+
+
+@pytest.mark.anyio
 async def test_release_all_libera_todos_los_locks_de_la_sesion_en_el_lienzo(
     store: LockStore, clock: ControllableClock
 ) -> None:
@@ -425,6 +495,13 @@ class _MutantCrossCanvasLeak(InMemoryLockStore):
         return await super().list(self._global_canvas)
 
 
+class _MutantForceReleaseNoOp(InMemoryLockStore):
+    """Mutante 10: force_release no elimina el lock y devuelve False."""
+
+    async def force_release(self, canvas_id: str, element_id: str) -> bool:
+        return False
+
+
 MUTANTS = [
     ("Wrong TTL", _MutantWrongTTL),
     ("No Renewal Extension", _MutantNoRenewalExtension),
@@ -435,6 +512,7 @@ MUTANTS = [
     ("Release All Clears Others", _MutantReleaseAllClearsOthers),
     ("List Returns Expired", _MutantListReturnsExpired),
     ("Cross Canvas Leak", _MutantCrossCanvasLeak),
+    ("Force Release NoOp", _MutantForceReleaseNoOp),
 ]
 
 
@@ -443,12 +521,13 @@ MUTANTS = [
 async def test_mutantes_memory_lock_store_son_detectados(
     name: str, mutant_cls: type[InMemoryLockStore]
 ) -> None:
-    """Verifica que cada uno de los 9 mutantes rompa al menos una aserción del contrato."""
+    """Verifica que cada uno de los mutantes rompa al menos una aserción del contrato."""
     test_suite = [
         test_adquirir_lock_exitoso,
         test_renovar_lock_idempotente_mismo_titular_extiende_expiracion,
         test_rechazo_held_cuando_otra_sesion_lo_tiene_vigente,
         test_liberar_exitoso_solo_para_el_titular_real,
+        test_force_release_libera_lock_sin_importar_titular,
         test_release_all_libera_todos_los_locks_de_la_sesion_en_el_lienzo,
         test_vencimiento_a_los_15_segundos,
         test_renovacion_antes_de_vencer_extiende_15_segundos_mas,

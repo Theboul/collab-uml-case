@@ -1,20 +1,26 @@
 """Adaptador del puerto `ChangePublisher`: difunde a la Sala un cambio ya confirmado."""
 
-from typing import Any
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
 
 from backend_case.app.collaboration.application.ports.collaboration_room import CollaborationRoom
-from backend_case.app.collaboration.application.ports.lock_store import LockStore
 from backend_case.app.modeling.application.change_publisher import CanvasChange
+
+if TYPE_CHECKING:
+    from backend_case.app.collaboration.application.collaboration_service import (
+        CollaborationService,
+    )
 
 
 class CollaborationChangePublisher:
     def __init__(
         self,
         room: CollaborationRoom,
-        lock_store: LockStore | None = None,
+        collaboration_service: CollaborationService | None = None,
     ) -> None:
         self._room = room
-        self._lock_store = lock_store
+        self._collab_service = collaboration_service
 
     async def canvas_changed(
         self, canvas_id: str, change: CanvasChange, origin_session_id: str = ""
@@ -34,24 +40,15 @@ class CollaborationChangePublisher:
             },
         )
 
-        # Ajuste A: Liberar el lock cuando el elemento se borra de verdad.
-        if self._lock_store is not None:
+        # Ajuste A: Delegar liberación por borrado a CollaborationService
+        if self._collab_service is not None:
             await self._release_deleted_elements_locks(canvas_id, change.delta)
 
     async def _release_deleted_elements_locks(self, canvas_id: str, delta: dict[str, Any]) -> None:
-        if self._lock_store is None:
+        if self._collab_service is None:
             return
         model = delta.get("model", {})
-        deleted_ids: list[str] = []
         for kind_data in model.values():
             if isinstance(kind_data, dict):
-                deleted_ids.extend(kind_data.get("remove", []))
-
-        for element_id in deleted_ids:
-            released = await self._lock_store.force_release(canvas_id, element_id)
-            if released:
-                await self._room.publish(
-                    canvas_id,
-                    "",
-                    {"type": "lock_released", "elementId": element_id},
-                )
+                for element_id in kind_data.get("remove", []):
+                    await self._collab_service.on_element_deleted(canvas_id, element_id)
