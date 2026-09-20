@@ -6,7 +6,12 @@ desconectar. Sin locks, sin presencia todavía.
 """
 
 import asyncio
+import time
 from unittest.mock import AsyncMock
+
+import pytest
+from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
 
 from backend_case.app.collaboration.room_registry import (
     CollaborationRoomRegistry,
@@ -14,7 +19,6 @@ from backend_case.app.collaboration.room_registry import (
     collaboration_room_registry,
 )
 from backend_case.app.main import app
-from fastapi.testclient import TestClient
 
 client = TestClient(app)
 
@@ -32,7 +36,7 @@ def test_broadcast_reaches_other_peers_in_same_room_not_the_sender():
         ws1.receive_json()  # handshake "connected" propio, no es el broadcast
         ws2.receive_json()
 
-        payload = {"action": "move_node", "nodeId": "n1", "x": 10, "y": 20}
+        payload = {"type": "node_drag", "nodeId": "n1", "x": 10.0, "y": 20.0}
         ws1.send_json(payload)
 
         received = ws2.receive_json()
@@ -40,9 +44,9 @@ def test_broadcast_reaches_other_peers_in_same_room_not_the_sender():
         assert isinstance(received["from"], str) and received["from"]
 
         # El emisor no debe recibir su propio mensaje de vuelta.
-        ws1.send_json({"action": "ping"})
+        ws1.send_json({"type": "node_drag_end", "nodeId": "n1"})
         received_2 = ws2.receive_json()
-        assert received_2["payload"] == {"action": "ping"}
+        assert received_2["payload"] == {"type": "node_drag_end", "nodeId": "n1"}
 
 
 def test_broadcast_includes_sender_display_name_end_to_end():
@@ -285,7 +289,8 @@ def test_ws_rejects_connection_without_valid_role():
         with (
             pytest.raises(WebSocketDisconnect) as exc_outsider,
             scoped_client.websocket_connect(
-                f"/ws/canvas/{canvas_id}/collaboration?token={outsider_token}"
+                f"/ws/canvas/{canvas_id}/collaboration",
+                subprotocols=["bearer", outsider_token],
             ),
         ):
             pass
@@ -318,14 +323,186 @@ def test_ws_accepts_connection_for_owner_and_joined_collaborator():
         assert join_res.status_code == 200
 
         with scoped_client.websocket_connect(
-            f"/ws/canvas/{canvas_id}/collaboration?token={owner_token}"
+            f"/ws/canvas/{canvas_id}/collaboration", subprotocols=["bearer", owner_token]
         ) as owner_ws:
             handshake = owner_ws.receive_json()
             assert handshake["type"] == "connected"
 
             with scoped_client.websocket_connect(
-                f"/ws/canvas/{canvas_id}/collaboration?token={collab_token}"
+                f"/ws/canvas/{canvas_id}/collaboration", subprotocols=["bearer", collab_token]
             ) as collab_ws:
                 collab_handshake = collab_ws.receive_json()
                 assert collab_handshake["type"] == "connected"
                 assert len(collaboration_room_registry.rooms.get(canvas_id, {})) == 2
+
+
+def test_ws_token_en_la_query_string_ya_no_autentica():
+    """El token viaja solo como subprotocolo `bearer`; en la URL queda en logs e historial."""
+    import pytest
+    from starlette.websockets import WebSocketDisconnect
+
+    with TestClient(app) as scoped_client:
+        owner_token = _register_and_get_token(scoped_client, "owner-ws-query")
+        canvas_id = scoped_client.post(
+            "/api/v2/canvases",
+            json={"name": "Lienzo WS Query"},
+            headers={"Authorization": f"Bearer {owner_token}"},
+        ).json()["id"]
+
+        with (
+            pytest.raises(WebSocketDisconnect) as exc,
+            scoped_client.websocket_connect(
+                f"/ws/canvas/{canvas_id}/collaboration?token={owner_token}"
+            ),
+        ):
+            pass
+        assert exc.value.code == 4403
+
+
+def test_ws_negocia_el_subprotocolo_bearer_solo_si_el_cliente_lo_ofrece():
+
+    with TestClient(app) as scoped_client:
+        owner_token = _register_and_get_token(scoped_client, "owner-ws-subproto")
+        canvas_id = scoped_client.post(
+            "/api/v2/canvases",
+            json={"name": "Lienzo WS Subprotocolo"},
+            headers={"Authorization": f"Bearer {owner_token}"},
+        ).json()["id"]
+
+        with scoped_client.websocket_connect(
+            f"/ws/canvas/{canvas_id}/collaboration", subprotocols=["bearer", owner_token]
+        ) as ws:
+            assert ws.accepted_subprotocol == "bearer"
+
+        # Lienzo sin dueño (abierto): el cliente no ofrece subprotocolo, el servidor no inventa uno.
+        open_canvas_id = scoped_client.post("/api/v2/canvases", json={"name": "WS Abierto"}).json()[
+            "id"
+        ]
+        with scoped_client.websocket_connect(f"/ws/canvas/{open_canvas_id}/collaboration") as ws:
+            assert ws.accepted_subprotocol is None
+
+
+def _url(canvas_id: str) -> str:
+    return f"/ws/canvas/{canvas_id}/collaboration"
+
+
+@pytest.mark.parametrize(
+    "texto",
+    [
+        '{"type": "canvas_update", "canvas": {}}',  # solo el servidor emite canvas_update
+        '{"type": "desconocido"}',
+        '{"action": "ping"}',  # forma legacy sin `type`
+        "esto no es json",
+        "[1, 2, 3]",
+        '{"type": ["cursor"]}',  # `type` no hashable
+        "[" * 3000,  # anidamiento extremo dentro de los 4 KB
+    ],
+)
+def test_ws_violacion_de_protocolo_cierra_con_1008_y_no_se_reenvia(texto):
+    canvas_id = client.post("/api/v2/canvases", json={"name": "WS Invalido"}).json()["id"]
+
+    with (
+        client.websocket_connect(_url(canvas_id)) as emisor,
+        client.websocket_connect(_url(canvas_id)) as receptor,
+        client.websocket_connect(_url(canvas_id)) as tercero,
+    ):
+        for ws in (emisor, receptor, tercero):
+            ws.receive_json()  # handshake "connected"
+
+        emisor.send_text(texto)
+        with pytest.raises(WebSocketDisconnect) as exc:
+            emisor.receive_json()
+        assert exc.value.code == 1008
+
+        # Si el mensaje inválido se hubiera reenviado, llegaría al receptor antes que este.
+        tercero.send_json({"type": "cursor", "x": 1, "y": 2})
+        assert receptor.receive_json()["payload"] == {"type": "cursor", "x": 1.0, "y": 2.0}
+
+
+@pytest.mark.parametrize(
+    "texto",
+    [
+        '{"type": "cursor", "x": null, "y": 5}',  # lo que produce JSON.stringify(NaN) en el front
+        '{"type": "cursor", "x": "abc", "y": 1}',
+        '{"type": "cursor", "x": 1}',
+        '{"type": "cursor", "x": NaN, "y": 1}',
+        '{"type": "node_drag", "nodeId": "", "x": 1, "y": 1}',
+        '{"type": "node_drag_end"}',
+    ],
+)
+def test_ws_campo_invalido_se_descarta_sin_cerrar_la_conexion(texto):
+    """Cursor y arrastre son flujos con pérdida: un campo inválido se descarta como el exceso de
+    frecuencia. Prueba de que la conexión sigue viva: el mensaje válido que llega después se reenvía
+    y es el PRIMERO que ve el receptor (el inválido no se reenvió)."""
+    canvas_id = client.post("/api/v2/canvases", json={"name": "WS Campo Invalido"}).json()["id"]
+
+    with (
+        client.websocket_connect(_url(canvas_id)) as emisor,
+        client.websocket_connect(_url(canvas_id)) as receptor,
+    ):
+        emisor.receive_json()
+        receptor.receive_json()
+
+        emisor.send_text(texto)
+        emisor.send_json({"type": "cursor", "x": 7, "y": 8})
+
+        assert receptor.receive_json()["payload"] == {"type": "cursor", "x": 7.0, "y": 8.0}
+
+
+def test_ws_mensaje_que_excede_4kb_cierra_con_1008():
+    canvas_id = client.post("/api/v2/canvases", json={"name": "WS Grande"}).json()["id"]
+
+    with client.websocket_connect(_url(canvas_id)) as ws:
+        ws.receive_json()
+        ws.send_json({"type": "cursor", "x": 1, "y": 2, "relleno": "a" * 5000})
+        with pytest.raises(WebSocketDisconnect) as exc:
+            ws.receive_json()
+        assert exc.value.code == 1008
+
+
+def test_ws_solo_reenvia_los_campos_del_contrato():
+    canvas_id = client.post("/api/v2/canvases", json={"name": "WS Extra"}).json()["id"]
+
+    with (
+        client.websocket_connect(_url(canvas_id)) as emisor,
+        client.websocket_connect(_url(canvas_id)) as receptor,
+    ):
+        emisor.receive_json()
+        receptor.receive_json()
+
+        emisor.send_json({"type": "cursor", "x": 1, "y": 2, "rol": "admin", "canvas": {"x": 1}})
+
+        assert receptor.receive_json()["payload"] == {"type": "cursor", "x": 1.0, "y": 2.0}
+
+
+def test_ws_el_exceso_de_frecuencia_se_descarta_sin_cerrar_la_conexion(monkeypatch):
+    """Con el reloj congelado el bucket no se recarga: pasa exactamente `burst` mensajes."""
+    from backend_case.app.collaboration import ws_router
+    from backend_case.app.collaboration.rate_limit import TokenBucket
+
+    monkeypatch.setattr(ws_router, "MAX_MESSAGES_PER_SECOND", 1)
+    monkeypatch.setattr(
+        ws_router,
+        "TokenBucket",
+        lambda rate_per_second, burst: TokenBucket(rate_per_second, burst, clock=lambda: 0.0),
+    )
+    canvas_id = client.post("/api/v2/canvases", json={"name": "WS Frecuencia"}).json()["id"]
+
+    with (
+        client.websocket_connect(_url(canvas_id)) as emisor,
+        client.websocket_connect(_url(canvas_id)) as receptor,
+        client.websocket_connect(_url(canvas_id)) as tercero,
+    ):
+        for ws in (emisor, receptor, tercero):
+            ws.receive_json()
+
+        emisor.send_json({"type": "cursor", "x": 1, "y": 1})  # pasa (ráfaga de 1)
+        assert receptor.receive_json()["payload"]["x"] == 1.0
+
+        emisor.send_json({"type": "cursor", "x": 2, "y": 2})  # excede: se descarta
+        emisor.send_text("basura")  # excede: se descarta antes de validar, no cierra
+        time.sleep(0.2)  # el servidor ya procesó ambos
+
+        tercero.send_json({"type": "cursor", "x": 3, "y": 3})  # otra Sesión, otro bucket
+        assert receptor.receive_json()["payload"]["x"] == 3.0
+        assert len(collaboration_room_registry.rooms[canvas_id]) == 3  # el emisor sigue conectado

@@ -4,6 +4,22 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend_case.app.main import app
+from backend_case.app.shared.security import tokens
+
+
+@pytest.mark.parametrize("valor", [None, "", "   "])
+def test_require_jwt_secret_falla_si_falta_o_esta_en_blanco(monkeypatch, valor):
+    if valor is None:
+        monkeypatch.delenv("JWT_SECRET", raising=False)
+    else:
+        monkeypatch.setenv("JWT_SECRET", valor)
+    with pytest.raises(RuntimeError, match="JWT_SECRET"):
+        tokens._require_jwt_secret()
+
+
+def test_require_jwt_secret_devuelve_el_valor_configurado(monkeypatch):
+    monkeypatch.setenv("JWT_SECRET", "  un-secreto-valido  ")
+    assert tokens._require_jwt_secret() == "un-secreto-valido"
 
 
 @pytest.fixture(autouse=True)

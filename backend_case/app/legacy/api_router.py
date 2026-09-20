@@ -25,10 +25,16 @@ from backend_case.app.legacy.flutter_generator import FlutterCRUDGenerator
 from backend_case.app.legacy.models import BackupUMLRecord
 from backend_case.app.legacy.services_gemini import call_gemini, call_gemini_from_image
 from backend_case.app.legacy.zip_utils import compress_folder_to_zip
+from backend_case.app.shared.security.dependencies import get_current_user
 
 logger = logging.getLogger(__name__)
 
-legacy_api_router = APIRouter(prefix="/api", tags=["Legacy Compatibility API"])
+# Toda la API legacy exige un Access Token válido (antes era anónima: Gemini, backups, generador).
+legacy_api_router = APIRouter(
+    prefix="/api",
+    tags=["Legacy Compatibility API"],
+    dependencies=[Depends(get_current_user)],
+)
 
 
 def _validar_estructura_uml_json(parsed: Any) -> str | None:

@@ -61,7 +61,7 @@ python -m mypy backend_case/app core/uml_domain
 Notes:
 - `pytest.ini` (root) sets `testpaths = tests backend_case/tests` and puts both the repo root and `backend_case/` on `pythonpath`, so pytest is normally invoked from the repo root, not from inside `backend_case/`.
 - Default DB is local SQLite via `aiosqlite` (`shared_case.db` for the new backend, `legacy_uml.db` for the legacy tables); set `DATABASE_URL` (see `backend_case/.env.example`) to point at PostgreSQL instead. `POSTGRES_HOST`/`REDIS_URL` are only relevant when running via `docker-compose.app.yml`/`docker-compose.db.yml`.
-- Auth requires `GOOGLE_CLIENT_ID` and `JWT_SECRET` (see `backend_case/.env.example`); Google OAuth is the only login method.
+- Auth (ADR-0005) supports two valid login methods: email + password and Google OAuth. `JWT_SECRET` is mandatory — the app refuses to start without it (see `backend_case/.env.example`); `GOOGLE_CLIENT_ID` is needed for the Google method.
 
 ### Frontend (Angular 20, package manager: pnpm)
 

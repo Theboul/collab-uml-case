@@ -10,7 +10,18 @@ from typing import Any
 
 import jwt
 
-JWT_SECRET = os.getenv("JWT_SECRET", "schemacraft_super_secret_jwt_key_2026_dev_only")
+
+def _require_jwt_secret() -> str:
+    secret = os.getenv("JWT_SECRET", "").strip()
+    if not secret:
+        raise RuntimeError(
+            "JWT_SECRET no está definido. Defínelo en el entorno o en backend_case/.env "
+            "(ver backend_case/.env.example); la app no arranca sin él."
+        )
+    return secret
+
+
+JWT_SECRET = _require_jwt_secret()
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 15
 REFRESH_TOKEN_EXPIRE_DAYS = 7

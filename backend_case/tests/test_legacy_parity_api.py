@@ -10,14 +10,32 @@ from fastapi.testclient import TestClient
 
 from backend_case.app.legacy.database import init_legacy_db
 from backend_case.app.main import app
+from backend_case.app.shared.db.base import init_db
+
+client = TestClient(app)
 
 
 @pytest.fixture(autouse=True)
 def ensure_db():
     asyncio.run(init_legacy_db())
+    asyncio.run(init_db())  # tablas del backend nuevo: el registro de usuarios las necesita
 
 
-client = TestClient(app)
+@pytest.fixture(autouse=True)
+def sesion_autenticada(ensure_db):
+    """La API legacy exige Access Token: `client` va autenticado salvo en los tests sin token."""
+    res = TestClient(app).post(
+        "/api/v2/auth/register",
+        json={
+            "email": f"legacy-{uuid.uuid4().hex[:8]}@schemacraft.dev",
+            "password": "Password123!",
+            "fullName": "Legacy Test",
+        },
+    )
+    assert res.status_code == 201, res.text
+    client.headers["Authorization"] = f"Bearer {res.json()['accessToken']}"
+    yield
+    client.headers.pop("Authorization", None)
 
 
 def test_parity_api_01_chatbot_success():
@@ -176,3 +194,28 @@ def test_parity_api_09_generar_flutter_missing_classes():
     response = client.post("/api/generar_flutter/", json=invalid_uml)
     assert response.status_code == 400
     assert response.json() == {"error": "El JSON UML debe contener 'classes'."}
+
+
+RUTAS_LEGACY = [
+    ("post", "/api/chatbot/"),
+    ("post", "/api/set_backup_uml/sala-1/"),
+    ("get", "/api/get_backup_uml/sala-1/"),
+    ("post", "/api/uml_from_image/"),
+    ("post", "/api/generar_flutter/"),
+]
+
+
+@pytest.mark.parametrize(("metodo", "ruta"), RUTAS_LEGACY)
+@pytest.mark.parametrize("headers", [{}, {"Authorization": "Bearer no-es-un-jwt"}])
+def test_legacy_api_sin_token_valido_responde_401(metodo, ruta, headers):
+    """Sin Access Token válido ninguna ruta legacy responde, y Gemini nunca se invoca."""
+    with (
+        patch("backend_case.app.legacy.api_router.call_gemini") as gemini,
+        patch("backend_case.app.legacy.api_router.call_gemini_from_image") as gemini_imagen,
+    ):
+        respuesta = getattr(TestClient(app), metodo)(ruta, headers=headers)
+
+    assert respuesta.status_code == 401
+    assert "AUTH_" in respuesta.text
+    gemini.assert_not_called()
+    gemini_imagen.assert_not_called()

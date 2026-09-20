@@ -73,8 +73,10 @@ class SignalingManager:
         except Exception as e:
             logger.error(f"[SignalingManager] Redis listener loop error: {e}")
 
-    async def connect(self, websocket: WebSocket, room_name: str) -> str:
-        await websocket.accept()
+    async def connect(
+        self, websocket: WebSocket, room_name: str, subprotocol: str | None = None
+    ) -> str:
+        await websocket.accept(subprotocol=subprotocol)
         peer_id = f"specific.{uuid.uuid4().hex[:16]}"
 
         if room_name not in self.rooms:

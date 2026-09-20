@@ -5,16 +5,19 @@ Dependencias de inyección de FastAPI para extracción y validación de usuarios
 from typing import Annotated
 
 import jwt
-from fastapi import Depends, HTTPException, Query, status
+from fastapi import Depends, HTTPException, WebSocket, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..db.base import get_db_session
+from ..db.base import async_session_factory, get_db_session
 from .models import UserORM
 from .tokens import decode_access_token
 
 http_bearer = HTTPBearer(auto_error=False)
+
+WS_BEARER_SUBPROTOCOL = "bearer"
+WS_UNAUTHORIZED_CLOSE_CODE = 4401
 
 
 async def get_current_user(
@@ -94,16 +97,13 @@ async def get_current_user_optional(
 
 
 async def get_current_user_optional_ws(
-    session: Annotated[AsyncSession, Depends(get_db_session)],
-    token: Annotated[str | None, Query()] = None,
+    session: AsyncSession,
+    token: str | None = None,
 ) -> UserORM | None:
     """
-    Variante de `get_current_user_optional` para conexiones WebSocket: un WS del
-    navegador no puede mandar el header `Authorization` en el handshake, así que el
-    JWT viaja como query param (`?token=...`) en su lugar. Sin precedente previo en
-    el proyecto (ni siquiera en el stack legacy de señalización WebRTC, que no
-    autentica en absoluto) — se replica la misma semántica de "None si no hay token
-    o el token es inválido", nunca levanta excepción.
+    Variante de `get_current_user_optional` para conexiones WebSocket. Recibe el token ya
+    extraído del handshake (ver `get_ws_bearer_token`) y replica la misma semántica de
+    "None si no hay token o el token es inválido": nunca levanta excepción.
     """
     if not token:
         return None
@@ -119,3 +119,26 @@ async def get_current_user_optional_ws(
     result = await session.execute(select(UserORM).where(UserORM.id == user_id))
     user = result.scalar_one_or_none()
     return user if user and user.is_active else None
+
+
+def get_ws_bearer_token(websocket: WebSocket) -> str | None:
+    """
+    JWT del cliente en `Sec-WebSocket-Protocol: bearer, <jwt>`. Un WebSocket del navegador no
+    puede enviar `Authorization`, y en la query string el token quedaría en logs e historial.
+    """
+    offered: list[str] = websocket.scope.get("subprotocols", [])
+    if len(offered) == 2 and offered[0] == WS_BEARER_SUBPROTOCOL:
+        return offered[1]
+    return None
+
+
+def ws_accept_subprotocol(websocket: WebSocket) -> str | None:
+    """Subprotocolo a devolver en `accept()`: el navegador exige que sea uno de los ofrecidos."""
+    offered: list[str] = websocket.scope.get("subprotocols", [])
+    return WS_BEARER_SUBPROTOCOL if WS_BEARER_SUBPROTOCOL in offered else None
+
+
+async def authenticate_ws_user(websocket: WebSocket) -> UserORM | None:
+    """Usuario del handshake o None. Sesión de DB de vida corta (regla de WS en fastapi.md)."""
+    async with async_session_factory() as session:
+        return await get_current_user_optional_ws(session, get_ws_bearer_token(websocket))

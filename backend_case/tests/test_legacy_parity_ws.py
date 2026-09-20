@@ -1,19 +1,40 @@
+import asyncio
 import json
+import uuid
 from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
 
 from backend_case.app.main import app
+from backend_case.app.shared.db.base import init_db
 
 client = TestClient(app)
 
 
-def test_parity_ws_01_canvas_presence_and_broadcast():
+@pytest.fixture
+def token():
+    """Access Token de un usuario real: los WS legacy lo exigen como subprotocolo `bearer`."""
+    asyncio.run(init_db())  # tablas del backend nuevo: el registro de usuarios las necesita
+    res = TestClient(app).post(
+        "/api/v2/auth/register",
+        json={
+            "email": f"legacy-ws-{uuid.uuid4().hex[:8]}@schemacraft.dev",
+            "password": "Password123!",
+            "fullName": "Legacy WS Test",
+        },
+    )
+    assert res.status_code == 201, res.text
+    return res.json()["accessToken"]
+
+
+def test_parity_ws_01_canvas_presence_and_broadcast(token):
     room = "test-room-1"
 
     # Peer 1 connects
-    with client.websocket_connect(f"/ws/canvas/{room}/") as ws1:
+    with client.websocket_connect(f"/ws/canvas/{room}/", subprotocols=["bearer", token]) as ws1:
+        assert ws1.accepted_subprotocol == "bearer"
         # Peer 1 receives join event for itself
         msg1 = ws1.receive_json()
         assert msg1["type"] == "presence"
@@ -21,7 +42,9 @@ def test_parity_ws_01_canvas_presence_and_broadcast():
         peer1_id = msg1["peer"]
 
         # Peer 2 connects to same room
-        with client.websocket_connect(f"/ws/canvas/{room}/") as ws2:
+        with client.websocket_connect(
+            f"/ws/canvas/{room}/", subprotocols=["bearer", token]
+        ) as ws2:
             # Peer 1 receives join event for peer 2
             peer2_join_for_peer1 = ws1.receive_json()
             assert peer2_join_for_peer1["type"] == "presence"
@@ -66,7 +89,7 @@ def test_parity_ws_01_canvas_presence_and_broadcast():
         assert leave_msg["peer"] == peer2_id
 
 
-def test_parity_ws_05_uml_validation():
+def test_parity_ws_05_uml_validation(token):
     mock_analysis = {
         "validas": [
             {"relacion": "association entre Cliente y Pedido", "razon": "Consistente con los atributos"}
@@ -76,7 +99,7 @@ def test_parity_ws_05_uml_validation():
 
     with (
         patch("backend_case.app.legacy.ws_router.call_gemini_analysis", return_value=f"```json\n{json.dumps(mock_analysis)}\n```"),
-        client.websocket_connect("/ws/uml/") as ws,
+        client.websocket_connect("/ws/uml/", subprotocols=["bearer", token]) as ws,
     ):
             sample_uml = {
                 "classes": [
@@ -154,3 +177,27 @@ async def test_parity_ws_redis_multi_process_coordination():
     assert local_delivered["from"] == "specific.peerB9876543"
     assert local_delivered["payload"]["x"] == 50
 
+
+@pytest.mark.parametrize("subprotocols", [None, ["bearer", "no-es-un-jwt"]])
+@pytest.mark.parametrize("ruta", ["/ws/canvas/sala-1/", "/ws/uml/"])
+def test_legacy_ws_sin_token_valido_se_cierra_con_4401(ruta, subprotocols):
+    """Los WS legacy exigen autenticación; /ws/uml/ nunca llega a invocar a Gemini."""
+    with (
+        patch("backend_case.app.legacy.ws_router.call_gemini_analysis") as gemini,
+        pytest.raises(WebSocketDisconnect) as exc,
+        client.websocket_connect(ruta, subprotocols=subprotocols),
+    ):
+        pass
+
+    assert exc.value.code == 4401
+    gemini.assert_not_called()
+
+
+def test_legacy_ws_token_en_la_query_string_no_autentica(token):
+    with (
+        pytest.raises(WebSocketDisconnect) as exc,
+        client.websocket_connect(f"/ws/canvas/sala-1/?token={token}"),
+    ):
+        pass
+
+    assert exc.value.code == 4401

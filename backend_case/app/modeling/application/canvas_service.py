@@ -192,7 +192,9 @@ class CanvasService:
         await self._verificar_acceso_edicion(canvas_id, res.owner_id, user_id)
         lienzo = res.lienzo
         clase, evento = lienzo.modelo.agregar_clase(nombre=nombre, is_abstract=is_abstract)
-        saved = await self.repository.guardar(lienzo)
+        saved = await self.repository.guardar_atomico(
+            canvas_id=canvas_id, expected_version=res.version, lienzo=lienzo
+        )
         return saved.lienzo, saved.version, clase, evento
 
     async def agregar_asociacion(
@@ -250,7 +252,9 @@ class CanvasService:
             agregacion_destino=agg_dest,
         )
 
-        saved = await self.repository.guardar(lienzo)
+        saved = await self.repository.guardar_atomico(
+            canvas_id=canvas_id, expected_version=res.version, lienzo=lienzo
+        )
         return saved.lienzo, saved.version, asociacion, evento
 
     async def ejecutar_comando(

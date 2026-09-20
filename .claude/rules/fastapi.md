@@ -102,8 +102,15 @@ backend_case/app/modeling/application/commands/
 ## Convención de API REST
 
 - Endpoints nuevos siempre bajo `/api/v2/...`, recursos en plural (`/api/v2/canvases`).
-- `app/legacy/` preserva los contratos Django-era intactos (`/api/chatbot/`, `/api/set_backup_uml/`,
-  `/ws/canvas/`, ...) para que el Angular actual siga funcionando — no "limpiar" su forma de contrato.
+- `app/legacy/` preserva la **forma** de los contratos Django-era (cuerpos de petición y respuesta de
+  `/api/chatbot/`, `/api/set_backup_uml/`, `/ws/canvas/`, ...) — no "limpiar" esa forma. Lo que ya no
+  se preserva es el acceso anónimo: todo `/api/*` legacy exige `Authorization: Bearer <jwt>`, y los WS
+  legacy (`/ws/canvas/{room_name}`, `/ws/uml/`) exigen el subprotocolo `bearer`
+  (`new WebSocket(url, ['bearer', jwt])`). Sin token válido se rechazan (HTTP 401; el WS se cierra
+  antes de `accept()` con el código 4401). El front legacy (`legacy-diagram`) apunta a otro backend
+  y no se modifica: quien lo repunte a este debe enviar el token.
+- Autenticación de WebSocket (legacy y nuevo): el JWT viaja **solo** como subprotocolo
+  `Sec-WebSocket-Protocol: bearer, <jwt>`, nunca en la query string (queda en logs e historial).
 - Formato de error único para todo lo nuevo:
   ```json
   { "code": "UML_INVALID_MODEL", "message": "...", "details": [] }

@@ -104,14 +104,14 @@ export class WebSocketCollaborationGateway implements CollaborationGateway {
     const token = this.authService.accessToken();
     const params = new URLSearchParams();
     if (displayName) params.set('display_name', displayName);
-    if (token) params.set('token', token);
     const queryString = params.toString();
     const url =
       `${protocol}://${window.location.host}/ws/canvas/${encodeURIComponent(canvasId)}/collaboration` +
       (queryString ? `?${queryString}` : '');
 
     this.connectedCanvasId = canvasId;
-    this.socket = new WebSocket(url);
+    // El JWT viaja como subprotocolo (`Sec-WebSocket-Protocol: bearer, <jwt>`), no en la URL.
+    this.socket = new WebSocket(url, token ? ['bearer', token] : undefined);
     this.socket.onmessage = (event) => {
       this.handleMessage(event);
     };

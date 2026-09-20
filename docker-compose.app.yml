@@ -8,6 +8,7 @@ services:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=071104
       - REDIS_URL=redis://redis:6379/0
+      - JWT_SECRET=${JWT_SECRET:?Define JWT_SECRET en el entorno o en un .env junto al compose}
     ports:
       - "8000:8000"
     depends_on:

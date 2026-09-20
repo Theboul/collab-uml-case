@@ -5,6 +5,11 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from backend_case.app.legacy.services_gemini import call_gemini_analysis
 from backend_case.app.legacy.signaling_manager import signaling_manager
+from backend_case.app.shared.security.dependencies import (
+    WS_UNAUTHORIZED_CLOSE_CODE,
+    authenticate_ws_user,
+    ws_accept_subprotocol,
+)
 
 legacy_ws_router = APIRouter(tags=["Legacy Compatibility WebSockets"])
 
@@ -13,7 +18,12 @@ legacy_ws_router = APIRouter(tags=["Legacy Compatibility WebSockets"])
 @legacy_ws_router.websocket("/ws/canvas/{room_name}/")
 @legacy_ws_router.websocket("/ws/canvas/{room_name}")
 async def canvas_websocket(websocket: WebSocket, room_name: str):
-    peer_id = await signaling_manager.connect(websocket, room_name)
+    if await authenticate_ws_user(websocket) is None:
+        await websocket.close(code=WS_UNAUTHORIZED_CLOSE_CODE)
+        return
+    peer_id = await signaling_manager.connect(
+        websocket, room_name, subprotocol=ws_accept_subprotocol(websocket)
+    )
     try:
         while True:
             text = await websocket.receive_text()
@@ -32,7 +42,10 @@ async def canvas_websocket(websocket: WebSocket, room_name: str):
 @legacy_ws_router.websocket("/ws/uml/")
 @legacy_ws_router.websocket("/ws/uml")
 async def uml_validation_websocket(websocket: WebSocket):
-    await websocket.accept()
+    if await authenticate_ws_user(websocket) is None:
+        await websocket.close(code=WS_UNAUTHORIZED_CLOSE_CODE)
+        return
+    await websocket.accept(subprotocol=ws_accept_subprotocol(websocket))
     try:
         while True:
             text = await websocket.receive_text()

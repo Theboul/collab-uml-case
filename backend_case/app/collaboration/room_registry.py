@@ -35,8 +35,9 @@ class CollaborationRoomRegistry:
         websocket: WebSocket,
         canvas_id: str,
         display_name: str | None = None,
+        subprotocol: str | None = None,
     ) -> str:
-        await websocket.accept()
+        await websocket.accept(subprotocol=subprotocol)
         peer_id = uuid.uuid4().hex[:12]
         self.rooms.setdefault(canvas_id, {})[peer_id] = ConnectedPeer(
             websocket=websocket, display_name=display_name
