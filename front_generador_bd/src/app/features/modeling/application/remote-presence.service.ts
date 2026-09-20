@@ -46,7 +46,7 @@ export class RemotePresenceService {
 
     this.gateway.reconnected$.subscribe(() => {
       // Al reconectar, limpiar presencia para recibir snapshot fresco del servidor
-      this._sessions.set([]);
+      this.reset();
     });
   }
 

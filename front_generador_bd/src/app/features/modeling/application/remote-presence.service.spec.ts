@@ -124,16 +124,28 @@ describe('RemotePresenceService', () => {
     expect(remote[0].sessionId).toBe('peer-2');
   });
 
-  it('al reconectar limpia los peers para recibir snapshot fresco sin arrastrar sesiones obsoletas', () => {
+  it('al emitir reconnected$ ejecuta reset() limpiando sessions antes de que llegue el siguiente snapshot', () => {
+    spyOn(service, 'reset').and.callThrough();
+
     presenceSnapshot$.next({
       type: 'presence_snapshot',
       sessions: [{ sessionId: 'peer-1', userId: 'u1', displayName: 'Ana' }],
     });
     expect(service.remotePeers().length).toBe(1);
 
+    // Evento de reconexión tras caída o reconexión de WebSocket
     reconnected$.next();
 
+    expect(service.reset).toHaveBeenCalled();
     expect(service.remotePeers().length).toBe(0);
     expect(service.sessions().length).toBe(0);
+
+    // Snapshot fresco entrante tras la reconexión
+    presenceSnapshot$.next({
+      type: 'presence_snapshot',
+      sessions: [{ sessionId: 'peer-2', userId: 'u2', displayName: 'Beto' }],
+    });
+    expect(service.remotePeers().length).toBe(1);
+    expect(service.remotePeers()[0].displayName).toBe('Beto');
   });
 });
