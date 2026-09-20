@@ -107,3 +107,35 @@ async def test_leave_de_la_ultima_sesion_o_de_un_lienzo_desconocido_no_lanza(roo
     await room.leave("c1", sola)
     await room.leave("c1", sola)
     await room.leave("desconocido", sola)
+
+
+async def test_members_devuelve_las_sesiones_activas(room):
+    a = await room.join("c1", FakeConnection(), "Ana", user_id="u1")
+    b = await room.join("c1", FakeConnection(), "Beto", user_id="u2")
+
+    miembros = await room.members("c1")
+    assert len(miembros) == 2
+    ids = {m.id for m in miembros}
+    assert ids == {a.id, b.id}
+
+    # Tras salir una, solo queda la otra
+    await room.leave("c1", a)
+    restantes = await room.members("c1")
+    assert len(restantes) == 1
+    assert restantes[0].id == b.id
+
+    # Lienzo sin miembros devuelve lista vacía
+    assert await room.members("vacio") == []
+
+
+async def test_publish_con_exclude_sender_falso_llega_tambien_al_emisor(room):
+    emisor_conn, otra_conn = FakeConnection(), FakeConnection()
+    emisor = await room.join("c1", emisor_conn, "Ana")
+    await room.join("c1", otra_conn, "Beto")
+
+    payload = {"type": "lock_acquired", "elementId": "cls-1"}
+    await room.publish("c1", emisor.id, payload, exclude_sender=False)
+
+    esperado = [{"from": emisor.id, "fromDisplayName": "Ana", "payload": payload}]
+    assert emisor_conn.received == esperado
+    assert otra_conn.received == esperado

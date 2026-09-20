@@ -26,7 +26,12 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .api import api_router
 from .assistant.api.routes import router as assistant_router
-from .collaboration import collaboration_ws_router, create_collaboration_room
+from .collaboration import (
+    collaboration_ws_router,
+    create_collaboration_room,
+    create_lock_store,
+    create_presence_service,
+)
 from .generation.api.routes import router as generation_router
 from .interoperability.api.routes import router as interoperability_router
 from .legacy.api_router import legacy_api_router
@@ -62,8 +67,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Sala de colaboración del proceso; se inyecta con `CollaborationRoomDep`.
+# Sala y servicios de colaboración del proceso; se inyectan vía dependencias.
 app.state.collaboration_room = create_collaboration_room()
+app.state.lock_store = create_lock_store()
+app.state.presence_service = create_presence_service()
 
 # Configuración de CORS con soporte para cookies y credenciales
 app.add_middleware(

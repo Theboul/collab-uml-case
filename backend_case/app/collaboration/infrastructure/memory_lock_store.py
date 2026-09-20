@@ -94,6 +94,16 @@ class InMemoryLockStore:
             self._locks.pop(canvas_id, None)
         return released
 
+    async def force_release(self, canvas_id: str, element_id: str) -> bool:
+        now = self._clock()
+        canvas_locks = self._clean_expired(canvas_id, now)
+        if element_id not in canvas_locks:
+            return False
+        del canvas_locks[element_id]
+        if not canvas_locks:
+            self._locks.pop(canvas_id, None)
+        return True
+
     async def list(self, canvas_id: str) -> list[Lock]:
         now = self._clock()
         canvas_locks = self._clean_expired(canvas_id, now)

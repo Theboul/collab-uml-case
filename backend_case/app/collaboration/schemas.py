@@ -50,10 +50,27 @@ class NodeDragEndMessage(BaseModel):
     nodeId: NodeId
 
 
+ElementId = Annotated[str, Field(min_length=1, max_length=128)]
+
+
+class LockAcquireMessage(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    type: Literal["lock_acquire"]
+    elementId: ElementId
+
+
+class LockReleaseMessage(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    type: Literal["lock_release"]
+    elementId: ElementId
+
+
 _MESSAGE_MODELS: dict[str, type[BaseModel]] = {
     "cursor": CursorMessage,
     "node_drag": NodeDragMessage,
     "node_drag_end": NodeDragEndMessage,
+    "lock_acquire": LockAcquireMessage,
+    "lock_release": LockReleaseMessage,
 }
 
 

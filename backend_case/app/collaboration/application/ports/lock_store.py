@@ -55,6 +55,13 @@ class LockStore(Protocol):
         """
         ...
 
+    async def force_release(self, canvas_id: str, element_id: str) -> bool:
+        """
+        Libera el lock de un elemento sin importar el titular (ej. al borrarse el elemento).
+        Devuelve True si había un lock activo y se liberó, False en caso contrario.
+        """
+        ...
+
     async def list(self, canvas_id: str) -> list[Lock]:
         """
         Lista todos los locks vigentes del lienzo (los vencidos se descartan).

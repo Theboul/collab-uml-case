@@ -37,6 +37,10 @@ class UserORM(Base):
     avatar_url = Column(String(500), nullable=True)
     is_active = Column(Boolean, nullable=False, default=True)
     is_verified = Column(Boolean, nullable=False, default=False)
+
+    @property
+    def display_name(self) -> str:
+        return self.full_name or self.email
     created_at = Column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

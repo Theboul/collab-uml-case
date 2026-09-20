@@ -25,18 +25,29 @@ def _rooms() -> dict:
     return app.state.collaboration_room.rooms
 
 
+def _drain_connect(ws) -> dict:
+    """Consume connected, locks_snapshot, presence_snapshot y devuelve el handshake connected."""
+    conn = ws.receive_json()
+    assert conn["type"] == "connected"
+    locks = ws.receive_json()
+    assert locks["type"] == "locks_snapshot"
+    presence = ws.receive_json()
+    assert presence["type"] == "presence_snapshot"
+    return conn
+
+
 def test_broadcast_reaches_other_peers_in_same_room_not_the_sender():
-    # Lienzo real sin autenticación (owner_id=None -> ANFITRION para cualquiera,
-    # ver resolver_rol): el WS ahora exige que el canvas_id exista y resuelva un
-    # rol de edición antes de aceptar el handshake.
     canvas_id = client.post("/api/v2/canvases", json={"name": "WS Broadcast Test"}).json()["id"]
 
     with (
         client.websocket_connect(f"/ws/canvas/{canvas_id}/collaboration") as ws1,
         client.websocket_connect(f"/ws/canvas/{canvas_id}/collaboration") as ws2,
     ):
-        ws1.receive_json()  # handshake "connected" propio, no es el broadcast
-        ws2.receive_json()
+        _drain_connect(ws1)
+        _drain_connect(ws2)
+        # ws1 recibe presence_joined de ws2
+        joined = ws1.receive_json()
+        assert joined["payload"]["type"] == "presence_joined"
 
         payload = {"type": "node_drag", "nodeId": "n1", "x": 10.0, "y": 20.0}
         ws1.send_json(payload)
@@ -53,36 +64,38 @@ def test_broadcast_reaches_other_peers_in_same_room_not_the_sender():
 
 def test_broadcast_includes_sender_display_name_end_to_end():
     """
-    ADR-0003 paso 2: el frontend necesita el display_name del emisor para
-    poder pintar su nombre junto al cursor remoto. Verifica que viaja por el
-    envelope real (no sólo que quede guardado en el registro interno).
+    ADR-0003 paso 2 y Decisión 1 del Paso 5: el display_name proviene del usuario autenticado
+    en el servidor (no de query params). Verifica que viaja por el envelope real.
     """
-    canvas_id = client.post("/api/v2/canvases", json={"name": "WS DisplayName Test"}).json()["id"]
+    with TestClient(app) as scoped_client:
+        token_ana = _register_and_get_token(scoped_client, "ana_bcast", full_name="Ana")
+        canvas_id = scoped_client.post(
+            "/api/v2/canvases",
+            json={"name": "WS DisplayName Test"},
+        ).json()["id"]
 
-    with (
-        client.websocket_connect(
-            f"/ws/canvas/{canvas_id}/collaboration?display_name=Ana"
-        ) as ws1,
-        client.websocket_connect(f"/ws/canvas/{canvas_id}/collaboration") as ws2,
-    ):
-        ws1.receive_json()  # handshake "connected" propio, no es el broadcast
-        ws2.receive_json()
+        with (
+            scoped_client.websocket_connect(
+                f"/ws/canvas/{canvas_id}/collaboration",
+                subprotocols=["bearer", token_ana],
+            ) as ws1,
+            scoped_client.websocket_connect(f"/ws/canvas/{canvas_id}/collaboration") as ws2,
+        ):
+            _drain_connect(ws1)
+            _drain_connect(ws2)
+            ws1.receive_json()  # presence_joined de ws2
 
-        ws1.send_json({"type": "cursor", "x": 10, "y": 20})
-        received = ws2.receive_json()
-        assert received["fromDisplayName"] == "Ana"
+            ws1.send_json({"type": "cursor", "x": 10, "y": 20})
+            received = ws2.receive_json()
+            assert received["fromDisplayName"] == "Ana"
 
-        # El peer sin display_name manda None, no revienta ni inventa un nombre.
-        ws2.send_json({"type": "cursor", "x": 1, "y": 2})
-        received_back = ws1.receive_json()
-        assert received_back["fromDisplayName"] is None
+            # El peer sin autenticar (display_name None) manda None, no revienta
+            ws2.send_json({"type": "cursor", "x": 1, "y": 2})
+            received_back = ws1.receive_json()
+            assert received_back["fromDisplayName"] is None
 
 
 def test_peers_in_different_canvas_are_registered_in_separate_rooms():
-    # receive_json() bloquea indefinidamente si no llega nada, así que probar
-    # "ws_b no recibe nada de la sala A" por WS sería un test que puede
-    # colgarse. En su lugar verificamos el aislamiento donde es determinista:
-    # el estado del registro, más el broadcast intra-sala (ya cubierto arriba).
     canvas_a = client.post("/api/v2/canvases", json={"name": "WS Room A"}).json()["id"]
     canvas_b = client.post("/api/v2/canvases", json={"name": "WS Room B"}).json()["id"]
 
@@ -98,19 +111,34 @@ def test_peers_in_different_canvas_are_registered_in_separate_rooms():
 
 
 def test_display_name_is_stored_on_connect():
-    canvas_id = client.post("/api/v2/canvases", json={"name": "WS DisplayName Stored"}).json()["id"]
+    """Decisión 1: display_name proviene de la autenticación del usuario."""
+    with TestClient(app) as scoped_client:
+        token_ana = _register_and_get_token(scoped_client, "ana_reg", full_name="Ana")
+        canvas_id = scoped_client.post(
+            "/api/v2/canvases",
+            json={"name": "WS DisplayName Stored"},
+            headers={"Authorization": f"Bearer {token_ana}"},
+        ).json()["id"]
 
-    with client.websocket_connect(
-        f"/ws/canvas/{canvas_id}/collaboration?display_name=Ana"
-    ):
+        with scoped_client.websocket_connect(
+            f"/ws/canvas/{canvas_id}/collaboration",
+            subprotocols=["bearer", token_ana],
+        ):
+            room = _rooms().get(canvas_id, {})
+            assert len(room) == 1
+            peer = next(iter(room.values()))
+            assert peer.session.display_name == "Ana"
+
+        assert canvas_id not in _rooms()
+
+
+def test_query_display_name_is_ignored_for_security():
+    """Decisión 1: ?display_name= en la URL se ignora para evitar suplantación de identidad."""
+    canvas_id = client.post("/api/v2/canvases", json={"name": "WS Query Ignored"}).json()["id"]
+    with client.websocket_connect(f"/ws/canvas/{canvas_id}/collaboration?display_name=Impostor"):
         room = _rooms().get(canvas_id, {})
-        assert len(room) == 1
         peer = next(iter(room.values()))
-        assert peer.session.display_name == "Ana"
-
-    # Al salir del context manager el cliente cierra la conexión; el server
-    # debe limpiar el registro.
-    assert canvas_id not in _rooms()
+        assert peer.session.display_name is None
 
 
 def test_disconnect_removes_peer_from_registry():
@@ -122,21 +150,21 @@ def test_disconnect_removes_peer_from_registry():
         with client.websocket_connect(f"/ws/canvas/{canvas_id}/collaboration"):
             assert len(_rooms().get(canvas_id, {})) == 2
 
-        # El peer anidado salió del `with` (desconectado): el registro debe reflejarlo.
         assert len(_rooms().get(canvas_id, {})) == 1
 
     assert canvas_id not in _rooms()
 
 
 def test_connect_sends_peer_id_handshake():
-    """El cliente necesita su propio peer_id para poder excluirse del broadcast
-    de sus propios cambios (ver EditorCommandService/routes.py)."""
     canvas_id = client.post("/api/v2/canvases", json={"name": "WS Handshake Test"}).json()["id"]
 
     with client.websocket_connect(f"/ws/canvas/{canvas_id}/collaboration") as ws:
         handshake = ws.receive_json()
         assert handshake["type"] == "connected"
         assert isinstance(handshake["peerId"], str) and handshake["peerId"]
+        # Además llegan los snapshots iniciales
+        assert ws.receive_json()["type"] == "locks_snapshot"
+        assert ws.receive_json()["type"] == "presence_snapshot"
 
 
 def test_http_command_broadcast_excludes_sender_via_peer_id():
@@ -145,8 +173,9 @@ def test_http_command_broadcast_excludes_sender_via_peer_id():
     de la conexión WS activa del emisor no debe hacerle eco a ese mismo peer,
     pero sí debe llegar a los demás en la sala.
     """
-    from backend_case.app.main import app as _app
     from fastapi.testclient import TestClient as _TestClient
+
+    from backend_case.app.main import app as _app
 
     with _TestClient(_app) as scoped_client:
         canvas_id = scoped_client.post(
@@ -157,8 +186,10 @@ def test_http_command_broadcast_excludes_sender_via_peer_id():
             scoped_client.websocket_connect(f"/ws/canvas/{canvas_id}/collaboration") as ws1,
             scoped_client.websocket_connect(f"/ws/canvas/{canvas_id}/collaboration") as ws2,
         ):
-            ws1_peer_id = ws1.receive_json()["peerId"]
-            ws2.receive_json()
+            ws1_conn = _drain_connect(ws1)
+            ws1_peer_id = ws1_conn["peerId"]
+            _drain_connect(ws2)
+            ws1.receive_json()  # presence_joined de ws2
 
             cmd_res = scoped_client.post(
                 f"/api/v2/canvases/{canvas_id}/commands",
@@ -181,14 +212,16 @@ def test_http_command_broadcast_excludes_sender_via_peer_id():
             validate_canvas_delta_message(mensaje)  # lo que viaja de verdad cumple el contrato
 
 
-def _register_and_get_token(client_: TestClient, email_prefix: str) -> str:
+def _register_and_get_token(
+    client_: TestClient, email_prefix: str, full_name: str = "Test User"
+) -> str:
     """El sufijo uuid evita choques de email si el archivo SQLite persiste entre corridas."""
     import uuid as _uuid
 
     email = f"{email_prefix}-{_uuid.uuid4().hex[:8]}@schemacraft.dev"
     res = client_.post(
         "/api/v2/auth/register",
-        json={"email": email, "password": "Password123!", "fullName": "Test User"},
+        json={"email": email, "password": "Password123!", "fullName": full_name},
     )
     assert res.status_code == 201, res.text
     return res.json()["accessToken"]
@@ -227,6 +260,7 @@ def test_ws_rejects_connection_without_valid_role():
         assert _close_code(scoped_client, url, subprotocols=["bearer", outsider_token]) == 4403
         assert canvas_id not in _rooms()
 
+
 def test_ws_accepts_connection_for_owner_and_joined_collaborator():
     """Contraparte del test anterior: el fix no debe romper el flujo legítimo."""
     from backend_case.app.main import app as _app
@@ -253,13 +287,13 @@ def test_ws_accepts_connection_for_owner_and_joined_collaborator():
         with scoped_client.websocket_connect(
             f"/ws/canvas/{canvas_id}/collaboration", subprotocols=["bearer", owner_token]
         ) as owner_ws:
-            handshake = owner_ws.receive_json()
+            handshake = _drain_connect(owner_ws)
             assert handshake["type"] == "connected"
 
             with scoped_client.websocket_connect(
                 f"/ws/canvas/{canvas_id}/collaboration", subprotocols=["bearer", collab_token]
             ) as collab_ws:
-                collab_handshake = collab_ws.receive_json()
+                collab_handshake = _drain_connect(collab_ws)
                 assert collab_handshake["type"] == "connected"
                 assert len(_rooms().get(canvas_id, {})) == 2
 
@@ -275,6 +309,7 @@ def test_ws_token_en_la_query_string_ya_no_autentica():
         ).json()["id"]
 
         assert _close_code(scoped_client, f"{_url(canvas_id)}?token={owner_token}") == 4403
+
 
 def test_ws_negocia_el_subprotocolo_bearer_solo_si_el_cliente_lo_ofrece():
 
@@ -324,13 +359,24 @@ def test_ws_violacion_de_protocolo_cierra_con_1008_y_no_se_reenvia(texto):
         client.websocket_connect(_url(canvas_id)) as receptor,
         client.websocket_connect(_url(canvas_id)) as tercero,
     ):
-        for ws in (emisor, receptor, tercero):
-            ws.receive_json()  # handshake "connected"
+        _drain_connect(emisor)
+        _drain_connect(receptor)
+        _drain_connect(tercero)
+
+        # emisor recibe presence_joined de receptor y tercero
+        emisor.receive_json()
+        emisor.receive_json()
+        # receptor recibe presence_joined de tercero
+        receptor.receive_json()
 
         emisor.send_text(texto)
         with pytest.raises(WebSocketDisconnect) as exc:
             emisor.receive_json()
         assert exc.value.code == 1008
+
+        # receptor recibe presence_left de emisor
+        left = receptor.receive_json()
+        assert left["payload"]["type"] == "presence_left"
 
         # Si el mensaje inválido se hubiera reenviado, llegaría al receptor antes que este.
         tercero.send_json({"type": "cursor", "x": 1, "y": 2})
@@ -358,8 +404,9 @@ def test_ws_campo_invalido_se_descarta_sin_cerrar_la_conexion(texto):
         client.websocket_connect(_url(canvas_id)) as emisor,
         client.websocket_connect(_url(canvas_id)) as receptor,
     ):
-        emisor.receive_json()
-        receptor.receive_json()
+        _drain_connect(emisor)
+        _drain_connect(receptor)
+        emisor.receive_json()  # presence_joined de receptor
 
         emisor.send_text(texto)
         emisor.send_json({"type": "cursor", "x": 7, "y": 8})
@@ -371,7 +418,7 @@ def test_ws_mensaje_que_excede_4kb_cierra_con_1008():
     canvas_id = client.post("/api/v2/canvases", json={"name": "WS Grande"}).json()["id"]
 
     with client.websocket_connect(_url(canvas_id)) as ws:
-        ws.receive_json()
+        _drain_connect(ws)
         ws.send_json({"type": "cursor", "x": 1, "y": 2, "relleno": "a" * 5000})
         with pytest.raises(WebSocketDisconnect) as exc:
             ws.receive_json()
@@ -385,8 +432,9 @@ def test_ws_solo_reenvia_los_campos_del_contrato():
         client.websocket_connect(_url(canvas_id)) as emisor,
         client.websocket_connect(_url(canvas_id)) as receptor,
     ):
-        emisor.receive_json()
-        receptor.receive_json()
+        _drain_connect(emisor)
+        _drain_connect(receptor)
+        emisor.receive_json()  # presence_joined de receptor
 
         emisor.send_json({"type": "cursor", "x": 1, "y": 2, "rol": "admin", "canvas": {"x": 1}})
 
@@ -411,8 +459,12 @@ def test_ws_el_exceso_de_frecuencia_se_descarta_sin_cerrar_la_conexion(monkeypat
         client.websocket_connect(_url(canvas_id)) as receptor,
         client.websocket_connect(_url(canvas_id)) as tercero,
     ):
-        for ws in (emisor, receptor, tercero):
-            ws.receive_json()
+        _drain_connect(emisor)
+        _drain_connect(receptor)
+        _drain_connect(tercero)
+        emisor.receive_json()  # presence_joined de receptor
+        emisor.receive_json()  # presence_joined de tercero
+        receptor.receive_json()  # presence_joined de tercero
 
         emisor.send_json({"type": "cursor", "x": 1, "y": 1})  # pasa (ráfaga de 1)
         assert receptor.receive_json()["payload"]["x"] == 1.0
@@ -447,8 +499,9 @@ def test_si_el_commit_falla_el_cambio_no_se_difunde(monkeypatch):
             scoped_client.websocket_connect(_url(canvas_id)) as emisor,
             scoped_client.websocket_connect(_url(canvas_id)) as receptor,
         ):
-            emisor.receive_json()
-            receptor.receive_json()
+            _drain_connect(emisor)
+            _drain_connect(receptor)
+            emisor.receive_json()  # presence_joined de receptor
 
             commit_real = CanvasRepository.commit
 
@@ -558,7 +611,7 @@ def test_agregar_clase_y_asociacion_por_http_llegan_a_los_demas_como_delta():
         canvas_id = creado.json()["id"]
 
         with scoped_client.websocket_connect(_url(canvas_id)) as observador:
-            observador.receive_json()  # handshake
+            _drain_connect(observador)
 
             base = f"/api/v2/canvases/{canvas_id}"
             a = scoped_client.post(f"{base}/classes", json={"name": "A"})

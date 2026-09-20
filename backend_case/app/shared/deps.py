@@ -7,7 +7,10 @@ from typing import Annotated
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend_case.app.collaboration.dependencies import CollaborationRoomDep
+from backend_case.app.collaboration.dependencies import (
+    CollaborationRoomDep,
+    LockStoreDep,
+)
 from backend_case.app.collaboration.infrastructure.canvas_change_publisher import (
     CollaborationChangePublisher,
 )
@@ -21,14 +24,16 @@ from backend_case.app.shared.db.base import get_db_session
 
 
 def get_canvas_service(
-    session: Annotated[AsyncSession, Depends(get_db_session)], room: CollaborationRoomDep
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    room: CollaborationRoomDep,
+    lock_store: LockStoreDep,
 ) -> CanvasService:
     """
     Inyecta una instancia de CanvasService con el repositorio configurado sobre la sesión actual
     y el publicador que avisa a la Sala de los cambios ya confirmados.
     """
     repository = CanvasRepository(session)
-    return CanvasService(repository, CollaborationChangePublisher(room))
+    return CanvasService(repository, CollaborationChangePublisher(room, lock_store))
 
 
 def get_generation_service(
