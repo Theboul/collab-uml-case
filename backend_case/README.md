@@ -43,8 +43,8 @@ core.uml_domain (Modelo y Validadores Puros)
 | `POST` | `/api/v2/uml/compatibility/flutter` | Evalúa la compatibilidad con la generación de pantallas Flutter CRUD. |
 
 Documentación interactiva disponible en tiempo de ejecución:
-* Swagger UI: `http://localhost:8001/docs`
-* ReDoc: `http://localhost:8001/redoc`
+* Swagger UI: `http://localhost:8000/docs`
+* ReDoc: `http://localhost:8000/redoc`
 
 ---
 
@@ -56,7 +56,7 @@ Documentación interactiva disponible en tiempo de ejecución:
 ### Pasos:
 ```bash
 # Desde la raíz del repositorio
-python -m uvicorn backend_case.app.main:app --host 0.0.0.0 --port 8001 --reload
+python -m uvicorn backend_case.app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 ---

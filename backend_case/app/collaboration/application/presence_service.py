@@ -1,13 +1,15 @@
 """
 Servicio de presencia de sesiones (ADR-0003 y su Addendum).
 
-Gestiona la presencia activa de sesiones conectadas a un lienzo, con
-expiración basada en TTL y reloj inyectable para pruebas sin sleep real.
+Define el protocolo `PresenceService` y su implementación en memoria `InMemoryPresenceService`.
+Gestiona la presencia activa de sesiones conectadas a un lienzo, con expiración
+basada en TTL y reloj inyectable para pruebas sin sleep real.
 """
 
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Protocol
 
 PRESENCE_TTL_SECONDS = 15.0
 
@@ -20,7 +22,27 @@ class SessionPresence:
     expires_at: float
 
 
-class PresenceService:
+class PresenceService(Protocol):
+    """Protocolo del servicio de presencia de sesiones en un lienzo."""
+
+    async def join(
+        self,
+        canvas_id: str,
+        session_id: str,
+        user_id: str | None,
+        display_name: str | None,
+    ) -> SessionPresence: ...
+
+    async def heartbeat(self, canvas_id: str, session_id: str) -> bool: ...
+
+    async def leave(self, canvas_id: str, session_id: str) -> bool: ...
+
+    async def list_active(self, canvas_id: str) -> list[SessionPresence]: ...
+
+
+class InMemoryPresenceService:
+    """Implementación en memoria de PresenceService para desarrollo y pruebas."""
+
     def __init__(
         self,
         ttl_seconds: float = PRESENCE_TTL_SECONDS,

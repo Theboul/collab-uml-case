@@ -9,7 +9,10 @@ import pytest
 from backend_case.app.collaboration.application.collaboration_service import (
     CollaborationService,
 )
-from backend_case.app.collaboration.application.presence_service import PresenceService
+from backend_case.app.collaboration.application.presence_service import (
+    InMemoryPresenceService,
+    PresenceService,
+)
 from backend_case.app.collaboration.infrastructure.memory_lock_store import InMemoryLockStore
 from backend_case.app.collaboration.infrastructure.memory_room import InMemoryCollaborationRoom
 from backend_case.tests.test_collaboration_room_contract import FakeConnection
@@ -35,7 +38,8 @@ def lock_store(clock: ControllableClock) -> InMemoryLockStore:
 
 @pytest.fixture
 def presence_service(clock: ControllableClock) -> PresenceService:
-    return PresenceService(clock=clock)
+    return InMemoryPresenceService(clock=clock)
+
 
 
 @pytest.fixture
@@ -48,7 +52,7 @@ def service(
 
 
 async def test_presence_service_ciclo_de_vida_y_expiracion(clock: ControllableClock) -> None:
-    presence = PresenceService(ttl_seconds=15.0, clock=clock)
+    presence = InMemoryPresenceService(ttl_seconds=15.0, clock=clock)
 
     await presence.join("c1", "s1", "u1", "Ana")
     clock.advance(5.0)
@@ -287,19 +291,20 @@ class _MutantNoReleaseAllOnLeave(CollaborationService):
         await self.room.leave(canvas_id, session)
 
 
-class _MutantPresenceHeartbeatNoOp(PresenceService):
+class _MutantPresenceHeartbeatNoOp(InMemoryPresenceService):
     """Mutante 5: Heartbeat no refresca el timestamp de expiración."""
 
     async def heartbeat(self, canvas_id: str, session_id: str) -> bool:
         return True  # no actualiza entry.expires_at
 
 
-class _MutantPresenceListActiveIgnoresTTL(PresenceService):
+class _MutantPresenceListActiveIgnoresTTL(InMemoryPresenceService):
     """Mutante 6: list_active devuelve sesiones incluso vencidas."""
 
     async def list_active(self, canvas_id: str):
         room_sessions = self._sessions.get(canvas_id, {})
         return list(room_sessions.values())
+
 
 
 @pytest.mark.parametrize(
@@ -317,7 +322,7 @@ async def test_mutantes_collaboration_service_son_detectados(
 ) -> None:
     room = InMemoryCollaborationRoom()
     lock_store = InMemoryLockStore(clock=clock)
-    presence = PresenceService(clock=clock)
+    presence = InMemoryPresenceService(clock=clock)
     mutante = mutante_cls(room, lock_store, presence)
 
     conn = FakeConnection()

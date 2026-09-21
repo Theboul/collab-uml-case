@@ -19,6 +19,7 @@ El frontend Angular 20 debe conservarse inicialmente, sirviendo como interfaz gr
    * *Refactorización*: Separar formalmente el estado del modelo (`UmlDomainModel`) del estado visual del canvas (`JointJSPresenter`). La UI de JointJS será una proyección visual del modelo semántico.
 2. **Capa de Servicios HTTP**:
    * Modificar `environment.ts` para permitir el enrutamiento selectivo de peticiones: endpoints legados hacia Django (`http://localhost:8000/api/legacy`) y endpoints migrados hacia FastAPI (`http://localhost:8001/api/v1`).
+   * *(Nota post-migración: FastAPI corre de forma unificada en el puerto 8000; Django fue retirado. Ver `docker-compose.app.yml`).*
 3. **Servicios WebSocket**:
    * Reemplazar la señalización acoplada a Django Channels por un cliente WebSocket estándar compatible con el gestor de salas ASGI de FastAPI.
 4. **Despacho de Exportaciones**:

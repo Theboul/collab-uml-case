@@ -4,14 +4,13 @@ Redis del Paso 6 se añade a `ADAPTERS`), así que describe lo que TODO adaptado
 """
 
 import json
+from typing import Any
 
 import pytest
 
 from backend_case.app.collaboration.infrastructure.memory_room import InMemoryCollaborationRoom
 
 pytestmark = pytest.mark.anyio
-
-ADAPTERS = {"memoria": InMemoryCollaborationRoom}
 
 
 class FakeConnection:
@@ -27,9 +26,27 @@ class FakeConnection:
         self.received.append(json.loads(data))
 
 
-@pytest.fixture(params=list(ADAPTERS))
-def room(request):
-    return ADAPTERS[request.param]()
+@pytest.fixture(params=["memoria", "redis"])
+async def room(request: pytest.FixtureRequest) -> Any:
+    if request.param == "memoria":
+        yield InMemoryCollaborationRoom()
+    elif request.param == "redis":
+        import fakeredis
+        import fakeredis.aioredis as fake_aioredis
+
+        from backend_case.app.collaboration.infrastructure.redis_room import (
+            RedisCollaborationRoom,
+        )
+
+        server = fakeredis.FakeServer()
+        client = fake_aioredis.FakeRedis(server=server, decode_responses=True)
+        r = RedisCollaborationRoom(redis_client=client)
+        try:
+            yield r
+        finally:
+            await r.close()
+    else:
+        raise ValueError(f"Adaptador desconocido: {request.param}")
 
 
 async def test_join_devuelve_una_sesion_distinta_por_conexion(room):
@@ -139,3 +156,86 @@ async def test_publish_con_exclude_sender_falso_llega_tambien_al_emisor(room):
     esperado = [{"from": emisor.id, "fromDisplayName": "Ana", "payload": payload}]
     assert emisor_conn.received == esperado
     assert otra_conn.received == esperado
+
+
+async def test_multi_worker_broadcast_llega_a_sesion_en_otro_worker() -> None:
+    """Verifica que un mensaje publicado en Worker 1 llegue a una sesión conectada a Worker 2."""
+    import asyncio
+
+    import fakeredis
+    import fakeredis.aioredis as fake_aioredis
+
+    from backend_case.app.collaboration.infrastructure.redis_room import (
+        RedisCollaborationRoom,
+    )
+
+    server = fakeredis.FakeServer()
+    w1_client = fake_aioredis.FakeRedis(server=server, decode_responses=True)
+    w2_client = fake_aioredis.FakeRedis(server=server, decode_responses=True)
+
+    room_w1 = RedisCollaborationRoom(redis_client=w1_client)
+    room_w2 = RedisCollaborationRoom(redis_client=w2_client)
+
+    conn_ana = FakeConnection()
+    conn_beto = FakeConnection()
+
+    ana = await room_w1.join("c1", conn_ana, "Ana")
+    await room_w2.join("c1", conn_beto, "Beto")
+
+    # Permitir que el worker 2 termine su subscripción en el event loop
+    await asyncio.sleep(0.02)
+
+    payload = {"type": "cursor", "x": 100, "y": 200}
+    await room_w1.publish("c1", ana.id, payload, exclude_sender=True)
+
+    # Permitir entrega asíncrona de pubsub
+    await asyncio.sleep(0.03)
+
+    assert len(conn_beto.received) == 1
+    assert conn_beto.received[0] == {
+        "from": ana.id,
+        "fromDisplayName": "Ana",
+        "payload": payload,
+    }
+    assert conn_ana.received == []
+
+    await room_w1.close()
+    await room_w2.close()
+
+
+async def test_anti_eco_no_duplica_mensajes_en_clientes_locales() -> None:
+    """Verifica que los clientes locales no reciban el mensaje por duplicado a través del PubSub."""
+    import asyncio
+
+    import fakeredis
+    import fakeredis.aioredis as fake_aioredis
+
+    from backend_case.app.collaboration.infrastructure.redis_room import (
+        RedisCollaborationRoom,
+    )
+
+    server = fakeredis.FakeServer()
+    client = fake_aioredis.FakeRedis(server=server, decode_responses=True)
+    room = RedisCollaborationRoom(redis_client=client)
+
+    conn_ana = FakeConnection()
+    conn_carlos = FakeConnection()
+
+    ana = await room.join("c1", conn_ana, "Ana")
+    await room.join("c1", conn_carlos, "Carlos")
+
+    await asyncio.sleep(0.02)
+
+    payload = {"type": "lock_acquired", "elementId": "cls-1"}
+    await room.publish("c1", ana.id, payload, exclude_sender=False)
+
+    # Esperar propagación de pubsub
+    await asyncio.sleep(0.03)
+
+    # Ambos deben haber recibido el mensaje exactamente una vez (entrega local inmediata, sin eco)
+    assert len(conn_ana.received) == 1
+    assert len(conn_carlos.received) == 1
+    assert conn_ana.received[0]["payload"] == payload
+    assert conn_carlos.received[0]["payload"] == payload
+
+    await room.close()

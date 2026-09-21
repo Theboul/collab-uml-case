@@ -20,6 +20,12 @@ from backend_case.tests.canvas_delta_contract import validate_canvas_delta_messa
 client = TestClient(app)
 
 
+@pytest.fixture(autouse=True)
+def _ensure_lifespan():
+    with TestClient(app):
+        yield
+
+
 def _rooms() -> dict:
     """Estado interno del adaptador en memoria; solo para inspeccionar en tests."""
     return app.state.collaboration_room.rooms

@@ -123,6 +123,13 @@ glosario de `CONTEXT.md` en código, API y eventos.
   trabajo (idéntico en todos los commits de la rama); hay que versionarlos con `git add -f` o mover
   la regla de `.gitignore`.
 
+## Hallazgo de renderizado: Desmontaje de lienzo por conflicto X6 Scroller y Angular Ivy (Paso 5)
+
+- **Causa:** El plugin `@antv/x6-plugin-scroller` reubica el contenedor del lienzo con `appendChild` fuera del árbol DOM que Angular Ivy espera (dentro de `.x6-graph-scroller-content`), disparando `removeViewFromDOM` / `detachViewFromDOM` durante reconciliaciones de vista.
+- **Cuándo se manifestaba:** HMR en desarrollo (`ng serve`) y navegación directa con hidratación SSR.
+- **Solución aplicada:** Montaje del grafo X6 en un `div` hijo imperativo no gestionado por el template Angular (`this.graphMountEl`), combinado con `ngSkipHydration: 'true'` en la metadata de host de `UmlCanvasComponent`.
+
+
 ## Autenticación (después de la Prioridad 1)
 
 - **Endurecer el login con contraseña** (ADR-0005 mantiene ambos métodos):
@@ -165,5 +172,28 @@ glosario de `CONTEXT.md` en código, API y eventos.
 
 ## Menores
 
-- `docker-compose.app.yml` publica el puerto 8000 pero el Dockerfile del backend expone 8001, y la
-  contraseña de PostgreSQL está escrita en el archivo.
+- **[RESUELTO - Paso 6 / Parte E]** Desajuste de puerto corregido: tanto `docker-compose.app.yml`, `backend_case/Dockerfile`, `front_generador_bd/proxy.conf.json` como la documentación se unificaron al puerto canónico `8000` con Uvicorn multi-worker (`--workers 2 --ws-max-size 8192`).
+- Contraseña de PostgreSQL en `docker-compose.app.yml` pendiente de parametrización en `.env`.
+
+---
+
+## Verificación Manual Multi-Worker (Paso 6 - Prueba de Humo en Vivo)
+
+Dado que la suite automatizada de pytest corre en un único proceso con bucle de eventos local, la validación final del fan-out entre procesos independientes debe verificarse con Uvicorn multi-worker (`--workers 2`):
+
+1. **Levantar infraestructura y aplicación:**
+   ```bash
+   docker compose -f docker-compose.db.yml up -d
+   docker compose -f docker-compose.app.yml up --build
+   ```
+2. **Verificar inicialización de workers en logs:**
+   Ejecutar `docker logs -f fastapi_backend_UML` y verificar:
+   - `Started parent process [PID_PADRE]`
+   - `Started worker process [PID_1]`
+   - `Started worker process [PID_2]`
+   - Mensajes de conexión exitosa a Redis Pub/Sub (`REDIS_URL=redis://redis:6379/0`).
+3. **Verificar fan-out cross-worker en vivo:**
+   - Abrir **Navegador 1** (p. ej. Chrome normal) y **Navegador 2** (p. ej. Chrome Incógnito / Firefox) en el mismo canvas: `http://localhost:4200/canvas/<id>`.
+   - Comprobar en los logs de Docker que las dos conexiones WebSocket entrantes fueron distribuidas entre los dos workers (`PID_1` y `PID_2`).
+   - En Navegador 1, mover el cursor o arrastrar un nodo: verificar que en Navegador 2 el cursor y el movimiento se reflejan inmediatamente en tiempo real sin duplicación (validación anti-eco y entrega Pub/Sub).
+   - En Navegador 1, hacer clic sobre una clase para adquirir su lock: verificar que en Navegador 2 la clase se marca como bloqueada por el primer usuario en tiempo real vía Redis.

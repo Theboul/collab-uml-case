@@ -2,3 +2,9 @@
   display: inline-flex;
   vertical-align: middle;
 }
+
+.material-symbols-outlined {
+  font-family: 'Material Symbols Outlined' !important;
+  font-feature-settings: 'liga' 1 !important;
+  -webkit-font-feature-settings: 'liga' !important;
+}

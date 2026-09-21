@@ -167,6 +167,10 @@ export class UmlGraphService {
    * Inicializa el Grafo X6 en el elemento contenedor con los plugins configurados.
    */
   initGraph(container: HTMLElement): Graph {
+    if (this.graph) {
+      this.graph.dispose();
+      this.graph = null;
+    }
     registerUmlClassNode();
 
     this.graph = new Graph({
@@ -238,18 +242,18 @@ export class UmlGraphService {
       multiple: true,
       rubberband: true,
       movable: true,
-      showNodeSelectionBox: true,
+      showNodeSelectionBox: false,
       showEdgeSelectionBox: true,
       pointerEvents: 'none',
       multipleSelectionModifiers: ['ctrl', 'meta', 'shift'],
     });
     this.graph.use(this.selectionPlugin);
 
-    // 2. Transform (Resize únicamente en las 4 esquinas para no chocar con los 4 puertos)
+    // 2. Transform (Resize únicamente en las 4 esquinas para no chocar con los 4 puertos, deshabilitado si está bloqueado por otro)
     this.graph.use(
       new Transform({
         resizing: {
-          enabled: true,
+          enabled: (node: Node) => !this.remoteLocksService.isLockedByOther(node.id),
           // Nunca más angosto/bajo que el contenido (ancho hasta MAX_WIDTH; lo que no
           // entra se envuelve y suma alto): así ni un resize manual recorta texto.
           minWidth: (node: Node) => this.contentMinSize(node).width,
@@ -488,12 +492,15 @@ export class UmlGraphService {
       });
     });
 
-    // Selección -> actualizar visibilidad de puertos según cardinalidad (1 clase = visible, multiselección/0 = oculto)
+    // Selección -> actualizar visibilidad de puertos según cardinalidad (1 clase = visible, multiselección/0 = oculto, 0 si está bloqueado por otro)
     this.graph.on('selection:changed', ({ selected }) => {
       this.ngZone.run(() => {
         const selectedNodes = selected.filter((c) => c.isNode()).map((c) => c.id);
         const selectedEdges = selected.filter((c) => c.isEdge()).map((c) => c.id);
-        this.updatePortsVisibility(selectedNodes);
+        const unblockedNodes = selectedNodes.filter(
+          (id) => !this.remoteLocksService.isLockedByOther(id),
+        );
+        this.updatePortsVisibility(unblockedNodes);
         if (selectedNodes.length !== 1) {
           this.clearRowHighlight();
         }
@@ -621,8 +628,8 @@ export class UmlGraphService {
     const isLocked = Boolean(this.remoteLocksService.remoteLocks()[node.id]);
     if (isLocked) {
       node.setAttrByPath('frame/stroke', '#f59e0b');
-      node.setAttrByPath('frame/strokeWidth', 2);
-      node.setAttrByPath('frame/strokeDasharray', '4 2');
+      node.setAttrByPath('frame/strokeWidth', 2.5);
+      node.setAttrByPath('frame/strokeDasharray', '5 3');
     }
     this.attributeRowsService.render(this.graph, node, config.data.attributes || [], visual.layout);
     return node;
@@ -638,8 +645,8 @@ export class UmlGraphService {
       const isLocked = Boolean(locks[node.id]);
       if (isLocked) {
         node.setAttrByPath('frame/stroke', '#f59e0b');
-        node.setAttrByPath('frame/strokeWidth', 2);
-        node.setAttrByPath('frame/strokeDasharray', '4 2');
+        node.setAttrByPath('frame/strokeWidth', 2.5);
+        node.setAttrByPath('frame/strokeDasharray', '5 3');
       } else {
         node.setAttrByPath('frame/stroke', '#1e293b');
         node.setAttrByPath('frame/strokeWidth', 1.5);

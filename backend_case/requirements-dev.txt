@@ -1,0 +1,8 @@
+# Dependencias de prueba, linting y desarrollo (incluye dependencias base de runtime)
+-r requirements.txt
+httpx>=0.27.0
+pytest>=8.0.0
+fakeredis[lua]>=2.20.0
+jsonschema>=4.20.0
+ruff>=0.3.0
+mypy>=1.11.0

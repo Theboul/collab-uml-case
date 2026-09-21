@@ -48,6 +48,8 @@ Para evitar colisiones de puertos y garantizar claridad de tráfico en los entor
 | **PostgreSQL** | `5432` | Base de datos compartida |
 | **Redis** | `6379` | Broker de mensajes para Channels (Django) y WebSockets (FastAPI) |
 
+> **Nota (post-migración):** FastAPI corre de forma unificada en el puerto 8000; Django fue retirado. Ver `docker-compose.app.yml`.
+
 ### Mecanismo de Enrutamiento en Angular:
 En el frontend se adoptará un enfoque de **Gateway por Entornos** mediante `src/environments/environment.ts`:
 

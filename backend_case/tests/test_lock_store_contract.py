@@ -40,10 +40,28 @@ def clock() -> ControllableClock:
     return ControllableClock()
 
 
-@pytest.fixture(params=["memory"])
+@pytest.fixture(params=["memory", "redis"])
 def store_factory(request: pytest.FixtureRequest) -> StoreFactory:
     if request.param == "memory":
         return lambda c: InMemoryLockStore(clock=c)
+    if request.param == "redis":
+        from unittest.mock import patch
+
+        import fakeredis
+        import fakeredis.aioredis as fake_aioredis
+
+        from backend_case.app.collaboration.infrastructure.redis_lock_store import RedisLockStore
+
+        def _create_redis_store(c: Callable[[], float]) -> LockStore:
+            patcher = patch("time.time", side_effect=c)
+            patcher.start()
+            request.addfinalizer(patcher.stop)
+
+            server = fakeredis.FakeServer()
+            client = fake_aioredis.FakeRedis(server=server, decode_responses=True)
+            return RedisLockStore(redis_client=client, clock=c)
+
+        return _create_redis_store
     raise ValueError(f"Almacén desconocido: {request.param}")
 
 
@@ -548,3 +566,78 @@ async def test_mutantes_memory_lock_store_son_detectados(
             break
 
     assert detected is True, f"El mutante '{name}' NO fue detectado por la suite de pruebas."
+
+
+@pytest.mark.anyio
+async def test_acquire_concurrente_mismo_elemento_exactamente_uno_gana() -> None:
+    """Carrera real: dos sesiones intentan adquirir a la vez el mismo elemento sobre Redis."""
+    import asyncio
+
+    import fakeredis
+    import fakeredis.aioredis as fake_aioredis
+
+    from backend_case.app.collaboration.infrastructure.redis_lock_store import RedisLockStore
+
+    server = fakeredis.FakeServer()
+    r1 = fake_aioredis.FakeRedis(server=server, decode_responses=True)
+    r2 = fake_aioredis.FakeRedis(server=server, decode_responses=True)
+    store1 = RedisLockStore(redis_client=r1)
+    store2 = RedisLockStore(redis_client=r2)
+
+    ana = LockHolder(session_id="s1", user_id="u1", display_name="Ana")
+    beto = LockHolder(session_id="s2", user_id="u2", display_name="Beto")
+
+    res_ana, res_beto = await asyncio.gather(
+        store1.acquire("canvas-1", "elem-1", ana),
+        store2.acquire("canvas-1", "elem-1", beto),
+    )
+
+    assert (res_ana.granted and not res_beto.granted) or (res_beto.granted and not res_ana.granted)
+    ganador = res_ana if res_ana.granted else res_beto
+    perdedor = res_beto if res_ana.granted else res_ana
+
+    assert ganador.granted is True
+    assert ganador.reason is None
+    assert ganador.lock is not None
+    assert perdedor.granted is False
+    assert perdedor.reason == "held"
+    assert perdedor.lock is not None
+    assert perdedor.lock.holder.session_id == ganador.lock.holder.session_id
+
+
+@pytest.mark.anyio
+async def test_acquire_concurrente_limite_20_locks_un_solo_ganador() -> None:
+    """Carrera real: sesión con 19 locks intenta adquirir 2 a la vez; exactamente uno entra."""
+    import asyncio
+
+    import fakeredis
+    import fakeredis.aioredis as fake_aioredis
+
+    from backend_case.app.collaboration.infrastructure.redis_lock_store import RedisLockStore
+
+    server = fakeredis.FakeServer()
+    r1 = fake_aioredis.FakeRedis(server=server, decode_responses=True)
+    r2 = fake_aioredis.FakeRedis(server=server, decode_responses=True)
+    store1 = RedisLockStore(redis_client=r1)
+    store2 = RedisLockStore(redis_client=r2)
+
+    ana = LockHolder(session_id="s1", user_id="u1", display_name="Ana")
+    for i in range(19):
+        await store1.acquire("canvas-1", f"elem-pre-{i}", ana)
+
+    res_a, res_b = await asyncio.gather(
+        store1.acquire("canvas-1", "elem-20", ana),
+        store2.acquire("canvas-1", "elem-21", ana),
+    )
+
+    assert (res_a.granted and not res_b.granted) or (res_b.granted and not res_a.granted)
+    ganador = res_a if res_a.granted else res_b
+    perdedor = res_b if res_a.granted else res_a
+
+    assert ganador.granted is True
+    assert perdedor.granted is False
+    assert perdedor.reason == "limit"
+    assert perdedor.lock is None
+
+    locks = await store1.list("canvas-1")
+    assert len(locks) == 20

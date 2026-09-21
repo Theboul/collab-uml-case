@@ -42,7 +42,7 @@ testing strategy) — treat those two as the fallback reference, not the primary
 
 ```bash
 # Run the dev server
-python -m uvicorn backend_case.app.main:app --host 0.0.0.0 --port 8001 --reload
+python -m uvicorn backend_case.app.main:app --host 0.0.0.0 --port 8000 --reload
 
 # Tests
 python -m pytest backend_case/tests/ -v

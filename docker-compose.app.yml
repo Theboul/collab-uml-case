@@ -9,10 +9,12 @@ services:
       - POSTGRES_PASSWORD=071104
       - REDIS_URL=redis://redis:6379/0
       - JWT_SECRET=${JWT_SECRET:?Define JWT_SECRET en el entorno o en un .env junto al compose}
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "--ws-max-size", "8192"]
     ports:
       - "8000:8000"
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     networks:
       - backend
       - frontend
@@ -20,6 +22,11 @@ services:
   redis:
     image: public.ecr.aws/docker/library/redis:7
     container_name: redis_server
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
     ports:
       - "6379:6379"
     networks:

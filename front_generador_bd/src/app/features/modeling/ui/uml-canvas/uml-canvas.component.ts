@@ -45,6 +45,9 @@ export interface InlineEditState {
   imports: [CommonModule, FormsModule],
   templateUrl: './uml-canvas.component.html',
   styleUrl: './uml-canvas.component.css',
+  host: {
+    ngSkipHydration: 'true',
+  },
 })
 export class UmlCanvasComponent implements AfterViewInit, OnDestroy {
   @ViewChild('canvasContainer', { static: true })
@@ -88,11 +91,16 @@ export class UmlCanvasComponent implements AfterViewInit, OnDestroy {
     });
   });
 
-  constructor(@Inject(PLATFORM_ID) private platformId: Object) {}
+  private graphMountEl: HTMLDivElement | null = null;
+  private readonly platformId = inject(PLATFORM_ID);
 
   ngAfterViewInit(): void {
     if (isPlatformBrowser(this.platformId)) {
-      this.graphService.initGraph(this.containerRef.nativeElement);
+      this.graphMountEl = document.createElement('div');
+      this.graphMountEl.className = 'w-full h-full';
+      this.containerRef.nativeElement.appendChild(this.graphMountEl);
+
+      this.graphService.initGraph(this.graphMountEl);
       this.facade.renderLoadedModel();
 
       // El compartimento de atributos (Fase 2) dispara su propio evento de
@@ -298,6 +306,8 @@ export class UmlCanvasComponent implements AfterViewInit, OnDestroy {
     this.facade.disconnectCollaboration();
     if (isPlatformBrowser(this.platformId)) {
       this.graphService.dispose();
+      this.graphMountEl?.remove();
+      this.graphMountEl = null;
     }
   }
 }
