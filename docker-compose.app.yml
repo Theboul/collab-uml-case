@@ -1,13 +1,19 @@
 services:
   fastapi-backend:
-    build: ./backend_case/
+    build:
+      context: .
+      dockerfile: backend_case/Dockerfile
     container_name: fastapi_backend_UML
     environment:
+      - DATABASE_URL=postgresql+psycopg://postgres:071104@postgres:5432/uml_bd
       - POSTGRES_HOST=postgres
       - POSTGRES_DB=uml_bd
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=071104
       - REDIS_URL=redis://redis:6379/0
+      - GENERATOR_SPRING_URL=http://spring-backend:7000
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - JWT_SECRET=${JWT_SECRET:?Define JWT_SECRET en el entorno o en un .env junto al compose}
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "--ws-max-size", "8192"]
     ports:
@@ -39,9 +45,6 @@ services:
       - SERVER_PORT=7000
     ports:
       - "7000:7000"
-
-    depends_on:
-      - angular-app
     networks:
       - backend
       - frontend

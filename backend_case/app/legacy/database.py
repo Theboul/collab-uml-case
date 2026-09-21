@@ -8,13 +8,22 @@ from backend_case.app.legacy.models import Base
 
 def get_database_url() -> str:
     url = os.getenv("DATABASE_URL")
+    if not url and os.getenv("POSTGRES_HOST"):
+        user = os.getenv("POSTGRES_USER", "postgres")
+        password = os.getenv("POSTGRES_PASSWORD", "")
+        host = os.getenv("POSTGRES_HOST", "localhost")
+        port = os.getenv("POSTGRES_PORT", "5432")
+        db = os.getenv("POSTGRES_DB", "uml_bd")
+        auth = f"{user}:{password}@" if password else f"{user}@"
+        url = f"postgresql+psycopg://{auth}{host}:{port}/{db}"
+
     if url:
         if url.startswith("postgres://"):
             url = url.replace("postgres://", "postgresql+psycopg://", 1)
         elif url.startswith("postgresql://") and "+psycopg" not in url and "+asyncpg" not in url:
             url = url.replace("postgresql://", "postgresql+psycopg://", 1)
         return url
-    
+
     # Fallback to local SQLite async
     return "sqlite+aiosqlite:///./legacy_uml.db"
 

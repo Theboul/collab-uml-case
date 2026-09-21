@@ -19,11 +19,20 @@ Base = declarative_base()
 
 def get_database_url() -> str:
     """
-    Obtiene la URL de conexión a la base de datos desde DATABASE_URL o usa SQLite local por defecto.
-    Garantiza que rutas SQLite relativas se resuelvan siempre contra backend_case/ independientemente del CWD.
+    Obtiene la URL de conexión a la base de datos desde DATABASE_URL o variables POSTGRES_*.
+    Garantiza que rutas SQLite relativas se resuelvan siempre contra backend_case/.
     """
     base_dir = Path(__file__).resolve().parent.parent.parent.parent  # backend_case/
     url = os.getenv("DATABASE_URL")
+    if not url and os.getenv("POSTGRES_HOST"):
+        user = os.getenv("POSTGRES_USER", "postgres")
+        password = os.getenv("POSTGRES_PASSWORD", "")
+        host = os.getenv("POSTGRES_HOST", "localhost")
+        port = os.getenv("POSTGRES_PORT", "5432")
+        db = os.getenv("POSTGRES_DB", "uml_bd")
+        auth = f"{user}:{password}@" if password else f"{user}@"
+        url = f"postgresql+psycopg://{auth}{host}:{port}/{db}"
+
     if url:
         if url.startswith("postgres://"):
             url = url.replace("postgres://", "postgresql+psycopg://", 1)

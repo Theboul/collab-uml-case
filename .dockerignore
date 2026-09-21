@@ -1,0 +1,42 @@
+# Git
+.git
+.gitignore
+
+# Frontend
+**/node_modules
+**/.angular
+**/dist
+front_generador_bd/dist
+front_generador_bd/node_modules
+
+# Mobile app
+mobile_app/
+
+# Python cache & virtual environments
+**/.venv
+**/venv
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
+**/.mypy_cache
+*.pyc
+*.pyo
+*.pyd
+
+# Java / Maven build artifacts
+**/target
+**/.mvn
+
+# IDE & agent configs
+.idea
+.vscode
+.gemini
+.agents
+
+# SQLite local databases
+*.db
+*.sqlite3
+
+# Scratch & temp
+scratch/
+tmp/

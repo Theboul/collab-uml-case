@@ -3,8 +3,8 @@ FROM python:3.12-slim
 WORKDIR /workspace
 
 # Copiar dependencias e instalarlas
-COPY backend_case/pyproject.toml ./backend_case/
-RUN pip install --no-cache-dir ./backend_case
+COPY backend_case/requirements.txt ./backend_case/
+RUN pip install --no-cache-dir -r ./backend_case/requirements.txt
 
 # Copiar código del núcleo de dominio y del backend
 COPY core/ ./core/
