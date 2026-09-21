@@ -1,18 +1,21 @@
 """
 Rutas API v2 para el módulo de modelado UML (CU1 - CU4).
 """
+
 import uuid
 from typing import Annotated, Any
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, ConfigDict, Field
 
 from backend_case.app.application.mappers import ValidationResultMapper
 from backend_case.app.modeling.application.canvas_service import CanvasService
 from backend_case.app.schemas.canvas import CanvasDetailSchema, to_detail_schema
 from backend_case.app.schemas.uml import ValidationResponseSchema
 from backend_case.app.shared.deps import get_canvas_service
-from backend_case.app.shared.security.dependencies import get_current_user_optional
-from backend_case.app.shared.security.models import UserORM
-from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, ConfigDict, Field
+
+from ...shared.security.dependencies import get_current_user_optional
+from ...shared.security.models import UserORM
 
 router = APIRouter(prefix="/canvases", tags=["modeling"])
 
@@ -23,6 +26,7 @@ CurrentUserOptionalDep = Annotated[UserORM | None, Depends(get_current_user_opti
 # ---------------------------------------------------------------------------
 # DTOs de Frontera HTTP
 # ---------------------------------------------------------------------------
+
 
 class CreateCanvasRequest(BaseModel):
     name: str = Field(default="Diagrama Sin Título", max_length=255)
@@ -111,6 +115,7 @@ class CommandResponse(BaseModel):
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
+
 
 @router.get("", response_model=list[CanvasSummarySchema])
 async def list_canvases(
@@ -260,7 +265,11 @@ async def execute_editor_command(
     )
 
 
-@router.post("/{canvas_id}/classes", response_model=CanvasDetailSchema, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{canvas_id}/classes",
+    response_model=CanvasDetailSchema,
+    status_code=status.HTTP_201_CREATED,
+)
 async def add_class(
     canvas_id: str,
     payload: AddClassRequest,
@@ -279,7 +288,11 @@ async def add_class(
     return to_detail_schema(lienzo, version)
 
 
-@router.post("/{canvas_id}/associations", response_model=CanvasDetailSchema, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{canvas_id}/associations",
+    response_model=CanvasDetailSchema,
+    status_code=status.HTTP_201_CREATED,
+)
 async def add_association(
     canvas_id: str,
     payload: AddAssociationRequest,
@@ -303,4 +316,3 @@ async def add_association(
         user_id=current_user.id if current_user else None,
     )
     return to_detail_schema(lienzo, version)
-

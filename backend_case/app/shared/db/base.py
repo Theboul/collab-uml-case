@@ -4,6 +4,7 @@ Infraestructura de base de datos compartida para FastAPI (PostgreSQL / SQLite as
 
 import logging
 import os
+import sys
 from collections.abc import AsyncGenerator
 from pathlib import Path
 
@@ -15,6 +16,13 @@ from sqlalchemy.orm import declarative_base
 logger = logging.getLogger(__name__)
 
 Base = declarative_base()
+
+# Unificar el módulo en sys.modules para evitar instancias duplicadas de Base cuando
+# se importa como 'app.shared.db.base' y como 'backend_case.app.shared.db.base'
+if "backend_case.app.shared.db.base" not in sys.modules:
+    sys.modules["backend_case.app.shared.db.base"] = sys.modules[__name__]
+if "app.shared.db.base" not in sys.modules:
+    sys.modules["app.shared.db.base"] = sys.modules[__name__]
 
 
 def get_database_url() -> str:
@@ -56,19 +64,40 @@ async def init_db() -> None:
     """
     Inicializa las tablas de los modelos SQLAlchemy registrados en Base.
     """
-    # Asegurar registro de modelos en Base.metadata
-    import backend_case.app.modeling.infrastructure.db_models
-    import backend_case.app.shared.security.models  # noqa: F401
+    # Asegurar registro de todos los modelos en Base.metadata
+    from ...modeling.infrastructure import db_models as _canvas_models  # noqa: F401
+    from ..security import models as _sec_models  # noqa: F401
 
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-        # Migración segura para columnas nuevas en desarrollo con SQLite
-        if "sqlite" in str(engine.url):
-            for col, col_type in [("owner_id", "VARCHAR(36)"), ("room_name", "VARCHAR(100)")]:
-                try:
-                    await conn.execute(text(f"ALTER TABLE canvases ADD COLUMN {col} {col_type}"))
-                except OperationalError as err:
-                    logger.debug("Columna %s ya existe en canvases: %s", col, err)
+    if "postgresql" in str(engine.url):
+        # Usar session-level advisory lock para garantizar que ningún worker evalúe
+        # create_all hasta que el worker previo haya confirmado su transacción DDL.
+        async with engine.connect() as lock_conn:
+            await lock_conn.execute(text("SELECT pg_advisory_lock(71423891);"))
+            try:
+                async with engine.begin() as conn:
+                    try:
+                        await conn.run_sync(Base.metadata.create_all)
+                    except Exception as exc:
+                        if "already exists" in str(exc):
+                            logger.info(
+                                "Tablas o índices ya creados por worker concurrente: %s", exc
+                            )
+                        else:
+                            raise
+            finally:
+                await lock_conn.execute(text("SELECT pg_advisory_unlock(71423891);"))
+    else:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+            # Migración segura para columnas nuevas en desarrollo con SQLite
+            if "sqlite" in str(engine.url):
+                for col, col_type in [("owner_id", "VARCHAR(36)"), ("room_name", "VARCHAR(100)")]:
+                    try:
+                        await conn.execute(
+                            text(f"ALTER TABLE canvases ADD COLUMN {col} {col_type}")
+                        )
+                    except OperationalError as err:
+                        logger.debug("Columna %s ya existe en canvases: %s", col, err)
 
 
 async def get_db_session() -> AsyncGenerator[AsyncSession, None]:

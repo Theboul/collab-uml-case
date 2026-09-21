@@ -37,9 +37,10 @@ from backend_case.app.modeling.application.canvas_service import CanvasService
 from backend_case.app.modeling.infrastructure.canvas_repository import CanvasResult
 from backend_case.app.schemas.canvas import CanvasDetailSchema, to_detail_schema
 from backend_case.app.shared.deps import get_canvas_service
-from backend_case.app.shared.security.dependencies import get_current_user_optional
-from backend_case.app.shared.security.models import UserORM
 from core.uml_domain.exceptions import UmlValidationError
+
+from ...shared.security.dependencies import get_current_user_optional
+from ...shared.security.models import UserORM
 
 logger = logging.getLogger(__name__)
 

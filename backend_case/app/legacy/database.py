@@ -1,9 +1,10 @@
 import os
 from collections.abc import AsyncGenerator
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from backend_case.app.legacy.models import Base
+from .models import Base
 
 
 def get_database_url() -> str:
@@ -33,8 +34,23 @@ async_session_factory = async_sessionmaker(engine, expire_on_commit=False, class
 
 
 async def init_legacy_db():
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    if "postgresql" in str(engine.url):
+        async with engine.connect() as lock_conn:
+            await lock_conn.execute(text("SELECT pg_advisory_lock(71423892);"))
+            try:
+                async with engine.begin() as conn:
+                    try:
+                        await conn.run_sync(Base.metadata.create_all)
+                    except Exception as exc:
+                        if "already exists" in str(exc):
+                            pass
+                        else:
+                            raise
+            finally:
+                await lock_conn.execute(text("SELECT pg_advisory_unlock(71423892);"))
+    else:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
 
 
 async def get_legacy_db() -> AsyncGenerator[AsyncSession, None]:

@@ -24,12 +24,7 @@
             "styles": [
               "node_modules/jointjs/dist/joint.css",
               "src/styles.css"
-            ],
-            "server": "src/main.server.ts",
-            "outputMode": "server",
-            "ssr": {
-              "entry": "src/server.ts"
-            }
+            ]
           },
           "configurations": {
             "production": {

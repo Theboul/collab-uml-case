@@ -13,8 +13,9 @@ from backend_case.app.generation.application.ports.spring_port import (
     SpringGeneratorUnavailableError,
 )
 from backend_case.app.shared.deps import get_generation_service
-from backend_case.app.shared.security.dependencies import get_current_user_optional
-from backend_case.app.shared.security.models import UserORM
+
+from ...shared.security.dependencies import get_current_user_optional
+from ...shared.security.models import UserORM
 
 router = APIRouter(prefix="/canvases", tags=["generation"])
 

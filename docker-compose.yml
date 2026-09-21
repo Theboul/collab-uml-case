@@ -1,0 +1,126 @@
+services:
+  # ============================================================================
+  # 1. Base de Datos Relacional: PostgreSQL 17
+  # ============================================================================
+  postgres:
+    image: postgres:17-alpine
+    container_name: schemacraft_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres123}
+      POSTGRES_DB: ${POSTGRES_DB:-uml_bd}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-uml_bd}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - uml_network
+
+  # ============================================================================
+  # 2. Caché, Locks Distribuidos y Señalización: Redis 7
+  # ============================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: schemacraft_redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - uml_network
+
+  # ============================================================================
+  # 3. Backend CASE: FastAPI + SQLAlchemy Async + WebSockets
+  # ============================================================================
+  backend:
+    build:
+      context: .
+      dockerfile: backend_case/Dockerfile
+    container_name: schemacraft_backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres123}@postgres:5432/${POSTGRES_DB:-uml_bd}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres123}
+      - POSTGRES_DB=${POSTGRES_DB:-uml_bd}
+      - REDIS_URL=redis://redis:6379/0
+      - JWT_SECRET=${JWT_SECRET:-DBhDicZeRZzuxc72TnzMmZ2lGzx1-tKrnz3zFK89tSTm3FassPCasHtplAXlyOhw}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GENERATOR_SPRING_URL=http://spring-backend:7000
+    ports:
+      - "8000:8000"
+    networks:
+      - uml_network
+
+  # ============================================================================
+  # 4. Frontend Web CASE: Angular 20 SPA + Nginx Alpine
+  # ============================================================================
+  frontend:
+    build:
+      context: ./front_generador_bd
+      dockerfile: Dockerfile
+    container_name: schemacraft_frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_started
+    ports:
+      - "80:80"
+      - "4200:80"
+    networks:
+      - uml_network
+
+  # ============================================================================
+  # 5. Generador de Código Backend: Spring Boot 3 (Java 21)
+  # ============================================================================
+  spring-backend:
+    build:
+      context: ./back_generator_uml
+      dockerfile: Dockerfile
+    container_name: schemacraft_spring_backend
+    restart: unless-stopped
+    environment:
+      - SERVER_PORT=7000
+    ports:
+      - "7000:7000"
+    networks:
+      - uml_network
+
+# ==============================================================================
+# Red Interna Bridge
+# ==============================================================================
+networks:
+  uml_network:
+    driver: bridge
+    name: schemacraft_bridge_network
+
+# ==============================================================================
+# Volúmenes Persistentes
+# ==============================================================================
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local

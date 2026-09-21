@@ -3,8 +3,9 @@ Modelos ORM de SQLAlchemy para Identidad, Autenticación, Sesiones y Proyectos.
 Fuente de verdad: docs/architecture/database-schema.md y ADR-0005.
 """
 
+import sys
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, ClassVar
 
 from sqlalchemy import (
@@ -21,6 +22,14 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 
 from ..db.base import Base
+
+# Unificar en sys.modules para evitar instancias duplicadas y SAWarnings
+# cuando se importa como 'app.shared.security.models'
+# y como 'backend_case.app.shared.security.models'
+if "backend_case.app.shared.security.models" not in sys.modules:
+    sys.modules["backend_case.app.shared.security.models"] = sys.modules[__name__]
+if "app.shared.security.models" not in sys.modules:
+    sys.modules["app.shared.security.models"] = sys.modules[__name__]
 
 
 class UserORM(Base):
@@ -41,15 +50,16 @@ class UserORM(Base):
     @property
     def display_name(self) -> str:
         return self.full_name or self.email
+
     created_at = Column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
         nullable=False,
     )
     updated_at = Column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
         nullable=False,
     )
 
@@ -89,7 +99,7 @@ class UserIdentityORM(Base):
     password_hash = Column(String(255), nullable=True)  # hash seguro (Argon2id/PBKDF2)
     created_at = Column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
         nullable=False,
     )
 
@@ -122,7 +132,7 @@ class UserSessionORM(Base):
     expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
     created_at = Column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
         nullable=False,
     )
 
@@ -161,18 +171,18 @@ class ProjectORM(Base):
     )
     created_at = Column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
         nullable=False,
     )
     updated_at = Column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
         nullable=False,
     )
     last_opened_at = Column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
         nullable=False,
     )
 
@@ -205,7 +215,7 @@ class ProjectCollaboratorORM(Base):
     )
     joined_at = Column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
         nullable=False,
     )
 

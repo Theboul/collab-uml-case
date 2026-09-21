@@ -2,15 +2,22 @@
 Modelos ORM de SQLAlchemy para el módulo modeling (tabla canvases).
 """
 
+import sys
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import ClassVar
 
 from sqlalchemy import JSON, Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 
-from backend_case.app.shared.db.base import Base
-from backend_case.app.shared.security.models import UserORM
+from ...shared.db.base import Base
+from ...shared.security.models import UserORM
+
+# Unificar en sys.modules para evitar instancias duplicadas
+if "backend_case.app.modeling.infrastructure.db_models" not in sys.modules:
+    sys.modules["backend_case.app.modeling.infrastructure.db_models"] = sys.modules[__name__]
+if "app.modeling.infrastructure.db_models" not in sys.modules:
+    sys.modules["app.modeling.infrastructure.db_models"] = sys.modules[__name__]
 
 
 class CanvasORM(Base):
@@ -26,15 +33,17 @@ class CanvasORM(Base):
     name = Column(String(255), nullable=False, default="Diagrama Sin Título")
     description = Column(Text, nullable=True)
     version = Column(Integer, nullable=False, default=1)
-    owner_id = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    owner_id = Column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     room_name = Column(String(100), unique=True, nullable=True, index=True)
     semantic_model = Column(JSON, nullable=False)
     visual_layout = Column(JSON, nullable=True)
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False)
     updated_at = Column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
         nullable=False,
     )
 
@@ -69,7 +78,7 @@ class CanvasCollaboratorORM(Base):
     )
     joined_at = Column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
         nullable=False,
     )
 
@@ -78,4 +87,3 @@ class CanvasCollaboratorORM(Base):
 
     def __repr__(self) -> str:
         return f"<CanvasCollaboratorORM(canvas_id='{self.canvas_id}', user_id='{self.user_id}')>"
-

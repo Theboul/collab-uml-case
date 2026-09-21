@@ -1,20 +1,36 @@
-# Git
+# ==============================================================================
+# Control de Versiones
+# ==============================================================================
 .git
 .gitignore
+.gitattributes
 
-# Frontend
+# ==============================================================================
+# Variables de Entorno y Archivos de Secretos (Evitar fuga en imágenes)
+# ==============================================================================
+.env
+.env.*
+!.env.example
+
+# ==============================================================================
+# Dependencias y Artefactos de Frontend (Node / Angular)
+# ==============================================================================
 **/node_modules
 **/.angular
 **/dist
 front_generador_bd/dist
 front_generador_bd/node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
-# Mobile app
-mobile_app/
-
-# Python cache & virtual environments
+# ==============================================================================
+# Entornos Virtuales y Cachés de Python
+# ==============================================================================
 **/.venv
 **/venv
+**/env
 **/__pycache__
 **/.pytest_cache
 **/.ruff_cache
@@ -23,20 +39,42 @@ mobile_app/
 *.pyo
 *.pyd
 
-# Java / Maven build artifacts
+# ==============================================================================
+# Artefactos de Compilación de Java / Maven (Spring Boot)
+# ==============================================================================
 **/target
 **/.mvn
+back_generator_uml/target
 
-# IDE & agent configs
+# ==============================================================================
+# Bases de Datos Locales SQLite y Respaldos
+# ==============================================================================
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.db.bak*
+
+# ==============================================================================
+# IDEs, Editores y Configuración de Agentes
+# ==============================================================================
 .idea
 .vscode
 .gemini
 .agents
+.claude
 
-# SQLite local databases
-*.db
-*.sqlite3
-
-# Scratch & temp
+# ==============================================================================
+# Archivos Temporales y del Sistema Operativo
+# ==============================================================================
 scratch/
 tmp/
+*.log
+**/.DS_Store
+Thumbs.db
+
+# ==============================================================================
+# Carpetas Externas al Despliegue Web Principal
+# ==============================================================================
+mobile_app/
+docs/

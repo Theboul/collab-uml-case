@@ -1,6 +1,6 @@
 import copy
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, NamedTuple
 
 from sqlalchemy import or_, select, update
@@ -89,7 +89,7 @@ class CanvasRepository:
                 canvas_orm.room_name = room_name
             canvas_orm.semantic_model = semantic_model_data
             canvas_orm.visual_layout = lienzo.visual_layout
-            canvas_orm.updated_at = datetime.now(timezone.utc)
+            canvas_orm.updated_at = datetime.now(UTC)
         else:
             final_room = room_name or f"room-{uuid.uuid4().hex[:8]}"
             default_layout = {
@@ -124,8 +124,9 @@ class CanvasRepository:
         lienzo: Lienzo,
     ) -> CanvasResult:
         """
-        Actualiza un lienzo de forma atómica comprobando que su versión coincida con expected_version.
-        Si la versión difiere o no existe, lanza ConcurrentEditConflict o CanvasNoEncontrado.
+        Actualiza un lienzo de forma atómica comprobando que su versión coincida
+        con expected_version. Si la versión difiere o no existe, lanza
+        ConcurrentEditConflict o CanvasNoEncontrado.
         """
         model_schema = DomainToPydanticMapper.to_pydantic_schema(lienzo.modelo)
         semantic_model_data = model_schema.model_dump(mode="json")
@@ -139,7 +140,7 @@ class CanvasRepository:
                 version=CanvasORM.version + 1,
                 semantic_model=semantic_model_data,
                 visual_layout=lienzo.visual_layout,
-                updated_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(UTC),
             )
             .returning(CanvasORM.version, CanvasORM.owner_id, CanvasORM.room_name)
         )
@@ -154,7 +155,8 @@ class CanvasRepository:
             else:
                 raise ConcurrentEditConflict(
                     f"Conflicto de versión al actualizar lienzo '{canvas_id}'. "
-                    f"Versión esperada: {expected_version}, versión actual en base de datos: {existing_version}."
+                    f"Versión esperada: {expected_version}, "
+                    f"versión actual en base de datos: {existing_version}."
                 )
 
         new_version, owner_id, room_name = row
@@ -187,7 +189,7 @@ class CanvasRepository:
                 .values(
                     semantic_model=normalized_data,
                     version=CanvasORM.version + 1,
-                    updated_at=datetime.now(timezone.utc),
+                    updated_at=datetime.now(UTC),
                 )
                 .returning(CanvasORM.version)
             )
@@ -215,7 +217,8 @@ class CanvasRepository:
             raise CanvasNoEncontrado(f"Lienzo con ID '{canvas_id}' no encontrado.")
         if _needs_parameter_normalization(canvas_orm.semantic_model):
             raise UmlDomainError(
-                "No se pudo normalizar los identificadores de parámetros históricos tras varios intentos por contención concurrente. Por favor, intente nuevamente."
+                "No se pudo normalizar los identificadores de parámetros históricos tras varios "
+                "intentos por contención concurrente. Por favor, intente nuevamente."
             )
         return canvas_orm
 
@@ -239,7 +242,7 @@ class CanvasRepository:
         lienzo = Lienzo(
             modelo=domain_model,
             visual_layout=canvas_orm.visual_layout or {},
-            creado_en=canvas_orm.created_at or datetime.now(timezone.utc),
+            creado_en=canvas_orm.created_at or datetime.now(UTC),
         )
         return CanvasResult(
             lienzo=lienzo,
@@ -267,7 +270,7 @@ class CanvasRepository:
         lienzo = Lienzo(
             modelo=domain_model,
             visual_layout=canvas_orm.visual_layout or {},
-            creado_en=canvas_orm.created_at or datetime.now(timezone.utc),
+            creado_en=canvas_orm.created_at or datetime.now(UTC),
         )
         return CanvasResult(
             lienzo=lienzo,
@@ -332,14 +335,15 @@ class CanvasRepository:
             collab = CanvasCollaboratorORM(
                 canvas_id=canvas_id,
                 user_id=user_id,
-                joined_at=datetime.now(timezone.utc),
+                joined_at=datetime.now(UTC),
             )
             self.session.add(collab)
             await self.session.flush()
 
     async def resolver_rol(self, canvas_id: str, owner_id: str | None, user_id: str | None) -> str:
         """
-        Resuelve dinámicamente el rol del usuario para el lienzo (ANFITRION, COLABORADOR o INVITADO).
+        Resuelve dinámicamente el rol del usuario para el lienzo
+        (ANFITRION, COLABORADOR o INVITADO).
         """
         if owner_id is None:
             # Lienzo creado sin autenticación: no hay dueño a quien proteger — mismo
@@ -372,4 +376,3 @@ class CanvasRepository:
             if canvas is not None:
                 return canvas
         return None
-

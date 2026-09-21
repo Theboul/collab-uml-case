@@ -2,6 +2,7 @@
 Dependencias de inyección de FastAPI para extracción y validación de usuarios autenticados.
 """
 
+import sys
 from typing import Annotated
 
 import jwt
@@ -13,6 +14,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..db.base import async_session_factory, get_db_session
 from .models import UserORM
 from .tokens import decode_access_token
+
+if "backend_case.app.shared.security.dependencies" not in sys.modules:
+    sys.modules["backend_case.app.shared.security.dependencies"] = sys.modules[__name__]
+if "app.shared.security.dependencies" not in sys.modules:
+    sys.modules["app.shared.security.dependencies"] = sys.modules[__name__]
 
 http_bearer = HTTPBearer(auto_error=False)
 
@@ -40,7 +46,7 @@ async def get_current_user(
 
     try:
         payload = decode_access_token(auth.credentials)
-    except jwt.ExpiredSignatureError:
+    except jwt.ExpiredSignatureError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={
@@ -48,8 +54,8 @@ async def get_current_user(
                 "message": "El token de acceso ha expirado. Renueve su sesión.",
             },
             headers={"WWW-Authenticate": "Bearer"},
-        )
-    except jwt.PyJWTError:
+        ) from exc
+    except jwt.PyJWTError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={
@@ -57,7 +63,7 @@ async def get_current_user(
                 "message": "Token de autenticación inválido o corrupto.",
             },
             headers={"WWW-Authenticate": "Bearer"},
-        )
+        ) from exc
 
     user_id = payload.get("sub")
     if not user_id:

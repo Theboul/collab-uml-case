@@ -11,8 +11,7 @@
     "lint:fix": "eslint \"src/**/*.{ts,html}\" --fix",
     "format": "prettier --write \"src/**/*.{ts,html,scss,css,json}\"",
     "format:check": "prettier --check \"src/**/*.{ts,html,scss,css,json}\"",
-    "check:size": "python ../scripts/check-file-size.py",
-    "serve:ssr:front_generador_bd": "node dist/front_generador_bd/server/server.mjs"
+    "check:size": "python ../scripts/check-file-size.py"
   },
   "private": true,
   "dependencies": {
