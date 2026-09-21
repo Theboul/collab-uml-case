@@ -21,22 +21,32 @@ COPY . .
 RUN npm run build
 
 # ==============================================================================
-# Etapa 2: Runner (Servidor Web Nginx Alpine de Alto Rendimiento)
+# Etapa 2: Runner (Servidor Web Nginx Alpine con soporte SSL/TLS y Certbot)
 # ==============================================================================
 FROM nginx:1.27-alpine AS runner
 
-# Copiar la configuración personalizada de Nginx para SPA y proxy reverso
+# Instalar OpenSSL para gestión y generación de certificados SSL
+RUN apk add --no-cache openssl
+
+# Copiar configuración personalizada de Nginx
 COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# Copiar script de inicialización para certificados SSL
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh && sed -i 's/\r$//' /entrypoint.sh
 
 # Copiar los archivos estáticos generados en la etapa de compilación
 COPY --from=builder /app/dist/front_generador_bd/browser /usr/share/nginx/html
 
-# Exponer el puerto estándar HTTP
-EXPOSE 80
+# Exponer puertos estándar HTTP y HTTPS
+EXPOSE 80 443
 
-# Healthcheck de disponibilidad de Nginx
+# Healthcheck de disponibilidad de Nginx mediante endpoint dedicado /healthz
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD wget -qO- http://127.0.0.1/ || exit 1
+    CMD wget -qO- http://127.0.0.1/healthz || exit 1
+
+# Punto de entrada para inicialización determinística de certificados SSL
+ENTRYPOINT ["/entrypoint.sh"]
 
 # Ejecutar Nginx en primer plano
 CMD ["nginx", "-g", "daemon off;"]

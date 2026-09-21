@@ -75,7 +75,7 @@ services:
       - uml_network
 
   # ============================================================================
-  # 4. Frontend Web CASE: Angular 20 SPA + Nginx Alpine
+  # 4. Frontend Web CASE: Angular 20 SPA + Nginx Alpine (HTTP + HTTPS + WSS)
   # ============================================================================
   frontend:
     build:
@@ -88,7 +88,12 @@ services:
         condition: service_started
     ports:
       - "80:80"
+      - "443:443"
       - "4200:80"
+      - "8443:443"
+    volumes:
+      - certbot_www:/var/www/certbot
+      - certbot_conf:/etc/nginx/ssl
     networks:
       - uml_network
 
@@ -108,6 +113,20 @@ services:
     networks:
       - uml_network
 
+  # ============================================================================
+  # 6. Certbot: Automatización SSL Let's Encrypt para Despliegues en AWS
+  # ============================================================================
+  certbot:
+    image: certbot/certbot:latest
+    container_name: schemacraft_certbot
+    restart: unless-stopped
+    volumes:
+      - certbot_www:/var/www/certbot
+      - certbot_conf:/etc/letsencrypt
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+    networks:
+      - uml_network
+
 # ==============================================================================
 # Red Interna Bridge
 # ==============================================================================
@@ -123,4 +142,8 @@ volumes:
   postgres_data:
     driver: local
   redis_data:
+    driver: local
+  certbot_www:
+    driver: local
+  certbot_conf:
     driver: local
