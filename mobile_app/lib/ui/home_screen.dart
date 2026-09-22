@@ -6,6 +6,7 @@ import '../app_scope.dart';
 import '../data/failures.dart';
 import '../domain/entity_module.dart';
 import 'entity_menu_screen.dart';
+import 'voice/voice_assistant_screen.dart';
 import 'widgets/sync_widgets.dart';
 
 /// Resultado de cargar una entidad al iniciar la app.
@@ -88,6 +89,19 @@ class _HomeScreenState extends State<HomeScreen>
         title: const Text('Gestión'),
         actions: [
           const SyncActionButton(),
+          IconButton(
+            key: const Key('open-voice'),
+            tooltip: 'Asistente de voz',
+            icon: const Icon(Icons.mic_none),
+            onPressed: () async {
+              await Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const VoiceAssistantScreen(),
+                ),
+              );
+              await _refresh();
+            },
+          ),
           IconButton(
             key: const Key('refresh'),
             tooltip: 'Recargar',

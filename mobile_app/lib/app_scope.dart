@@ -9,6 +9,8 @@ import 'data/local/local_store.dart';
 import 'data/offline_first_repository.dart';
 import 'data/sync/sync_controller.dart';
 import 'data/sync/sync_engine.dart';
+import 'data/voice/speech_input.dart';
+import 'data/voice/voice_command_executor.dart';
 import 'domain/entity_module.dart';
 
 /// Dependencias de la app: cliente HTTP, almacenamiento local, conectividad, motor de
@@ -21,7 +23,8 @@ class AppServices {
     required this.store,
     required this.monitor,
     Duration? retryEvery = const Duration(seconds: 30),
-  }) {
+    SpeechInput? speech,
+  }) : speech = speech ?? SpeechToTextInput() {
     final remotes = {
       for (final m in allModules) m.path: EntityRepository(m, api),
     };
@@ -50,6 +53,14 @@ class AppServices {
   late final SyncEngine engine;
   late final SyncController sync;
   late final Map<String, EntityGateway> _gateways;
+
+  /// Entrada de voz del asistente (CU14). Requiere red: ver `docs/decisions.md`.
+  final SpeechInput speech;
+
+  /// Ejecuta los comandos del asistente contra los MISMOS repositorios que las pantallas manuales.
+  late final VoiceCommandExecutor voiceExecutor = VoiceCommandExecutor(
+    gatewayFor: repositoryFor,
+  );
 
   EntityGateway repositoryFor(EntityModule module) => _gateways[module.path]!;
 

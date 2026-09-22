@@ -1,4 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- CU14: dictado por voz (speech_to_text). El reconocimiento corre en el servicio de voz del sistema. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <application
         android:label="gestion_movil"
         android:name="${applicationName}"
@@ -40,6 +42,10 @@
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+        <!-- Android 11+ (targetSdk 30+): sin esto no se puede localizar el servicio de reconocimiento. -->
+        <intent>
+            <action android:name="android.speech.RecognitionService"/>
         </intent>
     </queries>
 </manifest>

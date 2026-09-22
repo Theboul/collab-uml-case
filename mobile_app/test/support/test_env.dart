@@ -3,6 +3,7 @@ import 'package:gestion_movil/data/api_client.dart';
 import 'package:gestion_movil/data/connectivity_monitor.dart';
 import 'package:gestion_movil/data/entity_gateway.dart';
 import 'package:gestion_movil/data/local/local_store.dart';
+import 'package:gestion_movil/data/voice/speech_input.dart';
 import 'package:gestion_movil/domain/entity_module.dart';
 import 'package:gestion_movil/domain/pending_op.dart';
 import 'package:http/http.dart' as http;
@@ -27,6 +28,7 @@ class TestEnv {
     FakeBackend? backend,
     String? path,
     http.Client Function(FakeBackend)? clientFor,
+    SpeechInput? speech,
   }) async {
     sqfliteFfiInit();
     final store = await LocalStore.open(
@@ -39,6 +41,7 @@ class TestEnv {
       online: online,
       backend: backend,
       clientFor: clientFor,
+      speech: speech,
     );
   }
 
@@ -46,13 +49,20 @@ class TestEnv {
   static Future<TestEnv> memory({
     bool online = true,
     FakeBackend? backend,
-  }) async => _build(MemoryLocalStore(), online: online, backend: backend);
+    SpeechInput? speech,
+  }) async => _build(
+    MemoryLocalStore(),
+    online: online,
+    backend: backend,
+    speech: speech,
+  );
 
   static Future<TestEnv> _build(
     LocalStore store, {
     required bool online,
     FakeBackend? backend,
     http.Client Function(FakeBackend)? clientFor,
+    SpeechInput? speech,
   }) async {
     final fake = backend ?? FakeBackend();
     final monitor = ManualConnectivityMonitor(online: online);
@@ -65,6 +75,7 @@ class TestEnv {
       store: store,
       monitor: monitor,
       retryEvery: null,
+      speech: speech,
     );
     await services.sync.start();
     return TestEnv._(fake, store, monitor, services);
