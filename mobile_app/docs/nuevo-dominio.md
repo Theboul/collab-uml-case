@@ -80,12 +80,38 @@ Desde escribir el primer `EntityModule` hasta la APK instalada en el teléfono r
 3. (Incluido en el tiempo) agregar `FieldType.boolean` — ver matiz 1 arriba.
 4. `adb reverse tcp:9500 tcp:9500` + `flutter build apk --debug
    --dart-define=API_BASE_URL=http://127.0.0.1:9500/api` (28,5 s) + `adb install -r` — sin tocar
-   ninguna pantalla ni el parser.
+   ninguna pantalla ni el parser. El único valor que hace falta cambiar para apuntar la app al
+   backend nuevo es `API_BASE_URL` (ver "Dónde vive la URL del backend" más abajo) — no hay ningún
+   otro archivo con la IP/puerto hardcodeados.
 
 **Conclusión sobre viabilidad:** 5 minutos es holgadamente viable para hacerlo en vivo el día del
 examen, incluso sumando el tiempo de modelar en el editor web y generar con CU10 (Paso 1-2, que acá
 se hizo vía API directa en ~3 minutos; a mano en el editor web tomaría más, pero sigue siendo del
 orden de minutos, no de una preparación previa obligatoria).
+
+### Dónde vive la URL del backend
+
+Investigado (no asumido): la URL base **no está hardcodeada** en ninguna pantalla ni servicio.
+Vive en un único punto — `lib/config/api_config.dart`:
+
+```dart
+static const String baseUrl = String.fromEnvironment(
+  'API_BASE_URL',
+  defaultValue: 'http://127.0.0.1:9000/api',
+);
+```
+
+`ApiClient` (`lib/data/api_client.dart`) la toma de ahí por defecto (`ApiConfig.baseUrl`); ningún
+otro archivo de `lib/` tiene una IP o puerto propios. Para apuntar la app a un backend nuevo hay
+dos formas, sin tocar lógica de negocio:
+
+- **Recomendada — al compilar, sin editar código**: pasar el flag
+  `--dart-define=API_BASE_URL=http://127.0.0.1:<puerto>/api` a `flutter build apk`/`flutter run`
+  (ejemplo real, puerto 9500: `--dart-define=API_BASE_URL=http://127.0.0.1:9500/api`). Para
+  emulador Android usar `10.0.2.2` en vez de `127.0.0.1`; para WiFi, la IP del PC en la red local.
+- **Si se quiere cambiar el valor por defecto** (p. ej. dejar el proyecto ya apuntando a un
+  puerto distinto sin tener que pasar el flag cada vez): editar el `defaultValue` de esa única
+  constante en `api_config.dart` — ningún otro archivo necesita tocarse.
 
 ## Paso 4: verificación real en el dispositivo (sin mocks)
 
@@ -138,7 +164,9 @@ la app lista para la próxima entidad que use un campo booleano sin repetir este
    categoría de cambio real que rompe la hipótesis "cero pantallas tocadas", y es genérica por tipo,
    nunca por entidad.
 4. `adb reverse tcp:<puerto> tcp:<puerto>` + `flutter build apk --debug
-   --dart-define=API_BASE_URL=http://127.0.0.1:<puerto>/api` + `adb install -r`. ~5 minutos.
+   --dart-define=API_BASE_URL=http://127.0.0.1:<puerto>/api` + `adb install -r`. ~5 minutos. El
+   único valor que cambia es `API_BASE_URL` (ver "Dónde vive la URL del backend" arriba) — no hace
+   falta buscar la IP/puerto en ningún otro archivo.
 5. Si la entidad tiene un campo `reference`, avisar que **no** será controlable por voz (limitación
    de diseño conocida, no un bug) — el camino de texto/CRUD manual sigue intacto.
 6. Antes de dar la demo por cerrada, correr `flutter test`: si agregaste la entidad como ejemplo
