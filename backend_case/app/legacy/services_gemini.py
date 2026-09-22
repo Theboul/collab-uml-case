@@ -68,13 +68,19 @@ def call_gemini(prompt: str, model_context: dict | None = None):
             model_context or {"classes": [], "relationships": []}, indent=2, ensure_ascii=False
         )
         prompt_text = f"""
-Analiza la siguiente instrucción sobre un modelo UML QUE YA EXISTE (ver más abajo) y devolvé
-UN SOLO JSON con la lista de operaciones necesarias para aplicarla, en el orden en que deben
-ejecutarse.
+Analiza la siguiente instrucción sobre un modelo UML QUE YA EXISTE (ver más abajo).
 
-IMPORTANTE: Todas las clases, atributos, métodos y relaciones que edites o elimines YA EXISTEN
-en el modelo actual. Identificalos por su NOMBRE EXACTO tal como aparece ahí -- nunca inventes
-ni uses ids, la aplicación los resuelve por nombre contra el modelo real.
+Si la instrucción es una pregunta, solicitud de explicación o consulta sobre el modelo o sobre UML en general (en vez de una orden de modificación directa), respondé con:
+```json
+{{
+  "type": "explanation",
+  "message": "Texto detallado y claro respondiendo la consulta del usuario."
+}}
+```
+
+Si es una orden de modificación sobre el modelo existente, devolvé UN SOLO JSON con la lista de operaciones necesarias para aplicarla, en el orden en que deben ejecutarse.
+
+IMPORTANTE: Todas las clases, atributos, métodos y relaciones que edites o elimines YA EXISTEN en el modelo actual. Identificalos por su NOMBRE EXACTO tal como aparece ahí -- nunca inventes ni uses ids, la aplicación los resuelve por nombre contra el modelo real.
 
 Formato de respuesta:
 ```json
@@ -86,30 +92,37 @@ Formato de respuesta:
      "newName": "nuevoNombre", "newType": "nuevoTipo"}},
     {{"action": "delete_attribute", "target": "NombreClase", "attribute": "atributoAEliminar"}},
     {{"action": "add_operation", "target": "NombreClase", "name": "metodo",
-     "returnType": "tipoRetorno"}},
+     "returnType": "tipoRetorno", "parameters": "param1: tipo1, param2: tipo2"}},
     {{"action": "delete_operation", "target": "NombreClase", "operation": "metodoAEliminar"}},
     {{"action": "delete_class", "target": "NombreClase"}},
     {{"action": "add_relationship", "sourceClass": "ClaseA", "targetClass": "ClaseB",
-     "type": "ASSOCIATION | GENERALIZATION | AGGREGATION | COMPOSITION | DEPENDENCY"}},
+      "type": "ASSOCIATION | GENERALIZATION | AGGREGATION | COMPOSITION | DEPENDENCY",
+      "name": "mensaje_o_verbo_opcional",
+      "sourceMultiplicity": "1 | 0..1 | * | 0..* | 1..*",
+      "targetMultiplicity": "1 | 0..1 | * | 0..* | 1..*"}},
     {{"action": "delete_relationship", "sourceClass": "ClaseA", "targetClass": "ClaseB"}},
     {{"action": "update_relationship_type", "sourceClass": "ClaseA", "targetClass": "ClaseB",
-     "newType": "ASSOCIATION | GENERALIZATION | AGGREGATION | COMPOSITION | DEPENDENCY"}},
+      "newType": "ASSOCIATION | GENERALIZATION | AGGREGATION | COMPOSITION | DEPENDENCY"}},
     {{"action": "update_multiplicity", "sourceClass": "ClaseA", "targetClass": "ClaseB",
-     "newMultiplicity": "0..* | 1 | 0..1 | 1..*"}}
+      "sourceMultiplicity": "1 | 0..1 | * | 0..* | 1..*",
+      "targetMultiplicity": "1 | 0..1 | * | 0..* | 1..*"}}
   ]
 }}
 ```
 
 REGLAS IMPORTANTES:
-- Usá EXCLUSIVAMENTE los nombres de clases/atributos/métodos que aparecen en el "Modelo UML
-  actual" de abajo para "target", "attribute", "operation", "sourceClass" y "targetClass".
-- Si la instrucción cambia el nombre de una clase y LUEGO hace referencia a esa misma clase en
-  otra operación de la misma lista, usá el nombre NUEVO en las operaciones siguientes -- se
-  aplican en el orden en que las devolvés.
-- En "update_attribute" incluí solo "newName" y/o "newType", según lo que realmente cambió.
+- Usá EXCLUSIVAMENTE los nombres de clases/atributos/métodos que aparecen en el "Modelo UML actual"
+  de abajo para "target", "attribute", "operation", "sourceClass" y "targetClass".
+- En "add_operation", "parameters" debe ser una cadena con formato 'nombre1: tipo1, nombre2: tipo2'
+  (ej: 'monto: float, clienteId: String') o cadena vacía si no recibe parámetros.
+- En "add_relationship" y "update_multiplicity", especificá cardinalidades explícitas
+  estándar UML: '1', '0..1', '*', '0..*', '1..*'.
+- En "add_relationship", incluí en "name" el mensaje o verbo de la relación si la instrucción
+  lo menciona (ej. "gestiona", "pertenece_a").
+- Si la instrucción cambia el nombre de una clase y LUEGO hace referencia a esa misma clase en otra
+  operación de la misma lista, usá el nombre NUEVO en las operaciones siguientes -- se aplican en
+  el orden en que las devolvés.
 - No uses ninguna acción fuera de las listadas arriba.
-- Si la instrucción pide crear un modelo completamente nuevo desde cero (sin referirse a ninguna
-  clase existente), NO es una operación -- no apliquen esta forma de respuesta a ese caso.
 - NO devuelvas nada más, solo el JSON.
 
 Modelo UML actual del lienzo (nombres reales a usar como referencia):
@@ -119,21 +132,35 @@ Instrucción del usuario:
 {prompt}
 """
     else:
-        # Prompt normal - devolver un solo JSON
+        # Prompt normal - devolver un solo JSON de creación o explicación
         prompt_text = f"""
-Convierte el siguiente prompt en un JSON UML válido. 
-El JSON **debe seguir exactamente** esta estructura:
+Analiza la siguiente instrucción.
 
+Si la instrucción es una pregunta, explicación conceptual o consulta sobre UML o diseño
+(en vez de crear clases/relaciones), respondé con:
+```json
+{{
+  "type": "explanation",
+  "message": "Explicación clara y detallada respondiendo la duda del usuario."
+}}
+```
+
+Si pide crear un diagrama o clases, convierte la instrucción en un JSON UML válido:
+```json
 {{
   "classes": [
     {{
       "id": "uuid",
       "name": "NombreClase",
       "attributes": [
-        {{"name": "atributo", "type": "tipo"}}
+        {{"name": "atributo", "type": "int | float | String | Boolean | Date | UUID"}}
       ],
       "methods": [
-        {{"name": "metodo", "parameters": "", "returnType": ""}}
+        {{
+          "name": "metodo",
+          "parameters": "param1: tipo1, param2: tipo2",
+          "returnType": "void | String | int | float | Boolean"
+        }}
       ]
     }}
   ],
@@ -143,13 +170,22 @@ El JSON **debe seguir exactamente** esta estructura:
       "type": "association | generalization | aggregation | composition | dependency",
       "sourceId": "uuid",
       "targetId": "uuid",
-      "labels": ["1..*", "1"]
+      "labels": ["1", "0..*"],
+      "name": "mensaje_o_verbo_opcional"
     }}
   ]
 }}
+```
 
-Usa UUIDs generados aleatoriamente como 'id'.
-NO devuelvas nada más, solo el JSON.
+REGLAS DE VALIDACIÓN ESTRICTAS:
+- "parameters": debe tener formato 'nombre: tipo, nombre2: tipo2' o "" si no tiene parámetros.
+- "labels": association/aggregation/composition DEBE tener EXACTAMENTE 2 multiplicidades:
+  [multiplicidad_origen, multiplicidad_destino].
+- Multiplicidades válidas: '1', '0..1', '*', '0..*', '1..*'.
+- Para relación Muchos a Muchos (*..*), ambas multiplicidades deben contener '*'.
+- "name" en relationship es opcional: verbo de la relación (ej. "incluye", "asiste_a").
+- Usa UUIDs aleatorios como 'id'.
+- NO devuelvas nada más, solo el JSON.
 
 Prompt del usuario:
 {prompt}

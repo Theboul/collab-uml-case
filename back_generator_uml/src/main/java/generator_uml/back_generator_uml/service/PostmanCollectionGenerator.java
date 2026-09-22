@@ -75,7 +75,16 @@ public class PostmanCollectionGenerator {
                         String secondEntity = sourceEntity.compareTo(targetEntity) < 0 ? targetEntity : sourceEntity;
                         
                         String intermediateEntityName = firstEntity + secondEntity;
-                        intermediateEntities.add(intermediateEntityName);
+                        boolean alreadyExistsInSchema = schema.getClasses().stream()
+                                .anyMatch(cl -> {
+                                    String cName = NamingUtil.toJavaClass(cl.getName());
+                                    return cName.equalsIgnoreCase(intermediateEntityName)
+                                            || cName.equalsIgnoreCase(firstEntity + "_" + secondEntity)
+                                            || cName.equalsIgnoreCase(secondEntity + "_" + firstEntity);
+                                });
+                        if (!alreadyExistsInSchema) {
+                            intermediateEntities.add(intermediateEntityName);
+                        }
                     }
                 }
             }
@@ -404,11 +413,12 @@ public class PostmanCollectionGenerator {
                                 "composition".equals(rel.getType()) ||
                                 "dependency".equals(rel.getType()))) {
 
+                    boolean isSelf = sourceName.equals(targetName);
                     // Si source tiene cardinalidad * hacia target
                     // entonces Source tiene ManyToOne → incluir solo el ID de la relación
                     if (sourceIsMany && !targetIsMany) {
                         String targetEntity = NamingUtil.toJavaClass(targetName);
-                        String fieldName = NamingUtil.toField(targetEntity) + "id";
+                        String fieldName = isSelf ? "parentId" : NamingUtil.toField(targetEntity) + "id";
 
                         UmlClass targetClass = schema.getClasses().stream()
                                 .filter(tc -> tc.getName().equals(targetName))
@@ -422,7 +432,7 @@ public class PostmanCollectionGenerator {
                     // Si source tiene cardinalidad 1 y target tiene 1 (OneToOne o Composition)
                     else if (!sourceIsMany && !targetIsMany) {
                         String targetEntity = NamingUtil.toJavaClass(targetName);
-                        String fieldName = NamingUtil.toField(targetEntity) + "id";
+                        String fieldName = isSelf ? "parentId" : NamingUtil.toField(targetEntity) + "id";
 
                         UmlClass targetClass = schema.getClasses().stream()
                                 .filter(tc -> tc.getName().equals(targetName))
@@ -440,7 +450,7 @@ public class PostmanCollectionGenerator {
                 
                 // Lado TARGET: si target tiene cardinalidad many y source tiene 1
                 // entonces Target tiene ManyToOne hacia Source
-                if (c.getName().equals(targetName) &&
+                if (!sourceName.equals(targetName) && c.getName().equals(targetName) &&
                         ("association".equals(rel.getType()) ||
                                 "aggregation".equals(rel.getType()) ||
                                 "composition".equals(rel.getType()) ||

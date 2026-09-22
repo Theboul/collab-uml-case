@@ -89,6 +89,7 @@ export class UmlEditorFacade {
   readonly isAssistantPanelOpen = this.state.isAssistantPanelOpen;
   readonly isAssistantProcessing = this.state.isAssistantProcessing;
   readonly assistantError = this.state.assistantError;
+  readonly assistantMessage = this.state.assistantMessage;
   readonly contextMenu = this.state.contextMenu;
   readonly remoteCursors = this.remoteCursorsService.cursors;
   readonly presencePeers = this.remotePresenceService.remotePeers;

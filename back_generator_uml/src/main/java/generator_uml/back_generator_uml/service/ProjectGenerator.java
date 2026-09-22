@@ -119,6 +119,17 @@ public class ProjectGenerator {
                             // Nombre de la entidad intermedia
                             String intermediateEntityName = firstEntity + secondEntity;
                             
+                            boolean alreadyExistsInSchema = schema.getClasses().stream()
+                                    .anyMatch(cl -> {
+                                        String cName = NamingUtil.toJavaClass(cl.getName());
+                                        return cName.equalsIgnoreCase(intermediateEntityName)
+                                                || cName.equalsIgnoreCase(firstEntity + "_" + secondEntity)
+                                                || cName.equalsIgnoreCase(secondEntity + "_" + firstEntity);
+                                    });
+                            if (alreadyExistsInSchema) {
+                                continue;
+                            }
+                            
                             // Crear contexto para la entidad intermedia
                             Map<String, Object> intermediateCtx = new HashMap<>();
                             intermediateCtx.put("basePackage", basePackage);
@@ -302,6 +313,39 @@ public class ProjectGenerator {
                             targetIsMany = false;
                         }
 
+
+                        boolean isSelfRelation = sourceName.equals(targetName);
+                        if (isSelfRelation) {
+                            if (c.getName().equals(sourceName)) {
+                                if (sourceIsMany && targetIsMany) {
+                                    String intermediateEntityName = sourceEntity + "Relation";
+                                    oneToMany.add(Map.of(
+                                            "TargetEntity", intermediateEntityName,
+                                            "collectionField", NamingUtil.toField(intermediateEntityName),
+                                            "mappedBy", "parent" + sourceEntity
+                                    ));
+                                } else if (!sourceIsMany && !targetIsMany) {
+                                    oneToOne.add(Map.of(
+                                            "TargetEntity", targetEntity,
+                                            "TargetPkType", pkTypeOf(targetEntity, schema),
+                                            "targetField", "parent" + targetEntity,
+                                            "composition", false
+                                    ));
+                                } else {
+                                    manyToOne.add(Map.of(
+                                            "TargetEntity", targetEntity,
+                                            "TargetPkType", pkTypeOf(targetEntity, schema),
+                                            "targetField", "parent" + targetEntity
+                                    ));
+                                    oneToMany.add(Map.of(
+                                            "TargetEntity", sourceEntity,
+                                            "collectionField", "child" + sourceEntity + "List",
+                                            "mappedBy", "parent" + targetEntity
+                                    ));
+                                }
+                            }
+                            continue;
+                        }
 
                         // === Lado SOURCE = esta clase ===
                         if (c.getName().equals(sourceName)) {

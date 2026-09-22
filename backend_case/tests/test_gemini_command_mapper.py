@@ -687,3 +687,71 @@ def test_build_model_context_includes_names_and_relation_types(modelo):
     assert {"type": "ASSOCIATION", "sourceClass": "Usuario", "targetClass": "Rol"} in context[
         "relationships"
     ]
+
+
+def test_resolve_add_operation_with_parameters(modelo):
+    usuario = modelo.find_classifier_by_name("Usuario")
+    cmd_type, payload = resolve_operation(
+        {
+            "action": "add_operation",
+            "target": "Usuario",
+            "name": "login",
+            "returnType": "Boolean",
+            "parameters": "email: String, clave: String",
+        },
+        modelo,
+    )
+    assert cmd_type == "ADD_OPERATION"
+    assert payload == {
+        "classId": usuario.id,
+        "name": "login",
+        "returnType": "Boolean",
+        "parameters": [
+            {"name": "email", "type": "String"},
+            {"name": "clave", "type": "String"},
+        ],
+    }
+
+
+def test_resolve_add_relationship_with_name_and_multiplicities(modelo):
+    usuario = modelo.find_classifier_by_name("Usuario")
+    rol = modelo.find_classifier_by_name("Rol")
+    cmd_type, payload = resolve_operation(
+        {
+            "action": "add_relationship",
+            "sourceClass": "Usuario",
+            "targetClass": "Rol",
+            "type": "association",
+            "name": "tiene_rol",
+            "sourceMultiplicity": "*",
+            "targetMultiplicity": "1..*",
+        },
+        modelo,
+    )
+    assert cmd_type == "CREATE_RELATION"
+    assert payload["sourceClassId"] == usuario.id
+    assert payload["targetClassId"] == rol.id
+    assert payload["name"] == "tiene_rol"
+    assert payload["sourceMultiplicity"] == "*"
+    assert payload["targetMultiplicity"] == "1..*"
+
+
+def test_resolve_reflexive_relationship_operation(modelo):
+    usuario = modelo.find_classifier_by_name("Usuario")
+    cmd_type, payload = resolve_operation(
+        {
+            "action": "add_relationship",
+            "sourceClass": "Usuario",
+            "targetClass": "Usuario",
+            "type": "association",
+            "name": "supervisa",
+            "sourceMultiplicity": "0..1",
+            "targetMultiplicity": "*",
+        },
+        modelo,
+    )
+    assert cmd_type == "CREATE_RELATION"
+    assert payload["sourceClassId"] == usuario.id
+    assert payload["targetClassId"] == usuario.id
+    assert payload["name"] == "supervisa"
+

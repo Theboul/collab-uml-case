@@ -183,6 +183,11 @@ def map_gemini_response_to_commands(parsed: Any) -> list[tuple[str, dict[str, An
 
         if rel_type in ("association", "aggregation", "composition"):
             if len(multiplicities) != 2:
+                src_m = rel.get("sourceMultiplicity")
+                tgt_m = rel.get("targetMultiplicity")
+                if src_m and tgt_m:
+                    multiplicities = [str(src_m).strip(), str(tgt_m).strip()]
+            if len(multiplicities) != 2:
                 src_label = class_names_by_id.get(source_id, source_id)
                 tgt_label = class_names_by_id.get(target_id, target_id)
                 raise UmlValidationError(
@@ -276,14 +281,21 @@ def build_model_context(modelo: UmlDomainModel) -> dict[str, Any]:
     Gemini al pedirle operaciones sobre el modelo existente -- sin esto, Gemini
     no tiene forma de saber qué clases/atributos/relaciones existen hoy.
     """
-    classes = [
-        {
-            "name": c.name,
-            "attributes": [{"name": a.name, "type": a.type} for a in c.attributes],
-            "methods": [{"name": o.name, "returnType": o.return_type} for o in c.operations],
-        }
-        for c in modelo.classes
-    ]
+    classes = []
+    for c in modelo.classes:
+        methods = []
+        for o in c.operations:
+            m_dict: dict[str, Any] = {"name": o.name, "returnType": o.return_type}
+            if o.parameters:
+                m_dict["parameters"] = ", ".join(f"{p.name}: {p.type}" for p in o.parameters)
+            methods.append(m_dict)
+        classes.append(
+            {
+                "name": c.name,
+                "attributes": [{"name": a.name, "type": a.type} for a in c.attributes],
+                "methods": methods,
+            }
+        )
 
     relationships: list[dict[str, Any]] = []
     for assoc in modelo.associations:
@@ -301,13 +313,19 @@ def build_model_context(modelo: UmlDomainModel) -> dict[str, Any]:
             or end2.aggregation_kind == AggregationKind.COMPOSITE
         ):
             rel_type = "COMPOSITION"
-        relationships.append(
-            {
-                "type": rel_type,
-                "sourceClass": src.name if src else None,
-                "targetClass": tgt.name if tgt else None,
-            }
-        )
+        rel_info: dict[str, Any] = {
+            "type": rel_type,
+            "sourceClass": src.name if src else None,
+            "targetClass": tgt.name if tgt else None,
+        }
+        if assoc.name:
+            rel_info["name"] = assoc.name
+        if end1.multiplicity and end1.multiplicity.to_uml_str() != "1":
+            rel_info["sourceMultiplicity"] = end1.multiplicity.to_uml_str()
+        if end2.multiplicity and end2.multiplicity.to_uml_str() != "1":
+            rel_info["targetMultiplicity"] = end2.multiplicity.to_uml_str()
+        relationships.append(rel_info)
+
     for gen in modelo.generalizations:
         specific = modelo.find_classifier_by_id(gen.specific_class_id)
         general = modelo.find_classifier_by_id(gen.general_class_id)
@@ -391,11 +409,16 @@ def resolve_operation(raw_op: Any, modelo: UmlDomainModel) -> tuple[str, dict[st
         name = raw_op.get("name")
         if not name:
             raise UmlValidationError("add_operation requiere 'name'.")
-        return "ADD_OPERATION", {
+        payload = {
             "classId": clase.id,
             "name": str(name).strip(),
             "returnType": str(raw_op.get("returnType") or "void").strip(),
         }
+        if raw_op.get("parameters"):
+            payload["parameters"] = _parse_parameters(
+                raw_op["parameters"], class_name=clase.name, method_name=str(name).strip()
+            )
+        return "ADD_OPERATION", payload
 
     if action == "delete_operation":
         clase = _resolve_class(modelo, raw_op.get("target"))
@@ -410,11 +433,18 @@ def resolve_operation(raw_op: Any, modelo: UmlDomainModel) -> tuple[str, dict[st
         source = _resolve_class(modelo, raw_op.get("sourceClass"))
         target = _resolve_class(modelo, raw_op.get("targetClass"))
         rel_type = _resolve_relation_type(raw_op.get("type"))
-        return "CREATE_RELATION", {
+        payload = {
             "type": rel_type,
             "sourceClassId": source.id,
             "targetClassId": target.id,
         }
+        if raw_op.get("name"):
+            payload["name"] = str(raw_op["name"]).strip()
+        if raw_op.get("sourceMultiplicity"):
+            payload["sourceMultiplicity"] = str(raw_op["sourceMultiplicity"]).strip()
+        if raw_op.get("targetMultiplicity"):
+            payload["targetMultiplicity"] = str(raw_op["targetMultiplicity"]).strip()
+        return "CREATE_RELATION", payload
 
     if action == "delete_relationship":
         source = _resolve_class(modelo, raw_op.get("sourceClass"))
@@ -433,16 +463,20 @@ def resolve_operation(raw_op: Any, modelo: UmlDomainModel) -> tuple[str, dict[st
     source = _resolve_class(modelo, raw_op.get("sourceClass"))
     target = _resolve_class(modelo, raw_op.get("targetClass"))
     relation_id = _resolve_relation_id(modelo, source, target)
-    new_mult = raw_op.get("newMultiplicity")
-    if not new_mult or not isinstance(new_mult, (str, int)):
+    new_mult = raw_op.get("newMultiplicity") or raw_op.get("targetMultiplicity")
+    if new_mult is not None and not isinstance(new_mult, (str, int)):
+        raise UmlValidationError("update_multiplicity requiere 'newMultiplicity' válido.")
+    source_mult = raw_op.get("sourceMultiplicity")
+    if source_mult is not None and not isinstance(source_mult, (str, int)):
+        raise UmlValidationError("update_multiplicity requiere 'sourceMultiplicity' válido.")
+    if not new_mult and not source_mult:
         raise UmlValidationError("update_multiplicity requiere 'newMultiplicity'.")
-    # Convención: la multiplicidad nueva describe el extremo destino (cuántos
-    # 'targetClass' participan por cada 'sourceClass'), que es como se lee en
-    # UML una instrucción del tipo "un Cliente tiene 0..* Pedidos".
-    return "UPDATE_MULTIPLICITY", {
-        "relationId": relation_id,
-        "targetMultiplicity": str(new_mult).strip(),
-    }
+    payload = {"relationId": relation_id}
+    if new_mult:
+        payload["targetMultiplicity"] = str(new_mult).strip()
+    if source_mult:
+        payload["sourceMultiplicity"] = str(source_mult).strip()
+    return "UPDATE_MULTIPLICITY", payload
 
 
 def _resolve_relation_type(raw_type: Any) -> str:
@@ -498,20 +532,27 @@ def _resolve_operation_member(clase: UmlClass, name: Any) -> UmlOperation:
 def _find_relation_ids_between(
     modelo: UmlDomainModel, class_id_a: str, class_id_b: str
 ) -> list[str]:
-    pair = {class_id_a, class_id_b}
     matches: list[str] = []
     for assoc in modelo.associations:
         end1, end2 = assoc.member_ends
-        if {end1.class_id, end2.class_id} == pair:
+        if (end1.class_id == class_id_a and end2.class_id == class_id_b) or (
+            end1.class_id == class_id_b and end2.class_id == class_id_a
+        ):
             matches.append(assoc.id)
     for gen in modelo.generalizations:
-        if {gen.specific_class_id, gen.general_class_id} == pair:
+        if (gen.specific_class_id == class_id_a and gen.general_class_id == class_id_b) or (
+            gen.specific_class_id == class_id_b and gen.general_class_id == class_id_a
+        ):
             matches.append(gen.id)
     for dep in modelo.dependencies:
-        if {dep.client_class_id, dep.supplier_class_id} == pair:
+        if (dep.client_class_id == class_id_a and dep.supplier_class_id == class_id_b) or (
+            dep.client_class_id == class_id_b and dep.supplier_class_id == class_id_a
+        ):
             matches.append(dep.id)
     for real in modelo.realizations:
-        if {real.client_class_id, real.supplier_interface_id} == pair:
+        if (real.client_class_id == class_id_a and real.supplier_interface_id == class_id_b) or (
+            real.client_class_id == class_id_b and real.supplier_interface_id == class_id_a
+        ):
             matches.append(real.id)
     return matches
 

@@ -192,9 +192,9 @@ export class UmlGraphService {
       connecting: {
         snap: true,
         allowBlank: false,
-        allowLoop: false,
-        allowNode: true,
-        allowPort: true,
+        allowLoop: true,
+        allowNode: false,
+        allowEdge: false,
         highlight: true,
         router: { name: 'manhattan' },
         connector: { name: 'rounded' },
@@ -218,8 +218,7 @@ export class UmlGraphService {
           });
         },
         validateMagnet: ({ magnet }) => this.portService.validateMagnet(magnet),
-        validateConnection: ({ sourceCell, targetCell, sourceMagnet }) =>
-          this.portService.validateConnection(sourceCell, targetCell, sourceMagnet),
+        validateConnection: (args) => this.portService.validateConnection(args),
       },
       interacting: {
         nodeMovable: (cellView) =>
@@ -465,8 +464,8 @@ export class UmlGraphService {
       });
     });
 
-    // Clic derecho en arista -> seleccionar y abrir menú contextual
-    this.graph.on('edge:contextmenu', ({ edge, e }) => {
+    // Clic derecho o doble clic en arista -> seleccionar y abrir menú contextual
+    const onEdgeMenu = ({ edge, e }: { edge: Edge; e: any }) => {
       e.preventDefault();
       e.stopPropagation();
       this.ngZone.run(() => {
@@ -478,7 +477,9 @@ export class UmlGraphService {
           y: e.clientY,
         });
       });
-    });
+    };
+    this.graph.on('edge:contextmenu', onEdgeMenu);
+    this.graph.on('edge:dblclick', onEdgeMenu);
 
     // Clic en fondo -> ocultar puertos, limpiar highlight y notificar clic en blanco
     this.graph.on('blank:click', ({ e }) => {

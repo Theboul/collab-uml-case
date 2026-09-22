@@ -39,6 +39,7 @@ export class EditorStateService {
   readonly isAssistantPanelOpen = signal<boolean>(false);
   readonly isAssistantProcessing = signal<boolean>(false);
   readonly assistantError = signal<string | null>(null);
+  readonly assistantMessage = signal<string | null>(null);
 
   readonly model = signal<ModeloUML>({ classes: [], relations: [] });
   readonly layout = signal<DiagramLayout>({
@@ -113,6 +114,7 @@ export class EditorStateService {
 
   openAssistantPanel(): void {
     this.assistantError.set(null);
+    this.assistantMessage.set(null);
     this.isAssistantPanelOpen.set(true);
   }
 
@@ -134,6 +136,10 @@ export class EditorStateService {
 
   setAssistantError(message: string | null): void {
     this.assistantError.set(message);
+  }
+
+  setAssistantMessage(message: string | null): void {
+    this.assistantMessage.set(message);
   }
 
   setGeneratingSpringBackend(generating: boolean): void {
@@ -165,6 +171,15 @@ export class EditorStateService {
     this.model.set({
       ...current,
       relations: updater(current.relations),
+    });
+  }
+
+  hasRelationBetween(classIdA: string, classIdB: string): boolean {
+    const relations = this.model().relations || [];
+    return relations.some((r) => {
+      const src = r.sourceClassId;
+      const tgt = r.targetClassId;
+      return (src === classIdA && tgt === classIdB) || (src === classIdB && tgt === classIdA);
     });
   }
 }

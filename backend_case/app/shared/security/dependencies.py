@@ -148,3 +148,10 @@ async def authenticate_ws_user(websocket: WebSocket) -> UserORM | None:
     """Usuario del handshake o None. Sesión de DB de vida corta (regla de WS en fastapi.md)."""
     async with async_session_factory() as session:
         return await get_current_user_optional_ws(session, get_ws_bearer_token(websocket))
+
+
+def resolve_user_id(user: UserORM | None) -> str | None:
+    """Retorna el ID del usuario autenticado como string nativo (str), o None si no hay usuario."""
+    if user is None or user.id is None:
+        return None
+    return str(user.id)

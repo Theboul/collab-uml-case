@@ -2,24 +2,29 @@ import { Injectable } from '@angular/core';
 
 @Injectable({ providedIn: 'root' })
 export class SqlExportService {
-
   private typeMap: Record<string, string> = {
-    'UUID': 'UUID',
-    'String': 'VARCHAR(255)',
-    'Text': 'TEXT',
-    'Integer': 'INT',
-    'Int': 'INT',
-    'int': 'INT',
-    'Long': 'BIGINT',
-    'Boolean': 'BOOLEAN',
-    'Float': 'FLOAT',
-    'Double': 'DOUBLE PRECISION',
-    'Decimal': 'DECIMAL(15,2)',
-    'Date': 'DATE',
-    'DateTime': 'TIMESTAMP'
+    UUID: 'UUID',
+    String: 'VARCHAR(255)',
+    Text: 'TEXT',
+    Integer: 'INT',
+    Int: 'INT',
+    int: 'INT',
+    Long: 'BIGINT',
+    Boolean: 'BOOLEAN',
+    Float: 'FLOAT',
+    Double: 'DOUBLE PRECISION',
+    Decimal: 'DECIMAL(15,2)',
+    Date: 'DATE',
+    DateTime: 'TIMESTAMP',
   };
 
-  private invalidPkTypes = new Set(['TEXT', 'FLOAT', 'DOUBLE PRECISION', 'DECIMAL(15,2)', 'BOOLEAN']);
+  private invalidPkTypes = new Set([
+    'TEXT',
+    'FLOAT',
+    'DOUBLE PRECISION',
+    'DECIMAL(15,2)',
+    'BOOLEAN',
+  ]);
 
   exportToSql(umlJson: any, dbName: string = 'uml_database'): string {
     let sql = '';
@@ -29,7 +34,9 @@ export class SqlExportService {
     // ====== TABLAS ======
     for (const cls of umlJson.classes) {
       // Verificar si la clase es hija en una relación de herencia
-      const generalizationRel = umlJson.relationships.find((rel: any) => rel.type === 'generalization' && rel.sourceId === cls.id);
+      const generalizationRel = umlJson.relationships.find(
+        (rel: any) => rel.type === 'generalization' && rel.sourceId === cls.id,
+      );
       sql += `CREATE TABLE ${cls.name} (\n`;
       const columns: string[] = [];
       if (generalizationRel) {
@@ -86,6 +93,15 @@ export class SqlExportService {
       // N:M → tabla intermedia
       if (multSource.includes('*') && multTarget.includes('*')) {
         const joinTable = `${source.name}_${target.name}`;
+        const tableAlreadyDefined = umlJson.classes.some(
+          (c: any) =>
+            c.name.toLowerCase() === joinTable.toLowerCase() ||
+            c.name.toLowerCase() === `${target.name}_${source.name}`.toLowerCase() ||
+            c.name.toLowerCase() === `${source.name}${target.name}`.toLowerCase(),
+        );
+        if (tableAlreadyDefined) {
+          continue;
+        }
         sql += `CREATE TABLE ${joinTable} (\n`;
         sql += `  ${source.name.toLowerCase()}_id UUID NOT NULL,\n`;
         sql += `  ${target.name.toLowerCase()}_id UUID NOT NULL,\n`;
@@ -96,11 +112,16 @@ export class SqlExportService {
         continue;
       }
 
+      const isReflexive = source.id === target.id;
       // Determinar el lado de la FK según multiplicidad
       let fkTable = source;
       let refTable = target;
-      let fkName = `fk_${source.name.toLowerCase()}_${target.name.toLowerCase()}`;
-      let column = `${target.name.toLowerCase()}_id`;
+      let fkName = isReflexive
+        ? `fk_${source.name.toLowerCase()}_parent`
+        : `fk_${source.name.toLowerCase()}_${target.name.toLowerCase()}`;
+      let column = isReflexive
+        ? `parent_${target.name.toLowerCase()}_id`
+        : `${target.name.toLowerCase()}_id`;
       let onDelete = 'SET NULL';
       let notNull = '';
 
@@ -110,10 +131,20 @@ export class SqlExportService {
           // Siempre FK en el source hacia el target
           fkTable = source;
           refTable = target;
-          fkName = `fk_${source.name.toLowerCase()}_${target.name.toLowerCase()}`;
-          column = `${target.name.toLowerCase()}_id`;
+          fkName = isReflexive
+            ? `fk_${source.name.toLowerCase()}_parent`
+            : `fk_${source.name.toLowerCase()}_${target.name.toLowerCase()}`;
+          column = isReflexive
+            ? `parent_${target.name.toLowerCase()}_id`
+            : `${target.name.toLowerCase()}_id`;
           onDelete = 'NO ACTION';
           notNull = '';
+        } else if (isReflexive) {
+          // Reflexiva: FK va en la misma tabla apuntando a su propia PK
+          fkTable = source;
+          refTable = target;
+          fkName = `fk_${source.name.toLowerCase()}_parent`;
+          column = `parent_${target.name.toLowerCase()}_id`;
         } else {
           if (multSource.includes('*') && !multTarget.includes('*')) {
             // source: muchos, target: uno → FK en source
@@ -134,16 +165,18 @@ export class SqlExportService {
             fkName = `fk_${source.name.toLowerCase()}_${target.name.toLowerCase()}`;
             column = `${target.name.toLowerCase()}_id`;
           }
-          // Composición: FK NOT NULL y ON DELETE CASCADE
-          if (rel.type === 'composition') {
-            notNull = ' NOT NULL';
-            onDelete = 'CASCADE';
-          } else if (rel.type === 'aggregation') {
-            onDelete = 'SET NULL';
-          } else if (rel.type === 'association') {
-            onDelete = 'SET NULL';
-          }
         }
+
+        // Composición: FK NOT NULL y ON DELETE CASCADE
+        if (rel.type === 'composition') {
+          notNull = ' NOT NULL';
+          onDelete = 'CASCADE';
+        } else if (rel.type === 'aggregation') {
+          onDelete = 'SET NULL';
+        } else if (rel.type === 'association') {
+          onDelete = 'SET NULL';
+        }
+
         sql += `ALTER TABLE ${fkTable.name}\n`;
         sql += `  ADD COLUMN ${column} UUID${notNull},\n`;
         sql += `  ADD CONSTRAINT ${fkName} FOREIGN KEY (${column}) REFERENCES ${refTable.name}(${this.getPrimaryKey(refTable)}) ON DELETE ${onDelete} ON UPDATE CASCADE;\n\n`;

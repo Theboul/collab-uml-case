@@ -62,6 +62,14 @@ class FlutterCRUDGenerator:
                   second_entity = tgt if src < tgt else src
                   intermediate_name = first_entity + second_entity
                   
+                  existing_class_names = {c.get("name", "").lower() for c in self.classes}
+                  if (
+                      intermediate_name.lower() in existing_class_names
+                      or f"{first_entity}_{second_entity}".lower() in existing_class_names
+                      or f"{second_entity}_{first_entity}".lower() in existing_class_names
+                  ):
+                      continue
+
                   many_to_many_relations.append({
                       "from": src,
                       "to": tgt,
@@ -162,7 +170,7 @@ class FlutterCRUDGenerator:
         # Generar archivo de rutas
         self._generate_routes(base_path)
         
-        print(f"✅ Proyecto Flutter generado en: {output_dir}")
+        print(f"[OK] Proyecto Flutter generado en: {output_dir}")
         
     def _detect_intermediate_entities(self):
         """Detecta entidades intermedias generadas por relaciones ManyToMany"""
@@ -399,7 +407,8 @@ class HomePage extends StatelessWidget {{
       # Importar modelos para todas las relaciones (necesarios para parsear objetos anidados)
       for rel in relationships:
           if rel["from"] == name and rel["kind"] in ["many_to_one", "one_to_one", "one_to_many"]:
-              related_models.add(rel["to"])
+              if rel["to"] != name:
+                  related_models.add(rel["to"])
 
       imports = "\n".join([
           f"import '{self._to_snake_case(model)}.dart';"
@@ -450,32 +459,32 @@ class HomePage extends StatelessWidget {{
       rel_fields = []
       for rel in relationships:
           if rel["from"] == name:
+              is_self = rel["to"] == name
               if rel["kind"] == "many_to_one":
                   # ManyToOne: ID (para enviar) + objeto completo opcional (para leer del GET)
-                  field_name = f"{self._to_snake_case(rel['to'])}Id"
+                  field_name = "parentId" if is_self else f"{self._to_snake_case(rel['to'])}Id"
                   normalized_field = field_name.lower().replace('_', '')
                   if normalized_field not in existing_attr_names:
                       rel_fields.append(f"  final String {field_name};")
                   # Agregar también el objeto completo (nullable, solo para lectura)
-                  obj_field_name = self._to_snake_case(rel['to'])
+                  obj_field_name = "parent" if is_self else self._to_snake_case(rel['to'])
                   normalized_obj = obj_field_name.lower().replace('_', '')
                   if normalized_obj not in existing_attr_names:
                       rel_fields.append(f"  final {rel['to']}? {obj_field_name};")
               elif rel["kind"] == "one_to_one":
                   # OneToOne: ID (para enviar) + objeto completo opcional (para leer del GET)
-                  field_name = f"{self._to_snake_case(rel['to'])}Id"
+                  field_name = "parentId" if is_self else f"{self._to_snake_case(rel['to'])}Id"
                   normalized_field = field_name.lower().replace('_', '')
                   if normalized_field not in existing_attr_names:
                       rel_fields.append(f"  final String {field_name};")
                   # Agregar también el objeto completo (nullable, solo para lectura)
-                  obj_field_name = self._to_snake_case(rel['to'])
+                  obj_field_name = "parent" if is_self else self._to_snake_case(rel['to'])
                   normalized_obj = obj_field_name.lower().replace('_', '')
                   if normalized_obj not in existing_attr_names:
                       rel_fields.append(f"  final {rel['to']}? {obj_field_name};")
               elif rel["kind"] == "one_to_many":
                   # OneToMany: Lista de objetos completos (solo para lectura desde GET)
-                  # El backend devuelve la lista anidada en GET, pero NO se envía en POST/PUT
-                  field_name = self._to_snake_case(rel['to'])
+                  field_name = "children" if is_self else self._to_snake_case(rel['to'])
                   normalized_field = field_name.lower().replace('_', '')
                   if normalized_field not in existing_attr_names:
                       rel_fields.append(f"  final List<{rel['to']}> {field_name};")
@@ -562,31 +571,32 @@ class HomePage extends StatelessWidget {{
       
       for rel in relationships:
           if rel["from"] == name:
+              is_self = rel["to"] == name
               if rel["kind"] == "many_to_one":
                   # Agregar FK (ID) para relaciones ManyToOne (required)
-                  field_name = f"{self._to_snake_case(rel['to'])}Id"
+                  field_name = "parentId" if is_self else f"{self._to_snake_case(rel['to'])}Id"
                   normalized_field = field_name.lower().replace('_', '')
                   if normalized_field not in existing_attr_names_normalized:
                       constructor_params_list.append(f"required this.{field_name}")
                   # Agregar objeto completo (opcional, default null)
-                  obj_field_name = self._to_snake_case(rel['to'])
+                  obj_field_name = "parent" if is_self else self._to_snake_case(rel['to'])
                   normalized_obj = obj_field_name.lower().replace('_', '')
                   if normalized_obj not in existing_attr_names_normalized:
                       constructor_params_list.append(f"this.{obj_field_name}")
               elif rel["kind"] == "one_to_one":
                   # Agregar FK (ID) para relaciones OneToOne (required)
-                  field_name = f"{self._to_snake_case(rel['to'])}Id"
+                  field_name = "parentId" if is_self else f"{self._to_snake_case(rel['to'])}Id"
                   normalized_field = field_name.lower().replace('_', '')
                   if normalized_field not in existing_attr_names_normalized:
                       constructor_params_list.append(f"required this.{field_name}")
                   # Agregar objeto completo (opcional, default null)
-                  obj_field_name = self._to_snake_case(rel['to'])
+                  obj_field_name = "parent" if is_self else self._to_snake_case(rel['to'])
                   normalized_obj = obj_field_name.lower().replace('_', '')
                   if normalized_obj not in existing_attr_names_normalized:
                       constructor_params_list.append(f"this.{obj_field_name}")
               elif rel["kind"] == "one_to_many":
                   # OneToMany: Lista opcional (vacía por defecto para POST/PUT, poblada en GET)
-                  field_name = self._to_snake_case(rel['to'])
+                  field_name = "children" if is_self else self._to_snake_case(rel['to'])
                   normalized_field = field_name.lower().replace('_', '')
                   if normalized_field not in existing_attr_names_normalized:
                       constructor_params_list.append(f"this.{field_name} = const []")
@@ -685,11 +695,12 @@ class HomePage extends StatelessWidget {{
       # Agregar relaciones - parsear IDs, objetos anidados y listas
       for rel in relationships:
           if rel["from"] == name:
-              rel_name = self._to_snake_case(rel['to'])
+              is_self = rel["to"] == name
+              rel_name = "parent" if is_self else self._to_snake_case(rel['to'])
               if rel["kind"] == "many_to_one":
                   # Parsear el ID de la relación ManyToOne
                   # Puede venir como campo separado 'personaid' o dentro del objeto 'persona.id'
-                  field_name = f"{rel_name}Id"
+                  field_name = "parentId" if is_self else f"{rel_name}Id"
                   fk_json_key = self._to_backend_json_key(field_name)
                   json_key = self._to_backend_json_key(rel_name)
                   
@@ -702,7 +713,7 @@ class HomePage extends StatelessWidget {{
               elif rel["kind"] == "one_to_one":
                   # Parsear el ID de la relación OneToOne
                   # Puede venir como campo separado o dentro del objeto
-                  field_name = f"{rel_name}Id"
+                  field_name = "parentId" if is_self else f"{rel_name}Id"
                   fk_json_key = self._to_backend_json_key(field_name)
                   json_key = self._to_backend_json_key(rel_name)
                   
@@ -716,14 +727,15 @@ class HomePage extends StatelessWidget {{
                   # OneToMany: Parsear lista de objetos anidados que vienen en GET
                   # El backend puede devolver listas mixtas [objeto, id, objeto] debido a @JsonIdentityInfo
                   # Filtrar solo los objetos completos (Maps), omitir los IDs sueltos
-                  json_key = self._to_backend_json_key(rel_name)
+                  field_name = "children" if is_self else rel_name
+                  json_key = self._to_backend_json_key(field_name)
                   parse_logic = f"""json['{json_key}'] is List 
           ? (json['{json_key}'] as List)
               .whereType<Map<String, dynamic>>()
               .map((e) => {rel['to']}.fromJson(e))
               .toList()
           : []"""
-                  from_json_fields.append(f"{rel_name}: {parse_logic}")
+                  from_json_fields.append(f"{field_name}: {parse_logic}")
 
       # toJson - incluir campos heredados también
       to_json_fields = []
@@ -793,15 +805,16 @@ class HomePage extends StatelessWidget {{
       # Agregar relaciones - ENVIAR SOLO IDs, NO objetos completos
       for rel in relationships:
           if rel["from"] == name:
-              rel_name = self._to_snake_case(rel['to'])
+              is_self = rel["to"] == name
+              rel_name = "parent" if is_self else self._to_snake_case(rel['to'])
               if rel["kind"] == "many_to_one":
-                  # Para ManyToOne: enviar solo el ID (formato: personaId)
-                  field_name = f"{rel_name}Id"
+                  # Para ManyToOne: enviar solo el ID (formato: personaId o parentId)
+                  field_name = "parentId" if is_self else f"{rel_name}Id"
                   fk_json_key = self._to_backend_json_key(field_name)
                   to_json_fields.append(f"'{fk_json_key}': {field_name}")
               elif rel["kind"] == "one_to_one":
-                  # Para OneToOne: enviar solo el ID (formato: relacionId)
-                  field_name = f"{rel_name}Id"
+                  # Para OneToOne: enviar solo el ID (formato: relacionId o parentId)
+                  field_name = "parentId" if is_self else f"{rel_name}Id"
                   fk_json_key = self._to_backend_json_key(field_name)
                   to_json_fields.append(f"'{fk_json_key}': {field_name}")
               elif rel["kind"] == "one_to_many":

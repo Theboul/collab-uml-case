@@ -60,6 +60,13 @@ export class RelationContextMenuComponent {
     this.facade.updateMultiplicity(edgeId, undefined, m);
   }
 
+  saveRelationName(edgeId: string, name: string): void {
+    if (this.isLockedByOther()) return;
+    this.facade.recordActivity();
+    const cleanName = name.trim();
+    this.facade.updateRelation(edgeId, { name: cleanName || null });
+  }
+
   deleteRelation(edgeId: string): void {
     if (this.isLockedByOther()) return;
     this.facade.recordActivity();

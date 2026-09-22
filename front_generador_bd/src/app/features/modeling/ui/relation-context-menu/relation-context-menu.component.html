@@ -89,6 +89,30 @@
 
     <div class="h-px bg-neutral-100 my-1"></div>
 
+    <!-- Submenú: Mensaje / Nombre de la Relación -->
+    <div class="px-3 py-1 text-[11px] font-semibold text-neutral-500">Mensaje / Nombre:</div>
+    <div class="px-3 py-1 flex items-center gap-1">
+      <input
+        #nameInput
+        type="text"
+        [disabled]="isLockedByOther()"
+        [value]="currentRelation()?.name || ''"
+        placeholder="ej. incluye, supervisa..."
+        (keydown.enter)="saveRelationName(menu.edgeId, nameInput.value)"
+        class="w-full px-2 py-1 text-xs border border-neutral-200 rounded focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary font-body disabled:opacity-50"
+      />
+      <button
+        type="button"
+        [disabled]="isLockedByOther()"
+        (click)="saveRelationName(menu.edgeId, nameInput.value)"
+        class="px-2 py-1 bg-primary text-white rounded text-[11px] font-medium hover:bg-primary-600 transition-colors cursor-pointer disabled:opacity-50"
+      >
+        Guardar
+      </button>
+    </div>
+
+    <div class="h-px bg-neutral-100 my-1"></div>
+
     <!-- Eliminar Relación -->
     <div class="px-1">
       <sc-button

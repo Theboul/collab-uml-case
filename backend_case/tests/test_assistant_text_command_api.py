@@ -375,3 +375,35 @@ def test_text_command_malformed_action_field_returns_422_not_500(client: TestCli
 
     persisted = client.get(f"/api/v2/canvases/{canvas_id}").json()
     assert persisted["version"] == version
+
+
+def test_text_command_explanation_returns_message_without_mutating_model(client: TestClient):
+    canvas_id, version = _create_canvas(client)
+    version = _seed_bare_class(client, canvas_id, version, "Usuario")
+
+    explanation_response = json.dumps(
+        {
+            "type": "explanation",
+            "message": "El diagrama tiene una clase Usuario con identificador único.",
+        }
+    )
+
+    with patch(
+        "backend_case.app.assistant.api.routes.call_gemini",
+        return_value=f"```json\n{explanation_response}\n```",
+    ):
+        res = client.post(
+            f"/api/v2/canvases/{canvas_id}/assistant/text-command",
+            json={"prompt": "¿Qué clases tiene mi diagrama?", "expectedVersion": version},
+        )
+
+    assert res.status_code == 200
+    body = res.json()
+    assert body["accepted"] is True
+    assert body["version"] == version
+    assert "Usuario con identificador" in body["message"]
+
+    persisted = client.get(f"/api/v2/canvases/{canvas_id}").json()
+    assert persisted["version"] == version
+    assert len(persisted["model"]["classes"]) == 1
+

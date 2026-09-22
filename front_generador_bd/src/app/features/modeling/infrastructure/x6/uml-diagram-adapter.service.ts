@@ -2,8 +2,6 @@ import { Injectable } from '@angular/core';
 import {
   DiagramLayout,
   ModeloUML,
-  UmlClassDto,
-  UmlMultiplicity,
   UmlParameter,
   UmlRelationDto,
   UmlRelationType,
@@ -21,7 +19,13 @@ export interface X6NodeConfig {
     name: string;
     isAbstract: boolean;
     attributes: Array<{ id?: string; name: string; type: string; visibility: string }>;
-    operations: Array<{ id?: string; name: string; returnType: string; visibility: string; parameters?: UmlParameter[] | string }>;
+    operations: Array<{
+      id?: string;
+      name: string;
+      returnType: string;
+      visibility: string;
+      parameters?: UmlParameter[] | string;
+    }>;
   };
   attrs?: Record<string, any>;
   ports?: any;
@@ -71,7 +75,7 @@ export class UmlDiagramAdapterService {
    */
   modelToCells(
     model: ModeloUML,
-    layout: DiagramLayout
+    layout: DiagramLayout,
   ): { nodes: X6NodeConfig[]; edges: X6EdgeConfig[] } {
     const nodes: X6NodeConfig[] = (model.classes || []).map((c) => {
       const nodeLayout = layout?.nodes?.[c.id] || { x: 100, y: 100, width: 190, height: 130 };
@@ -130,7 +134,7 @@ export class UmlDiagramAdapterService {
     otherNodeId: string,
     relationId: string,
     allRelations: UmlRelationDto[],
-    layout: DiagramLayout
+    layout: DiagramLayout,
   ): string {
     const center = this.nodeCenter(nodeId, layout);
     const side = this.resolveSide(center, this.nodeCenter(otherNodeId, layout));
@@ -159,7 +163,7 @@ export class UmlDiagramAdapterService {
   private resolveParallelOffsetVertices(
     rel: UmlRelationDto,
     allRelations: UmlRelationDto[],
-    layout: DiagramLayout
+    layout: DiagramLayout,
   ): Array<{ x: number; y: number }> | undefined {
     const pairKey = (r: UmlRelationDto) => [r.sourceClassId, r.targetClassId].sort().join('::');
     const key = pairKey(rel);
@@ -199,7 +203,7 @@ export class UmlDiagramAdapterService {
   buildEdgeConfig(
     rel: UmlRelationDto,
     allRelations: UmlRelationDto[] = [],
-    layout: DiagramLayout = EMPTY_LAYOUT
+    layout: DiagramLayout = EMPTY_LAYOUT,
   ): X6EdgeConfig {
     const sourceMarker = this.getSourceMarker(rel.type);
     const targetMarker = this.getTargetMarker(rel.type);
@@ -208,17 +212,48 @@ export class UmlDiagramAdapterService {
     // Un puerto elegido manualmente (arrastrando el extremo de la relación) persiste en el
     // layout y tiene prioridad sobre el cálculo automático de distribución por lado.
     const linkOverride = layout.links?.[rel.id];
-    const sourcePort =
-      linkOverride?.sourcePort ??
-      this.resolvePort(rel.sourceClassId, rel.targetClassId, rel.id, allRelations, layout);
-    const targetPort =
-      linkOverride?.targetPort ??
-      this.resolvePort(rel.targetClassId, rel.sourceClassId, rel.id, allRelations, layout);
+    const isReflexive = rel.sourceClassId === rel.targetClassId;
 
-    // Los vértices intermedios que el usuario arrastró a mano (persistidos en el layout) tienen
-    // prioridad sobre el offset automático anti-superposición entre relaciones del mismo par.
-    const vertices =
-      linkOverride?.vertices ?? this.resolveParallelOffsetVertices(rel, allRelations, layout) ?? [];
+    let sourcePort = linkOverride?.sourcePort;
+    let targetPort = linkOverride?.targetPort;
+    let vertices = linkOverride?.vertices;
+
+    if (isReflexive) {
+      if (!sourcePort) sourcePort = 'port-top-2';
+      if (!targetPort) targetPort = 'port-right-1';
+      if (!vertices || vertices.length === 0) {
+        const n = layout?.nodes?.[rel.sourceClassId] || { x: 100, y: 100, width: 190, height: 130 };
+        const w = n.width || 190;
+        const h = n.height || 130;
+        vertices = [
+          { x: Math.round(n.x + w / 2), y: Math.round(n.y - 40) },
+          { x: Math.round(n.x + w + 50), y: Math.round(n.y - 40) },
+          { x: Math.round(n.x + w + 50), y: Math.round(n.y + h / 2) },
+        ];
+      }
+    } else {
+      if (!sourcePort) {
+        sourcePort = this.resolvePort(
+          rel.sourceClassId,
+          rel.targetClassId,
+          rel.id,
+          allRelations,
+          layout,
+        );
+      }
+      if (!targetPort) {
+        targetPort = this.resolvePort(
+          rel.targetClassId,
+          rel.sourceClassId,
+          rel.id,
+          allRelations,
+          layout,
+        );
+      }
+      if (!vertices) {
+        vertices = this.resolveParallelOffsetVertices(rel, allRelations, layout) ?? [];
+      }
+    }
 
     const labels: any[] = [];
     if (rel.sourceMultiplicity) {

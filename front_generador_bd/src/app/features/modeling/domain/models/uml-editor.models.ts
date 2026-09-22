@@ -118,6 +118,7 @@ export interface CommandResponseDto {
   operationId?: string;
   canvas?: LienzoDetailDto;
   undoPayload?: any;
+  message?: string;
 }
 
 export const UML_NODE_DIMENSIONS = {

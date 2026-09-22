@@ -47,6 +47,39 @@ def _tipo_de_relacion(modelo: UmlDomainModel, relacion_id: str) -> str | None:
     return None
 
 
+def _existe_relacion_entre(modelo: UmlDomainModel, source_id: str, target_id: str) -> bool:
+    """
+    Verifica si ya existe alguna relación (asociación, generalización, dependencia
+    o realización) entre los clasificadores indicados.
+    """
+    if source_id == target_id:
+        return (
+            any(
+                a.member_ends[0].class_id == source_id and a.member_ends[1].class_id == target_id
+                for a in modelo.associations
+            )
+            or any(
+                g.specific_class_id == source_id and g.general_class_id == target_id
+                for g in modelo.generalizations
+            )
+            or any(
+                d.client_class_id == source_id and d.supplier_class_id == target_id
+                for d in modelo.dependencies
+            )
+        )
+
+    pair = {source_id, target_id}
+    return (
+        any(
+            {a.member_ends[0].class_id, a.member_ends[1].class_id} == pair
+            for a in modelo.associations
+        )
+        or any({g.specific_class_id, g.general_class_id} == pair for g in modelo.generalizations)
+        or any({d.client_class_id, d.supplier_class_id} == pair for d in modelo.dependencies)
+        or any({r.client_class_id, r.supplier_interface_id} == pair for r in modelo.realizations)
+    )
+
+
 class RelationCommandHandler(CommandHandler):
     """
     Gestiona comandos básicos existentes de relaciones para retrocompatibilidad.
@@ -81,6 +114,11 @@ class RelationCommandHandler(CommandHandler):
             target_role = payload.get("targetRole")
             source_mult = payload.get("sourceMultiplicity", "1")
             target_mult = payload.get("targetMultiplicity", "1")
+
+            if _existe_relacion_entre(lienzo.modelo, source_id, target_id):
+                raise UmlValidationError(
+                    f"Ya existe una relación entre las clases '{source_id}' y '{target_id}'."
+                )
 
             if rel_type == "GENERALIZATION":
                 gen, evento = lienzo.modelo.agregar_generalizacion(source_id, target_id)

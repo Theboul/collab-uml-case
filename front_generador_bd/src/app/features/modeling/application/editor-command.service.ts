@@ -2,12 +2,10 @@ import { Injectable, inject } from '@angular/core';
 import {
   CreateClassPayload,
   CreateRelationPayload,
-  DeleteElementPayload,
   DeleteRelationPayload,
   EditorCommand,
   MoveElementPayload,
   ResizeElementPayload,
-  UpdateMultiplicityPayload,
   UpdateRelationLayoutPayload,
   UpdateRelationPayload,
   UpdateRelationVerticesPayload,
@@ -27,6 +25,7 @@ import { EditorHistoryService } from './editor-history.service';
 import { EditorSelectionService } from './editor-selection.service';
 import { UmlGraphService } from '../infrastructure/x6/uml-graph.service';
 import { UmlDiagramAdapterService } from '../infrastructure/x6/uml-diagram-adapter.service';
+import { UmlAssociationClassService } from './uml-association-class.service';
 
 @Injectable({
   providedIn: 'root',
@@ -39,12 +38,13 @@ export class EditorCommandService {
   private readonly selection = inject(EditorSelectionService);
   private readonly graphService = inject(UmlGraphService);
   private readonly adapter = inject(UmlDiagramAdapterService);
+  private readonly associationClassService = inject(UmlAssociationClassService);
 
   executeCommandWithHistory<T>(
     forward: { type: string; payload: T },
     inverse: { type: string; payload: any },
     description: string,
-    onSuccessLocal?: () => void
+    onSuccessLocal?: () => void,
   ): void {
     const canvasId = this.state.canvasId();
     if (!canvasId) return;
@@ -220,13 +220,36 @@ export class EditorCommandService {
     this.applyCanvasContent(loadedModel, loadedLayout, dto.version);
   }
 
-  /** Contenido del lienzo ya resuelto (de un snapshot o de aplicar un delta) a estado y grafo. */
   applyCanvasContent(model: ModeloUML, layout: DiagramLayout, version: number): void {
     this.state.setSnapshot(model, layout);
     this.state.setVersion(version);
     if (this.graphService.isInitialized) {
       const cells = this.adapter.modelToCells(model, layout);
       this.graphService.renderCells(cells.nodes, cells.edges);
+
+      for (const rel of model.relations) {
+        if (
+          this.associationClassService.isManyToMany(rel.sourceMultiplicity, rel.targetMultiplicity)
+        ) {
+          const sourceClass = model.classes.find((c) => c.id === rel.sourceClassId);
+          const targetClass = model.classes.find((c) => c.id === rel.targetClassId);
+          if (sourceClass && targetClass) {
+            const nameA = sourceClass.name.toLowerCase();
+            const nameB = targetClass.name.toLowerCase();
+            const isSelf = sourceClass.id === targetClass.id;
+            const interName = isSelf ? `${nameA}_${nameA}` : `${nameA}_${nameB}`;
+            const altName = isSelf ? `${nameA}_${nameA}` : `${nameB}_${nameA}`;
+            const joinedName = `${nameA}${nameB}`;
+            const intermediate = model.classes.find((c) => {
+              const lower = c.name.toLowerCase();
+              return lower === interName || lower === altName || lower === joinedName;
+            });
+            if (intermediate) {
+              this.associationClassService.renderConnector(rel.id, intermediate.id);
+            }
+          }
+        }
+      }
     }
   }
 
@@ -270,13 +293,17 @@ export class EditorCommandService {
         if (this.graphService.isInitialized) {
           const cells = this.adapter.modelToCells(
             { classes: [newClass], relations: [] },
-            { viewport: { zoom: 1, panX: 0, panY: 0 }, nodes: { [classId]: { x, y, width, height } }, links: {} }
+            {
+              viewport: { zoom: 1, panX: 0, panY: 0 },
+              nodes: { [classId]: { x, y, width, height } },
+              links: {},
+            },
           );
           if (cells.nodes.length > 0) {
             this.graphService.addNode(cells.nodes[0]);
           }
         }
-      }
+      },
     );
   }
 
@@ -290,7 +317,7 @@ export class EditorCommandService {
       { type: 'UPDATE_CLASS_NAME', payload: { classId, name: newName } },
       { type: 'UPDATE_CLASS_NAME', payload: { classId, name: oldName } },
       `Renombrar clase a ${newName}`,
-      () => this.mutateClass(classId, (c) => ({ ...c, name: newName }))
+      () => this.mutateClass(classId, (c) => ({ ...c, name: newName })),
     );
   }
 
@@ -301,9 +328,12 @@ export class EditorCommandService {
 
     this.executeCommandWithHistory(
       { type: 'UPDATE_CLASS_NAME', payload: { classId, name: cls.name, isAbstract } },
-      { type: 'UPDATE_CLASS_NAME', payload: { classId, name: cls.name, isAbstract: cls.isAbstract } },
+      {
+        type: 'UPDATE_CLASS_NAME',
+        payload: { classId, name: cls.name, isAbstract: cls.isAbstract },
+      },
       `Modificar modificador abstracto de ${cls.name}`,
-      () => this.mutateClass(classId, (c) => ({ ...c, isAbstract }))
+      () => this.mutateClass(classId, (c) => ({ ...c, isAbstract })),
     );
   }
 
@@ -334,7 +364,7 @@ export class EditorCommandService {
             [classId]: { ...(oldNode || { width: 190, height: 130 }), x, y },
           },
         });
-      }
+      },
     );
   }
 
@@ -356,7 +386,7 @@ export class EditorCommandService {
             [classId]: { ...(oldNode || { x, y }), width, height, x, y },
           },
         });
-      }
+      },
     );
   }
 
@@ -387,7 +417,7 @@ export class EditorCommandService {
             },
           },
         });
-      }
+      },
     );
   }
 
@@ -412,7 +442,7 @@ export class EditorCommandService {
             [relationId]: { ...oldLink, vertices },
           },
         });
-      }
+      },
     );
   }
 
@@ -431,7 +461,7 @@ export class EditorCommandService {
     const currentModel = this.state.model();
     const classesToDelete = currentModel.classes.filter((c) => selectedNodes.includes(c.id));
     const relationsToDelete = currentModel.relations.filter(
-      (r) => selectedNodes.includes(r.sourceClassId) || selectedNodes.includes(r.targetClassId)
+      (r) => selectedNodes.includes(r.sourceClassId) || selectedNodes.includes(r.targetClassId),
     );
 
     this.executeCommandWithHistory(
@@ -445,13 +475,14 @@ export class EditorCommandService {
         this.state.updateClasses((classes) => classes.filter((c) => !selectedNodes.includes(c.id)));
         this.state.updateRelations((relations) =>
           relations.filter(
-            (r) => !selectedNodes.includes(r.sourceClassId) && !selectedNodes.includes(r.targetClassId)
-          )
+            (r) =>
+              !selectedNodes.includes(r.sourceClassId) && !selectedNodes.includes(r.targetClassId),
+          ),
         );
         selectedNodes.forEach((nodeId) => this.graphService.deleteCell(nodeId));
         selectedEdges.forEach((edgeId) => this.graphService.deleteCell(edgeId));
         this.selection.clearSelection();
-      }
+      },
     );
   }
 
@@ -461,7 +492,7 @@ export class EditorCommandService {
     type: UmlRelationType = 'ASSOCIATION',
     edgeId?: string,
     sourcePort?: string,
-    targetPort?: string
+    targetPort?: string,
   ): void {
     if (edgeId && this.graphService.isInitialized) {
       this.graphService.deleteCell(edgeId);
@@ -516,11 +547,15 @@ export class EditorCommandService {
           const edgeConfig = this.adapter.buildEdgeConfig(
             newRelation,
             this.state.model().relations,
-            this.state.layout()
+            this.state.layout(),
           );
           this.graphService.addEdge(edgeConfig);
         }
-      }
+
+        this.associationClassService.checkAndCreateIntermediateTable(newRelation, (name, x, y) =>
+          this.createClass(name, x, y),
+        );
+      },
     );
   }
 
@@ -535,7 +570,7 @@ export class EditorCommandService {
     // local del lado que no se quiso cambiar (bug real: cambiar origen
     // borraba destino en pantalla, y viceversa).
     const definedUpdates = Object.fromEntries(
-      Object.entries(updates).filter(([, value]) => value !== undefined)
+      Object.entries(updates).filter(([, value]) => value !== undefined),
     ) as Partial<UpdateRelationPayload>;
 
     this.executeCommandWithHistory<UpdateRelationPayload>(
@@ -557,7 +592,7 @@ export class EditorCommandService {
       `Actualizar relación`,
       () => {
         this.state.updateRelations((relations) =>
-          relations.map((r) => (r.id === relationId ? { ...r, ...definedUpdates } : r))
+          relations.map((r) => (r.id === relationId ? { ...r, ...definedUpdates } : r)),
         );
         const updatedRel = this.state.model().relations.find((r) => r.id === relationId);
         if (updatedRel && this.graphService.isInitialized) {
@@ -565,18 +600,24 @@ export class EditorCommandService {
           const edgeConfig = this.adapter.buildEdgeConfig(
             updatedRel,
             this.state.model().relations,
-            this.state.layout()
+            this.state.layout(),
           );
           this.graphService.addEdge(edgeConfig);
         }
-      }
+
+        if (updatedRel) {
+          this.associationClassService.checkAndCreateIntermediateTable(updatedRel, (name, x, y) =>
+            this.createClass(name, x, y),
+          );
+        }
+      },
     );
   }
 
   updateMultiplicity(
     relationId: string,
     sourceMultiplicity?: string,
-    targetMultiplicity?: string
+    targetMultiplicity?: string,
   ): void {
     this.updateRelation(relationId, {
       sourceMultiplicity,
@@ -608,18 +649,21 @@ export class EditorCommandService {
       () => {
         this.state.updateRelations((relations) => relations.filter((r) => r.id !== relationId));
         this.graphService.deleteCell(relationId);
-      }
+        try {
+          this.graphService.deleteCell(`assoc_connector_${relationId}`);
+        } catch {
+          // Si no existía conector
+        }
+      },
     );
   }
 
   private mutateClass(
     classId: string,
     mutator: (cls: UmlClassDto) => UmlClassDto,
-    preserveSubSelection = false
+    preserveSubSelection = false,
   ): void {
-    this.state.updateClasses((classes) =>
-      classes.map((c) => (c.id === classId ? mutator(c) : c))
-    );
+    this.state.updateClasses((classes) => classes.map((c) => (c.id === classId ? mutator(c) : c)));
     const updated = this.state.model().classes.find((c) => c.id === classId);
     if (updated) {
       this.graphService.updateNodeData(classId, updated);

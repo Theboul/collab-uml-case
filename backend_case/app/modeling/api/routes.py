@@ -10,11 +10,16 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from backend_case.app.application.mappers import ValidationResultMapper
 from backend_case.app.modeling.application.canvas_service import CanvasService
-from backend_case.app.schemas.canvas import CanvasDetailSchema, to_detail_schema
+from backend_case.app.schemas.canvas import (
+    CanvasDetailSchema,
+    CanvasSummarySchema,
+    to_detail_schema,
+    to_summary_schema,
+)
 from backend_case.app.schemas.uml import ValidationResponseSchema
 from backend_case.app.shared.deps import get_canvas_service
 
-from ...shared.security.dependencies import get_current_user_optional
+from ...shared.security.dependencies import get_current_user_optional, resolve_user_id
 from ...shared.security.models import UserORM
 
 router = APIRouter(prefix="/canvases", tags=["modeling"])
@@ -87,21 +92,6 @@ class JoinCanvasResponse(BaseModel):
     joined: bool
 
 
-class CanvasSummarySchema(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    id: str
-    name: str
-    description: str | None = None
-    version: int
-    ownerId: str | None = None
-    roomName: str | None = None
-    owner_id: str | None = None
-    room_name: str | None = None
-    created_at: str | None = None
-    updated_at: str | None = None
-
-
 class CommandResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -110,6 +100,7 @@ class CommandResponse(BaseModel):
     operationId: str | None = None
     canvas: CanvasDetailSchema | None = None
     undoPayload: dict[str, Any] | None = None
+    message: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -121,13 +112,14 @@ class CommandResponse(BaseModel):
 async def list_canvases(
     service: CanvasServiceDep,
     current_user: CurrentUserOptionalDep = None,
-):
+) -> list[CanvasSummarySchema]:
     """
     Lista los lienzos de modelado visibles para el usuario autenticado (propios o
     donde colabora).
     """
-    user_id = current_user.id if current_user else None
-    return await service.listar_lienzos(user_id=user_id)
+    user_id = resolve_user_id(current_user)
+    items = await service.listar_lienzos(user_id=user_id)
+    return [to_summary_schema(item) for item in items]
 
 
 @router.post("", response_model=CanvasDetailSchema, status_code=status.HTTP_201_CREATED)
@@ -135,11 +127,11 @@ async def create_canvas(
     payload: CreateCanvasRequest,
     service: CanvasServiceDep,
     current_user: CurrentUserOptionalDep = None,
-):
+) -> CanvasDetailSchema:
     """
     CU1: Crear un nuevo lienzo UML persistido con usuario anfitrión y sala única.
     """
-    owner_id = current_user.id if current_user else None
+    owner_id = resolve_user_id(current_user)
     res = await service.crear_lienzo(
         nombre=payload.name,
         descripcion=payload.description,
@@ -153,11 +145,11 @@ async def join_canvas(
     payload: JoinCanvasRequest,
     service: CanvasServiceDep,
     current_user: CurrentUserOptionalDep = None,
-):
+) -> JoinCanvasResponse:
     """
     CU2: Unirse a un lienzo UML existente mediante código o enlace de invitación.
     """
-    user_id = current_user.id if current_user else "anonymous-user"
+    user_id = resolve_user_id(current_user) or "anonymous-user"
     res = await service.unirse_a_lienzo(access_code=payload.accessCode, user_id=user_id)
     return JoinCanvasResponse(
         workspaceId=res["workspaceId"],
@@ -173,11 +165,11 @@ async def get_canvas_by_room(
     room_name: str,
     service: CanvasServiceDep,
     current_user: CurrentUserOptionalDep = None,
-):
+) -> CanvasDetailSchema:
     """
     Recupera un lienzo por su mecanismo de acceso (room_name) y resuelve el rol del participante.
     """
-    user_id = current_user.id if current_user else None
+    user_id = resolve_user_id(current_user)
     res = await service.obtener_por_room_name(room_name, user_id=user_id)
     return to_detail_schema(res.lienzo, res.version, res.owner_id, res.room_name, res.role)
 
@@ -187,11 +179,11 @@ async def get_canvas(
     canvas_id: str,
     service: CanvasServiceDep,
     current_user: CurrentUserOptionalDep = None,
-):
+) -> CanvasDetailSchema:
     """
     CU2 / CU3: Obtener un lienzo y su modelo UML persistido resolviendo el rol del participante.
     """
-    user_id = current_user.id if current_user else None
+    user_id = resolve_user_id(current_user)
     res = await service.obtener_lienzo(canvas_id, user_id=user_id)
     if res.role == "INVITADO":
         raise HTTPException(
@@ -218,7 +210,7 @@ async def validate_canvas(
     Solo lectura — no incrementa la versión del canvas. Mismo control de acceso
     que GET /{canvas_id}.
     """
-    user_id = current_user.id if current_user else None
+    user_id = resolve_user_id(current_user)
     resultado, role = await service.validar_lienzo(canvas_id, user_id=user_id)
     if role == "INVITADO":
         raise HTTPException(
@@ -240,7 +232,7 @@ async def execute_editor_command(
     command: EditorCommandRequest,
     service: CanvasServiceDep,
     current_user: CurrentUserOptionalDep = None,
-):
+) -> CommandResponse:
     """
     Ejecuta un comando del editor sobre el lienzo con control de versión optimista. El servicio
     confirma la transacción y luego avisa a los demás; `peerId` (la Sesión del emisor) evita
@@ -252,7 +244,7 @@ async def execute_editor_command(
         expected_version=command.expectedVersion,
         cmd_type=command.type,
         payload=command.payload,
-        user_id=current_user.id if current_user else None,
+        user_id=resolve_user_id(current_user),
         origin_session_id=command.peerId or "",
     )
     canvas_schema = to_detail_schema(res.lienzo, res.version, res.owner_id, res.room_name)
@@ -275,7 +267,7 @@ async def add_class(
     payload: AddClassRequest,
     service: CanvasServiceDep,
     current_user: CurrentUserOptionalDep = None,
-):
+) -> CanvasDetailSchema:
     """
     CU3: Agregar una clase al modelo del lienzo.
     """
@@ -283,7 +275,7 @@ async def add_class(
         canvas_id=canvas_id,
         nombre=payload.name,
         is_abstract=payload.isAbstract,
-        user_id=current_user.id if current_user else None,
+        user_id=resolve_user_id(current_user),
     )
     return to_detail_schema(lienzo, version)
 
@@ -298,7 +290,7 @@ async def add_association(
     payload: AddAssociationRequest,
     service: CanvasServiceDep,
     current_user: CurrentUserOptionalDep = None,
-):
+) -> CanvasDetailSchema:
     """
     CU4: Agregar una asociación binaria entre dos clases en el lienzo.
     """
@@ -313,6 +305,6 @@ async def add_association(
         multiplicidad_destino=payload.targetMultiplicity,
         agregacion_origen=payload.sourceAggregation,
         agregacion_destino=payload.targetAggregation,
-        user_id=current_user.id if current_user else None,
+        user_id=resolve_user_id(current_user),
     )
     return to_detail_schema(lienzo, version)

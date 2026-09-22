@@ -52,11 +52,13 @@ export class AiAssistantCommandService {
     defaultErrorMessage: string
   ): void {
     this.state.setAssistantError(null);
+    this.state.setAssistantMessage(null);
     this.state.setAssistantProcessing(true);
 
     request$.subscribe({
       next: (res) => {
         this.state.setAssistantProcessing(false);
+        this.state.setAssistantMessage(res.message || null);
         if (res.canvas) {
           this.commandService.applyCanvasSnapshot(res.canvas);
         } else {

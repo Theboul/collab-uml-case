@@ -39,7 +39,7 @@ from backend_case.app.schemas.canvas import CanvasDetailSchema, to_detail_schema
 from backend_case.app.shared.deps import get_canvas_service
 from core.uml_domain.exceptions import UmlValidationError
 
-from ...shared.security.dependencies import get_current_user_optional
+from ...shared.security.dependencies import get_current_user_optional, resolve_user_id
 from ...shared.security.models import UserORM
 
 logger = logging.getLogger(__name__)
@@ -61,7 +61,9 @@ def _strip_markdown_fences(text: str) -> str:
     return re.sub(r"^```json\s*|\s*```$", "", text.strip(), flags=re.MULTILINE)
 
 
-def _build_command_response(result: CanvasResult) -> CommandResponse:
+def _build_command_response(
+    result: CanvasResult, message: str | None = None
+) -> CommandResponse:
     canvas_schema: CanvasDetailSchema = to_detail_schema(
         result.lienzo, result.version, result.owner_id, result.room_name
     )
@@ -69,6 +71,7 @@ def _build_command_response(result: CanvasResult) -> CommandResponse:
         accepted=True,
         version=result.version,
         canvas=canvas_schema,
+        message=message,
     )
 
 
@@ -89,8 +92,10 @@ async def execute_text_command(
     aplicados de forma atómica sobre el lienzo persistido. Si la IA devuelve
     algo que no mapea limpiamente (JSON roto, referencias inválidas, acción no
     soportada), se rechaza con 422 explícito y el modelo persistido no cambia.
+    Si la instrucción es una pregunta o consulta explicativa ("type": "explanation"),
+    se devuelve la explicación en el campo message sin modificar el modelo.
     """
-    user_id = current_user.id if current_user else None
+    user_id = resolve_user_id(current_user)
 
     current = await service.obtener_lienzo(canvas_id, user_id=user_id)
     model_context = build_model_context(current.lienzo.modelo)
@@ -102,6 +107,10 @@ async def execute_text_command(
         parsed: Any = json.loads(cleaned)
     except (TypeError, ValueError) as err:
         raise UmlValidationError("La IA no devolvió un JSON válido.") from err
+
+    if isinstance(parsed, dict) and parsed.get("type") == "explanation":
+        explanation_text = str(parsed.get("message") or "")
+        return _build_command_response(current, message=explanation_text)
 
     if isinstance(parsed, dict) and "operations" in parsed:
         operations = validate_operations_shape(parsed)
@@ -142,7 +151,7 @@ async def execute_image_command(
     persistido no cambia -- nunca se genera información inconsistente a
     partir de una detección fallida.
     """
-    user_id = current_user.id if current_user else None
+    user_id = resolve_user_id(current_user)
 
     content = await image.read()
     if not content:
