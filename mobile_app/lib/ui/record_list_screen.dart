@@ -130,13 +130,7 @@ class _RecordListScreenState extends State<RecordListScreen>
           setState(() => _busy = true);
           final outcome = await repository.delete(id);
           if (!mounted) return;
-          showResult(
-            context,
-            outcome.isPending
-                ? '${module.label} $id: eliminación guardada, pendiente de sincronizar.'
-                : outcome.message ??
-                      '${module.label} $id eliminado correctamente.',
-          );
+          showResult(context, outcome.deletedText(module, id));
       }
       if (mounted) _reload();
     } on AppFailure catch (failure) {

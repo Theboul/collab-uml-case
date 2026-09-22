@@ -41,6 +41,23 @@ class WriteOutcome {
   bool get isPending => status == WriteStatus.pending;
 }
 
+/// Textos de confirmación de una escritura. Los usan las pantallas manuales (CU12) y el asistente de
+/// voz/texto (CU14), para que el usuario lea lo mismo se opere como se opere.
+extension WriteOutcomeMessages on WriteOutcome {
+  String createdText(EntityModule module) => _saved(module, 'creado');
+
+  String updatedText(EntityModule module) => _saved(module, 'actualizado');
+
+  String deletedText(EntityModule module, int id) => isPending
+      ? '${module.label} $id: eliminación guardada, pendiente de sincronizar.'
+      : message ?? '${module.label} $id eliminado correctamente.';
+
+  String _saved(EntityModule module, String action) => isPending
+      ? '${module.label} $action: ${message ?? 'pendiente de sincronizar.'}'
+      : '${module.label} ${entity?.id} $action correctamente.'
+            '${message == null ? '' : ' $message'}';
+}
+
 /// Lo que la UI usa para gestionar una entidad. Detrás hay datos locales, cola de sincronización y
 /// servidor (`OfflineFirstRepository`).
 abstract interface class EntityGateway {

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../app_scope.dart';
+import '../data/entity_gateway.dart';
 import '../data/failures.dart';
 import '../domain/entity_module.dart';
 import '../domain/field_spec.dart';
@@ -99,16 +100,11 @@ class _RecordFormScreenState extends State<RecordFormScreen> {
           ? await repository.create(module.fromValues(null, values))
           : await repository.update(id, module.fromValues(id, values));
       if (!mounted) return;
-      final saved = outcome.entity;
-      final action = _isEdit ? 'actualizado' : 'creado';
       showResult(
         context,
-        outcome.isPending
-            ? '${module.label} $action: ${outcome.message ?? 'pendiente de sincronizar.'}'
-            : '${module.label} ${saved?.id} $action correctamente.'
-                  '${outcome.message == null ? '' : ' ${outcome.message}'}',
+        _isEdit ? outcome.updatedText(module) : outcome.createdText(module),
       );
-      Navigator.of(context).pop(saved);
+      Navigator.of(context).pop(outcome.entity);
     } on AppFailure catch (failure) {
       if (!mounted) return;
       // El formulario conserva lo escrito; solo se informa el motivo.
