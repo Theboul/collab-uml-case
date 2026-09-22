@@ -19,13 +19,18 @@ from backend_case.app.schemas.canvas import (
 from backend_case.app.schemas.uml import ValidationResponseSchema
 from backend_case.app.shared.deps import get_canvas_service
 
-from ...shared.security.dependencies import get_current_user_optional, resolve_user_id
+from ...shared.security.dependencies import (
+    get_current_user,
+    get_current_user_optional,
+    resolve_user_id,
+)
 from ...shared.security.models import UserORM
 
 router = APIRouter(prefix="/canvases", tags=["modeling"])
 
 CanvasServiceDep = Annotated[CanvasService, Depends(get_canvas_service)]
 CurrentUserOptionalDep = Annotated[UserORM | None, Depends(get_current_user_optional)]
+CurrentUserDep = Annotated[UserORM, Depends(get_current_user)]
 
 
 # ---------------------------------------------------------------------------
@@ -144,12 +149,20 @@ async def create_canvas(
 async def join_canvas(
     payload: JoinCanvasRequest,
     service: CanvasServiceDep,
-    current_user: CurrentUserOptionalDep = None,
+    current_user: CurrentUserDep,
 ) -> JoinCanvasResponse:
     """
     CU2: Unirse a un lienzo UML existente mediante código o enlace de invitación.
+
+    Requiere autenticación real: `canvas_collaborators.user_id` es FK contra `users.id`
+    (parte de la PK compuesta, no admite NULL). El placeholder "anonymous-user" que usaba
+    antes esta ruta nunca correspondía a una fila real de `users` — con SQLite (sin
+    `PRAGMA foreign_keys=ON`) la violación de FK se ignoraba en silencio, pero contra
+    Postgres (docker-compose) rompe con 500. El frontend ya exige sesión antes de llegar
+    a `/join/:accessCode` (`authGuard` en `app.routes.ts`), así que esto solo formaliza
+    en el backend una invariante que la UI ya asumía.
     """
-    user_id = resolve_user_id(current_user) or "anonymous-user"
+    user_id = str(current_user.id)
     res = await service.unirse_a_lienzo(access_code=payload.accessCode, user_id=user_id)
     return JoinCanvasResponse(
         workspaceId=res["workspaceId"],
