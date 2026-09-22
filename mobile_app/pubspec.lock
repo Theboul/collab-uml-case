@@ -223,22 +223,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "6.1.0"
-  llm_core:
-    dependency: transitive
-    description:
-      name: llm_core
-      sha256: "2f798d2cded5b5fb341942b7914fe1ae85446ab57adbd773b8a83001439b7da7"
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.6.0"
-  llm_llamacpp:
-    dependency: "direct main"
-    description:
-      name: llm_llamacpp
-      sha256: "81a0f58ed7daff76e252eec8d496aed1a493e3f7ea5336333c0f819cda83328c"
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.6.0"
   logging:
     dependency: transitive
     description:
