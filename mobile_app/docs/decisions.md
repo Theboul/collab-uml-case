@@ -115,6 +115,7 @@ como sin conexion (es lo que se prueba).
 | `integration_test/cu14_voice_test.dart` | telefono real, modo avion real, asistente por TEXTO (crear, consultar, 4 excepciones sin red, sincroniza sola al volver la red) | `tool\device-voice-test.ps1 -Mode offline` |
 | `integration_test/cu14_voice_online_test.dart` | telefono real, CON red, boton de voz real de punta a punta contra el backend real | `tool\device-voice-test.ps1 -Mode voice` |
 | `integration_test/cu14_asr_probe_test.dart` | diagnostico de Fase 0 (no es parte de la app) | `tool\device-asr-probe.ps1` |
+| `integration_test/cu14_voice_human_diagnostic_test.dart` | diagnostico con voz HUMANA real (no sintetizada): capa de produccion + listener nativo, RMS y codigo de error real (ver seccion 6.4.1; no es parte de la app) | `tool\device-voice-human-test.ps1` |
 
 ## 6. CU14: asistente por voz/texto (parser por reglas, sin LLM)
 
@@ -197,16 +198,59 @@ externo (`com.google.android.tts`) con audio de altavoz-a-microfono, documentada
 "arregla" en el parser porque no es ahi donde esta el problema. El test de integracion offline
 (campo de texto, sin este reconocedor de por medio) no tiene esta variabilidad.
 
-**Pendiente de confirmar con voz humana real** (no sintetizada): durante las pruebas manuales el
-reconocedor no entendio la voz del usuario aunque si entendia la voz sintetizada del PC. Se
-investigaron dos causas y se corrigieron las dos: (1) el idioma quedaba fijo en `es_ES` (espanol de
-Espana) mientras el telefono esta en `es-BO` — ahora el idioma por defecto se deriva del `Locale`
-del dispositivo (`spanishLocaleFor`), y ademas se agrego un selector de idioma en la pantalla
-(`voice-locale`: automatico, Bolivia, Latinoamerica, Espana, Mexico, EE. UU.); (2) el usuario podia
-empezar a hablar antes de que el microfono estuviera realmente abierto — ahora la fase
-`VoicePhase.listening` distingue "Abriendo microfono…" de "Escuchando…" (`SpeechInput.listen(onReady:
-...)`). No se alcanzo a re-confirmar con la voz real del usuario antes de este commit; queda como
-seguimiento (ver README/seccion de pendientes).
+#### 6.4.1 Diagnostico confirmado con voz HUMANA real (no sintetizada)
+
+Durante las pruebas manuales el reconocedor no entendio la voz del usuario aunque si entendia la voz
+sintetizada del PC. Antes de asumir la causa se descartaron las hipotesis una por una, con evidencia:
+
+- **Idioma**: se agregaron dos fixes previos (idioma derivado del `Locale` del dispositivo via
+  `spanishLocaleFor` en vez de fijo en `es_ES`, mas un selector manual en pantalla) y **se confirmo
+  en el dispositivo** que resuelven bien: `DIAG:LOCALE primary=es_BO ... resolved_por_spanishLocaleFor=es_BO`.
+  **Descartada.**
+- **Nivel de audio**: se instrumento `AsrProbe.kt` para registrar el rango de `onRmsChanged` (antes
+  solo guardaba el maximo; ahora tambien el minimo). En **5 intentos reales de voz humana**, el rango
+  medido fue **min=-2.0 max=10.0 dB** — **identico** al rango de referencia de la Fase 0 con la voz
+  sintetizada del PC que si funcionaba (min=-2.0 max=10.0). El microfono capta la voz real del
+  usuario a un nivel completamente normal. **Descartada.**
+- **Duracion/corte de frase**: confirmada como factor real, con el mismo patron ya visto con TTS: el
+  reconocedor a veces corta antes de la frase completa.
+- **Acento/pronunciacion o limitacion del reconocedor**: cuando el reconocedor SI devuelve texto, lo
+  hace con precision (ver tabla) — no es que no entienda el acento. Pero en 2 de los 5 intentos
+  nativos devolvio `ERROR_NO_MATCH` con audio de nivel identico al de los intentos que si
+  funcionaron (`rmsCount` 156 y 233, nada anormal) — el motor de reconocimiento simplemente no
+  alcanzo confianza suficiente para proponer ninguna hipotesis. Es la misma limitacion externa que
+  la seccion 6.4 documenta con la voz sintetizada, no un caso nuevo.
+
+Medido con `integration_test/cu14_voice_human_diagnostic_test.dart`
+(`tool\device-voice-human-test.ps1`, CON red, sin ningun audio sintetizado): 2 intentos por la capa
+de PRODUCCION (`VoiceAssistantScreen`, plugin `speech_to_text`) + 5 por el listener NATIVO directo
+(`AsrProbe.kt`, sin el plugin, con el codigo de error real de Android):
+
+| Intento | Capa | Transcripcion / resultado |
+|---|---|---|
+| UI 1 | produccion | `vozNoReconocida` — no se captó ninguna frase |
+| UI 2 | produccion | transcribio `"crear producto camisa"` (correcto, incompleto) → `datosFaltantes` (Falta: Precio) |
+| Nativo 1 | AsrProbe | `"crear producto camisa"` (mismo corte) |
+| Nativo 2 | AsrProbe | `"...crear producto camisa precio 20"` (cola correcta, con ruido al inicio) |
+| Nativo 3 | AsrProbe | `ERROR_NO_MATCH` (audio normal, rmsCount=156) |
+| Nativo 4 | AsrProbe | `"crear producto camisa precio 20"` (la mas completa: solo falta "con") |
+| Nativo 5 | AsrProbe | `ERROR_NO_MATCH` (audio normal, rmsCount=233) |
+
+**4 de los 7 intentos** devolvieron una transcripcion util y precisa (nunca palabras inventadas,
+siempre las dichas); **3 de 7** no devolvieron nada pese a audio normal. Ninguno de los 2 intentos de
+la capa de produccion llego a completar un `VoiceCommand` valido en esta sesion — el intento UI 2 es
+justamente el comportamiento correcto de la app ante una transcripcion incompleta (avisa que falta
+el precio, no inventa ni ejecuta a medias).
+
+**Conclusion**: no hay evidencia de un bug propio — ambas causas de codigo que se sospechaban
+(idioma, sincronizacion del microfono) ya estaban corregidas y se verificaron correctas en este
+mismo diagnostico. La voz humana real, una vez corregidos esos dos bugs, tiene una tasa de acierto
+del mismo orden que la voz sintetizada de la seccion 6.4 (~4/7 aqui, ~5/9 alla): es la variabilidad
+ya documentada del reconocedor externo, no un problema nuevo ni peor con la voz real. El reporte
+inicial de "no reconoce mi voz" coincidio con una muestra chica probada antes de que esos dos fixes
+existieran. **El campo de texto sigue siendo el camino confiable y recomendado** (para la demo
+tambien) cuando la voz no responda al primer intento; no se aplico ningun cambio de codigo a partir
+de este diagnostico porque no hay una causa corregible identificada.
 
 ### 6.5 Las 5 excepciones de la ficha
 

@@ -48,6 +48,7 @@ object AsrProbe {
         val transcripts = mutableListOf<String>()
         var rmsCount = 0
         var rmsMax = -100f
+        var rmsMin = 100f
         var finished = false
         val handler = android.os.Handler(android.os.Looper.getMainLooper())
         val recognizer = SpeechRecognizer.createSpeechRecognizer(context)
@@ -60,7 +61,8 @@ object AsrProbe {
                 log("FIN: $why")
                 try { recognizer.destroy() } catch (_: Exception) {}
                 result.success(mapOf(
-                    "events" to events, "transcripts" to transcripts, "rmsCount" to rmsCount, "rmsMax" to rmsMax,
+                    "events" to events, "transcripts" to transcripts, "rmsCount" to rmsCount,
+                    "rmsMax" to rmsMax, "rmsMin" to (if (rmsCount == 0) null else rmsMin),
                     "languageTag" to languageTag, "preferOffline" to preferOffline, "finishedBecause" to why,
                 ))
             }
@@ -68,7 +70,11 @@ object AsrProbe {
         recognizer.setRecognitionListener(object : android.speech.RecognitionListener {
             override fun onReadyForSpeech(params: android.os.Bundle?) = log("onReadyForSpeech")
             override fun onBeginningOfSpeech() = log("onBeginningOfSpeech")
-            override fun onRmsChanged(rmsdB: Float) { rmsCount++; if (rmsdB > rmsMax) rmsMax = rmsdB }
+            override fun onRmsChanged(rmsdB: Float) {
+                rmsCount++
+                if (rmsdB > rmsMax) rmsMax = rmsdB
+                if (rmsdB < rmsMin) rmsMin = rmsdB
+            }
             override fun onBufferReceived(buffer: ByteArray?) = log("onBufferReceived")
             override fun onEndOfSpeech() = log("onEndOfSpeech")
             override fun onPartialResults(partialResults: android.os.Bundle?) {
