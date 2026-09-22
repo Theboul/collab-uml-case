@@ -39,6 +39,12 @@ probaron claves equivocadas. La coleccion Postman de CU11 (`Create PedidoProduct
 `{"pedidoid":1,"productoid":1}`) persiste la relacion; no hay bug en `back_generator_uml`. La confusion vino del
 contrato asimetrico escritura (`pedidoid`) / lectura (`pedido`).
 
+Inconsistencia interna encontrada al generar un dominio distinto (Insumo -> Proveedor, ver
+`docs/nuevo-dominio.md`): la columna SQL de la relacion salio `proveedor_id` (con guion bajo), a diferencia de
+`pedidoid`/`productoid` (sin guion bajo). No afecta la API expuesta -- Jackson serializa por el nombre del campo
+Java, y la clave de escritura sigue siendo `proveedorid` sin guion bajo, confirmado porque el CRUD funciono sin
+ningun ajuste -- pero queda registrada por si en otro dominio ese detalle de JPA llegara a filtrarse a la API.
+
 ## 3. Decisiones de CU12
 
 - **Id explicito y tipado como el backend**: `int? id` (`Long`), nunca el primer atributo; viaja solo en la ruta.
