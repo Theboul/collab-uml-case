@@ -5,7 +5,8 @@
 /// - [integer]   → `Long`    → `int`   (Dart `int` es de 64 bits, igual que `Long`)
 /// - [decimal]   → `Double`  → `double`
 /// - [reference] → relación (`@ManyToOne`) → id `Long` de la entidad referenciada
-enum FieldType { text, integer, decimal, reference }
+/// - [boolean]   → `Boolean`  → `bool`
+enum FieldType { text, integer, decimal, reference, boolean }
 
 /// Descripción de un atributo editable de una entidad: de aquí salen el formulario y su validación.
 ///

@@ -63,6 +63,31 @@ class FieldValidator {
           return '${field.label} no es válido.';
         }
         return null;
+      case FieldType.boolean:
+        if (_parseBool(value) == null) {
+          return '${field.label} debe ser sí/no.';
+        }
+        return null;
+    }
+  }
+
+  /// `true`/`si`/`verdadero`/`1` o `false`/`no`/`falso`/`0` (sin distinguir mayúsculas); cualquier
+  /// otra cosa no es un booleano válido.
+  static bool? _parseBool(String value) {
+    switch (value.toLowerCase()) {
+      case 'true':
+      case 'si':
+      case 'sí':
+      case 'verdadero':
+      case '1':
+        return true;
+      case 'false':
+      case 'no':
+      case 'falso':
+      case '0':
+        return false;
+      default:
+        return null;
     }
   }
 
@@ -79,6 +104,8 @@ class FieldValidator {
         return int.parse(value.startsWith('+') ? value.substring(1) : value);
       case FieldType.decimal:
         return double.parse(value.replaceAll(',', '.'));
+      case FieldType.boolean:
+        return _parseBool(value)!;
     }
   }
 }

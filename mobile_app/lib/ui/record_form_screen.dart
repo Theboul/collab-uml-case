@@ -201,7 +201,10 @@ class _RecordFormScreenState extends State<RecordFormScreen> {
         validator: (value) => FieldValidator.validate(field, value?.toString()),
       );
     }
-    final numeric = field.type != FieldType.text;
+    // El teclado numérico solo tiene sentido para entero/decimal; texto y booleano ("sí"/"no")
+    // necesitan letras.
+    final numeric =
+        field.type == FieldType.integer || field.type == FieldType.decimal;
     return TextFormField(
       key: Key('field-${field.name}'),
       controller: _controllers[field.name],
