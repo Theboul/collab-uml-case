@@ -1,4 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gestion_movil/domain/entity_module.dart';
+import 'package:gestion_movil/domain/field_spec.dart';
 import 'package:gestion_movil/domain/voice/text_normalizer.dart';
 import 'package:gestion_movil/domain/voice/voice_command.dart';
 import 'package:gestion_movil/domain/voice/voice_command_parser.dart';
@@ -523,9 +525,25 @@ void main() {
       }
     });
 
-    test('las entidades por voz se derivan de los EntityModule (sin PedidoProducto)', () {
-      expect(voiceModules.map((m) => m.path), ['pedido', 'producto']);
-    });
+    test(
+      'voiceModules es exactamente el subconjunto de allModules sin campos reference',
+      () {
+        // Propiedad estructural, no un conteo fijo: sigue siendo válida sin importar cuántas
+        // entidades reales termine teniendo el proyecto (PedidoProducto queda fuera por tener
+        // dos campos reference; cualquier futura entidad sin referencias entra sola).
+        final withoutReference = allModules.where(
+          (m) => m.fields.every((f) => f.type != FieldType.reference),
+        );
+        expect(voiceModules, withoutReference);
+        expect(
+          voiceModules.any(
+            (m) => m.fields.any((f) => f.type == FieldType.reference),
+          ),
+          isFalse,
+          reason: 'ningún módulo en voiceModules debería tener un campo reference',
+        );
+      },
+    );
 
     test('es pura: la misma frase da siempre el mismo resultado', () {
       for (final c in _ok) {

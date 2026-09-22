@@ -17,15 +17,19 @@ import 'package:http/testing.dart';
 ///
 /// Con los interruptores se provocan fallos que el backend real solo da a veces.
 class FakeBackend {
-  FakeBackend() {
-    for (final table in const ['producto', 'pedido', 'pedidoproducto']) {
-      tables[table] = {};
-      _sequence[table] = 0;
-    }
-  }
-
   final Map<String, Map<int, Map<String, dynamic>>> tables = {};
   final Map<String, int> _sequence = {};
+
+  /// Tabla de [name], creándola vacía la primera vez que se pide. Así una entidad que no sea
+  /// Producto/Pedido/PedidoProducto (agregada a `allModules` en el futuro) no hace fallar este
+  /// fixture con un `null check`: entra con la misma tabla vacía que tendría contra un backend
+  /// real recién creado. `_fromBody` sigue construyendo el cuerpo campo a campo solo para las 3
+  /// entidades conocidas (ahí sí hace falta el tipo real de cada campo); para cualquier otra,
+  /// POST/PUT devuelven la fila con los campos crudos del `body` — no es exacto (no hay
+  /// coerción de tipo), pero es igual de válido como "no hace fallar el test" que el resto de la
+  /// clase ya ofrece.
+  Map<int, Map<String, dynamic>> _table(String name) =>
+      tables.putIfAbsent(name, () => {});
 
   /// Registro de peticiones recibidas, p. ej. `POST /api/producto`.
   final List<String> log = [];
@@ -44,12 +48,12 @@ class FakeBackend {
 
   MockClient get client => MockClient(handle);
 
-  int count(String table) => tables[table]!.length;
+  int count(String table) => _table(table).length;
 
   Map<String, dynamic> insert(String table, Map<String, dynamic> row) {
-    final id = _sequence[table] = _sequence[table]! + 1;
+    final id = _sequence[table] = (_sequence[table] ?? 0) + 1;
     final saved = {'id': id, ...row};
-    tables[table]![id] = saved;
+    _table(table)[id] = saved;
     return saved;
   }
 
@@ -141,8 +145,8 @@ class FakeBackend {
 
     switch (request.method) {
       case 'GET':
-        if (id == null) return _json(200, tables[table]!.values.toList());
-        final row = tables[table]![id];
+        if (id == null) return _json(200, _table(table).values.toList());
+        final row = _table(table)[id];
         return row == null
             ? _json(500, {'error': 'Internal Server Error'})
             : _json(200, row);
@@ -157,7 +161,7 @@ class FakeBackend {
         if (body == null || (rejectBody?.call(table, body) ?? false)) {
           return _json(400, {'error': 'Bad Request'});
         }
-        final row = tables[table]![id];
+        final row = _table(table)[id];
         if (row == null) return _json(500, {'error': 'Internal Server Error'});
         if (!ignoreUpdates) {
           row.addAll(_fromBody(table, body, keepNulls: false));
@@ -165,7 +169,7 @@ class FakeBackend {
         return _json(200, row);
       case 'DELETE':
         if (!deleteDoesNothing && id != null) {
-          tables[table]!.remove(id);
+          _table(table).remove(id);
           _cascade(table, id);
         }
         return http.Response('', 200);
@@ -176,7 +180,7 @@ class FakeBackend {
   /// El backend real borra en cascada las relaciones al borrar un Pedido o un Producto (verificado).
   void _cascade(String table, int id) {
     if (table != 'pedido' && table != 'producto') return;
-    tables['pedidoproducto']!.removeWhere((_, row) {
+    _table('pedidoproducto').removeWhere((_, row) {
       final ref = row[table];
       return ref is Map && ref['id'] == id;
     });
@@ -223,7 +227,7 @@ class FakeBackend {
     final id = value is num
         ? value.toInt()
         : (value is String ? int.tryParse(value) : null);
-    final target = id == null ? null : tables[table]![id];
+    final target = id == null ? null : _table(table)[id];
     if (target == null) return null;
     return Map<String, dynamic>.of(target)..remove('pedidoproducto');
   }
